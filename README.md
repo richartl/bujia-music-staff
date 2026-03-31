@@ -67,7 +67,7 @@ App: http://localhost:8080
 
 
 ### Variables en runtime (Cloud Run)
-En producción, `VITE_API_BASE_URL` y `VITE_APP_NAME` se leen en **runtime** desde `env-config.js`, generado al arrancar el contenedor.  
+En producción, `VITE_API_BASE_URL` y `VITE_APP_NAME` se leen en **runtime** desde `env-config.js` (servido desde `/tmp`), generado al arrancar el contenedor.  
 Así, no quedan fijas en build time.
 
 Ejemplo local:
