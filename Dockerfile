@@ -13,10 +13,9 @@ RUN npm run build
 FROM nginxinc/nginx-unprivileged:1.27-alpine
 
 COPY nginx/default.conf /etc/nginx/conf.d/default.conf
-COPY docker-entrypoint.sh /docker-entrypoint.sh
+COPY --chmod=755 docker-entrypoint.sh /docker-entrypoint.sh
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-RUN chmod +x /docker-entrypoint.sh
 
 EXPOSE 8080
 
