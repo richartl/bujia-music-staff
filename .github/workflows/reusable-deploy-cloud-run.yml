@@ -1,0 +1,56 @@
+name: Reusable CD - Deploy to Cloud Run
+
+on:
+  workflow_call:
+    inputs:
+      service:
+        description: Cloud Run service name
+        required: true
+        type: string
+      project-id:
+        description: GCP project id
+        required: true
+        type: string
+      region:
+        description: Cloud Run region
+        required: true
+        type: string
+      image:
+        description: Full container image URL including tag
+        required: true
+        type: string
+      workload-identity-provider:
+        description: GCP Workload Identity Provider resource name
+        required: true
+        type: string
+      service-account:
+        description: GCP Service Account email used for auth
+        required: true
+        type: string
+
+jobs:
+  deploy:
+    name: Deploy Cloud Run service
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ inputs.workload-identity-provider }}
+          service_account: ${{ inputs.service-account }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy "${{ inputs.service }}" \
+            --project="${{ inputs.project-id }}" \
+            --region="${{ inputs.region }}" \
+            --image="${{ inputs.image }}" \
+            --platform=managed \
+            --quiet

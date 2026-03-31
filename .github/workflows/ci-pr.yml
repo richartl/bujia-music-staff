@@ -1,0 +1,22 @@
+name: PR - CI
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: Rama a ejecutar manualmente
+        required: true
+        default: develop
+        type: choice
+        options:
+          - develop
+          - main
+
+jobs:
+  ci:
+    if: ${{ github.event_name == 'workflow_dispatch' || !github.event.pull_request.draft }}
+    uses: ./.github/workflows/reusable-ci.yml
+    with:
+      checkout-ref: ${{ github.event_name == 'workflow_dispatch' && inputs.branch || '' }}

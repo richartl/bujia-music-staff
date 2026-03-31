@@ -1,0 +1,83 @@
+name: Reusable CI
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        description: Node.js version
+        required: false
+        type: string
+        default: '22'
+      working-directory:
+        description: Working directory where package.json lives
+        required: false
+        type: string
+        default: '.'
+      checkout-ref:
+        description: Git ref/branch to checkout (optional)
+        required: false
+        type: string
+        default: ''
+      audit-level:
+        description: npm audit severity threshold (low|moderate|high|critical)
+        required: false
+        type: string
+        default: high
+      run-trivy:
+        description: Run Trivy filesystem scan
+        required: false
+        type: boolean
+        default: true
+
+jobs:
+  ci:
+    name: Lint, tests and vulnerability scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+
+    steps:
+      - name: Checkout (event ref)
+        if: ${{ inputs.checkout-ref == '' }}
+        uses: actions/checkout@v4
+
+      - name: Checkout (manual ref)
+        if: ${{ inputs.checkout-ref != '' }}
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.checkout-ref }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Lint
+        run: npm run lint --if-present
+
+      - name: Unit tests
+        run: |
+          npm run test:unit --if-present
+          npm test --if-present
+
+      - name: npm audit
+        run: npm audit --omit=dev --audit-level=${{ inputs.audit-level }}
+
+      - name: Trivy filesystem scan
+        if: ${{ inputs.run-trivy }}
+        uses: aquasecurity/trivy-action@v0.24.0
+        with:
+          scan-type: fs
+          scan-ref: ${{ inputs.working-directory }}
+          vuln-type: os,library
+          severity: HIGH,CRITICAL
+          format: table
+          ignore-unfixed: true
+          exit-code: '1'

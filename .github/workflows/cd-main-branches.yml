@@ -1,0 +1,137 @@
+name: Push to main branches - CI + CD
+
+on:
+  push:
+    branches:
+      - develop
+      - main
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: Rama a ejecutar manualmente
+        required: true
+        default: develop
+        type: choice
+        options:
+          - develop
+          - main
+
+jobs:
+  resolve-context:
+    runs-on: ubuntu-latest
+    outputs:
+      checkout_ref: ${{ steps.set-vars.outputs.checkout_ref }}
+      deploy_tag: ${{ steps.set-vars.outputs.deploy_tag }}
+      image_tags: ${{ steps.set-vars.outputs.image_tags }}
+      project_id: ${{ steps.set-vars.outputs.project_id }}
+      service_name: ${{ steps.set-vars.outputs.service_name }}
+      workload_identity_provider: ${{ steps.set-vars.outputs.workload_identity_provider }}
+      service_account: ${{ steps.set-vars.outputs.service_account }}
+      image_url_deploy: ${{ steps.set-vars.outputs.image_url_deploy }}
+    steps:
+      - name: Resolve branch from event
+        id: resolve-branch
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "branch=${{ inputs.branch }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "branch=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout selected branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.resolve-branch.outputs.branch }}
+
+      - name: Resolve branch, environment and image tags
+        id: set-vars
+        env:
+          BRANCH: ${{ steps.resolve-branch.outputs.branch }}
+          REGISTRY_HOST: ${{ vars.GCP_REGISTRY_HOST }}
+          IMAGE_NAME: ${{ vars.IMAGE_NAME }}
+          DEV_PROJECT_ID: ${{ vars.GCP_PROJECT_DEV || 'bujia-platform-dev' }}
+          PROD_PROJECT_ID: ${{ vars.GCP_PROJECT_PROD || 'bujia-platform-prod' }}
+          DEV_SERVICE_NAME: ${{ vars.CLOUD_RUN_SERVICE_DEV }}
+          PROD_SERVICE_NAME: ${{ vars.CLOUD_RUN_SERVICE_PROD }}
+          DEV_WIP: ${{ vars.GCP_WIP_DEV || 'projects/297102077698/locations/global/workloadIdentityPools/github-pool-richartl/providers/github-provider' }}
+          PROD_WIP: ${{ vars.GCP_WIP_PROD || vars.GCP_WIP_DEV || 'projects/297102077698/locations/global/workloadIdentityPools/github-pool-richartl/providers/github-provider' }}
+          DEV_SA: ${{ vars.GCP_SA_DEV || 'github-artifact-push@bujia-platform-dev.iam.gserviceaccount.com' }}
+          PROD_SA: ${{ vars.GCP_SA_PROD || vars.GCP_SA_DEV || 'github-artifact-push@bujia-platform-dev.iam.gserviceaccount.com' }}
+        run: |
+          if [ "$BRANCH" = "main" ]; then
+            DEPLOY_TAG="prod"
+            PROJECT_ID="$PROD_PROJECT_ID"
+            SERVICE_NAME="$PROD_SERVICE_NAME"
+            WIP="$PROD_WIP"
+            SA="$PROD_SA"
+          else
+            DEPLOY_TAG="dev"
+            PROJECT_ID="$DEV_PROJECT_ID"
+            SERVICE_NAME="$DEV_SERVICE_NAME"
+            WIP="$DEV_WIP"
+            SA="$DEV_SA"
+          fi
+
+          SHORT_SHA="sha-${GITHUB_SHA::7}"
+          APP_VERSION="$(python3 -c "import json; print(json.load(open('package.json')).get('version','').strip())")"
+          VERSION_TAG=""
+
+          if [[ "$APP_VERSION" =~ ^([0-9]+)\.([0-9]+)(\.[0-9]+)?$ ]]; then
+            VERSION_TAG="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}"
+          fi
+
+          IMAGE_BASE="$REGISTRY_HOST/$IMAGE_NAME"
+
+          {
+            echo "checkout_ref=$BRANCH"
+            echo "deploy_tag=$DEPLOY_TAG"
+            echo "project_id=$PROJECT_ID"
+            echo "service_name=$SERVICE_NAME"
+            echo "workload_identity_provider=$WIP"
+            echo "service_account=$SA"
+            echo "image_url_deploy=$IMAGE_BASE:$DEPLOY_TAG"
+          } >> "$GITHUB_OUTPUT"
+
+          {
+            echo "image_tags<<EOF"
+            echo "$IMAGE_BASE:$DEPLOY_TAG"
+            echo "$IMAGE_BASE:$SHORT_SHA"
+            if [ -n "$VERSION_TAG" ]; then
+              echo "$IMAGE_BASE:$VERSION_TAG"
+            fi
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+  ci:
+    needs: resolve-context
+    uses: ./.github/workflows/reusable-ci.yml
+    with:
+      checkout-ref: ${{ needs.resolve-context.outputs.checkout_ref }}
+
+  build-and-push:
+    needs: [resolve-context, ci]
+    uses: ./.github/workflows/reusable-build-push-gcp.yml
+    permissions:
+      contents: read
+      id-token: write
+    with:
+      registry-host: ${{ vars.GCP_REGISTRY_HOST }}
+      image-name: ${{ vars.IMAGE_NAME }}
+      image-tags: ${{ needs.resolve-context.outputs.image_tags }}
+      checkout-ref: ${{ needs.resolve-context.outputs.checkout_ref }}
+      workload-identity-provider: ${{ needs.resolve-context.outputs.workload_identity_provider }}
+      service-account: ${{ needs.resolve-context.outputs.service_account }}
+
+  deploy-cloud-run:
+    needs: [resolve-context, build-and-push]
+    uses: ./.github/workflows/reusable-deploy-cloud-run.yml
+    permissions:
+      contents: read
+      id-token: write
+    with:
+      project-id: ${{ needs.resolve-context.outputs.project_id }}
+      service: ${{ needs.resolve-context.outputs.service_name }}
+      region: ${{ vars.GCP_REGION || 'us-central1' }}
+      image: ${{ needs.resolve-context.outputs.image_url_deploy }}
+      workload-identity-provider: ${{ needs.resolve-context.outputs.workload_identity_provider }}
+      service-account: ${{ needs.resolve-context.outputs.service_account }}

@@ -1,0 +1,83 @@
+name: Reusable CD - Build and Push to GCP Artifact Registry
+
+on:
+  workflow_call:
+    inputs:
+      registry-host:
+        description: Registry hostname (e.g. us-central1-docker.pkg.dev)
+        required: true
+        type: string
+      image-name:
+        description: Full image path without host/tag (e.g. project/repo/image)
+        required: true
+        type: string
+      image-tags:
+        description: Newline-separated image tags to push (e.g. dev\nsha-abc123\n1.0)
+        required: true
+        type: string
+      checkout-ref:
+        description: Git ref/branch to checkout (optional)
+        required: false
+        type: string
+        default: ''
+      context:
+        description: Docker build context
+        required: false
+        type: string
+        default: .
+      dockerfile:
+        description: Path to Dockerfile
+        required: false
+        type: string
+        default: ./Dockerfile
+      workload-identity-provider:
+        description: GCP Workload Identity Provider resource name
+        required: true
+        type: string
+      service-account:
+        description: GCP Service Account email used for auth
+        required: true
+        type: string
+
+jobs:
+  build-and-push:
+    name: Build and push image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout (event ref)
+        if: ${{ inputs.checkout-ref == '' }}
+        uses: actions/checkout@v4
+
+      - name: Checkout (manual ref)
+        if: ${{ inputs.checkout-ref != '' }}
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.checkout-ref }}
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ inputs.workload-identity-provider }}
+          service_account: ${{ inputs.service-account }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker auth for Artifact Registry
+        run: gcloud auth configure-docker ${{ inputs.registry-host }} --quiet
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ inputs.context }}
+          file: ${{ inputs.dockerfile }}
+          push: true
+          tags: |
+            ${{ inputs.image-tags }}
