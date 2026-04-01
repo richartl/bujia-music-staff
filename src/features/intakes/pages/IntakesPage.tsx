@@ -22,6 +22,12 @@ import { searchClientByPhone, type ClientSearchItem } from '../api/search-client
 import { createIntake } from '../api/create-intake';
 import { getClientInstruments } from '../api/get-client-instruments';
 import { getIntakeLookups } from '../api/get-intake-lookups';
+import { CatalogSelectWithCustom } from '../components/CatalogSelectWithCustom';
+import {
+  createWorkshopBrand,
+  createWorkshopColor,
+  createWorkshopTuning,
+} from '@/features/catalogs/api/create-catalog-items';
 import type {
   ClientInstrument,
   CreateIntakePayload,
@@ -33,6 +39,14 @@ const PHONE_SEARCH_DEBOUNCE_MS = 250;
 const PHONE_SEARCH_MIN_LENGTH = 3;
 
 type IntakeStep = 'client' | 'instrument' | 'services' | 'visit';
+type CatalogKind = 'brand' | 'color' | 'desiredTuning';
+type IntakePaymentLine = {
+  id: string;
+  paymentMethodId: string;
+  amount: string;
+  notes: string;
+  paidAt: string;
+};
 
 const STEP_ORDER: IntakeStep[] = ['client', 'instrument', 'services', 'visit'];
 
@@ -40,7 +54,7 @@ const STEP_LABEL: Record<IntakeStep, string> = {
   client: 'Cliente',
   instrument: 'Instrumento',
   services: 'Servicios',
-  visit: 'Cuerdas y nota',
+  visit: 'Cierre',
 };
 
 const EMPTY_CLIENT_FORM = {
@@ -52,12 +66,36 @@ const EMPTY_CLIENT_FORM = {
 const EMPTY_INSTRUMENT_FORM = {
   instrumentTypeId: '',
   brandId: '',
+  customBrand: '',
+  colorId: '',
+  customColor: '',
   model: '',
   serialNumber: '',
 };
 
 function normalizePhoneInput(value: string) {
   return value.replace(/[^\d+]/g, '');
+}
+
+function capitalizeWords(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .replace(/(^|\s)\S/g, (letter) => letter.toUpperCase());
+}
+
+function toSlug(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '_')
+    .replace(/[^a-z0-9_]/g, '');
+}
+
+function toIsoDateFromDisplay(value: string) {
+  const match = value.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!match) return undefined;
+  return `${match[3]}-${match[2]}-${match[1]}`;
 }
 
 function splitFullName(fullName: string) {
@@ -99,8 +137,23 @@ function createManualServiceLine(): IntakeServiceLine {
   };
 }
 
+function createEmptyPaymentLine(): IntakePaymentLine {
+  const now = new Date();
+  const day = String(now.getDate()).padStart(2, '0');
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const year = now.getFullYear();
+  return {
+    id: crypto.randomUUID(),
+    paymentMethodId: '',
+    amount: '',
+    notes: '',
+    paidAt: `${day}/${month}/${year}`,
+  };
+}
+
 export function IntakesPage() {
   const workshopId = authStore((state) => state.workshopId);
+  const token = authStore((state) => state.token);
 
   const [activeStep, setActiveStep] = useState<IntakeStep>('client');
   const [searchPhone, setSearchPhone] = useState('');
@@ -125,6 +178,25 @@ export function IntakesPage() {
   const [cuerdaMediaNote, setCuerdaMediaNote] = useState('');
   const [visitNote, setVisitNote] = useState('');
   const [estimatedDiscount, setEstimatedDiscount] = useState('');
+  const [customDesiredTuning, setCustomDesiredTuning] = useState('');
+  const [hasStrap, setHasStrap] = useState(false);
+  const [hasCase, setHasCase] = useState(false);
+  const [expandedServiceIds, setExpandedServiceIds] = useState<string[]>([]);
+  const [serviceToast, setServiceToast] = useState('');
+  const [serviceSearch, setServiceSearch] = useState('');
+  const [showConfirmIntakeModal, setShowConfirmIntakeModal] = useState(false);
+  const [customCatalogModal, setCustomCatalogModal] = useState<{
+    kind: CatalogKind;
+    title: string;
+    placeholder: string;
+  } | null>(null);
+  const [customCatalogName, setCustomCatalogName] = useState('');
+  const [localBrands, setLocalBrands] = useState<{ id: string; name: string }[]>([]);
+  const [localColors, setLocalColors] = useState<{ id: string; name: string }[]>([]);
+  const [localTunings, setLocalTunings] = useState<{ id: string; name: string }[]>([]);
+  const [showSuccessOverlay, setShowSuccessOverlay] = useState(false);
+  const [affiliateCode, setAffiliateCode] = useState('');
+  const [paymentLines, setPaymentLines] = useState<IntakePaymentLine[]>([]);
 
   const [submitMessage, setSubmitMessage] = useState('');
   const [submitError, setSubmitError] = useState('');
@@ -210,16 +282,23 @@ export function IntakesPage() {
   }, [searchPhone, selectedClient, workshopId]);
 
   const catalogServices = lookupsQuery.data?.services || [];
+  const adjustServices = catalogServices.filter((service) => service.isAdjust);
+  const regularServices = catalogServices.filter((service) => !service.isAdjust);
+  const brandsOptions = [...(lookupsQuery.data?.brands || []), ...localBrands];
+  const colorsOptions = [...(lookupsQuery.data?.colors || []), ...localColors];
+  const tuningOptions = [...(lookupsQuery.data?.tunings || []), ...localTunings];
   const instruments = instrumentsQuery.data || [];
 
-  const selectedAdjustCount = useMemo(() => {
-    const adjustIds = new Set(
-      catalogServices.filter((item) => item.isAdjust).map((item) => item.id),
-    );
-    return serviceLines.filter(
-      (line) => line.catalogServiceId && adjustIds.has(line.catalogServiceId),
-    ).length;
-  }, [catalogServices, serviceLines]);
+  const adjustServiceIds = useMemo(
+    () => new Set(catalogServices.filter((item) => item.isAdjust).map((item) => item.id)),
+    [catalogServices],
+  );
+  const selectedAdjustLine = useMemo(
+    () =>
+      serviceLines.find((line) => line.catalogServiceId && adjustServiceIds.has(line.catalogServiceId)) ||
+      null,
+    [adjustServiceIds, serviceLines],
+  );
 
   const total = useMemo(
     () => serviceLines.reduce((sum, line) => sum + line.quantity * line.unitPrice, 0),
@@ -231,11 +310,37 @@ export function IntakesPage() {
   const canMoveToServices =
     canMoveToInstrument &&
     (!!selectedInstrument ||
-      (isNewInstrumentMode &&
+      ((isNewInstrumentMode || !selectedClient) &&
         !!instrumentForm.instrumentTypeId &&
-        !!instrumentForm.brandId &&
+        (!!instrumentForm.brandId || !!instrumentForm.customBrand.trim()) &&
         !!instrumentForm.model.trim()));
-  const canMoveToVisit = canMoveToServices && serviceLines.length > 0;
+  const canMoveToVisit = canMoveToServices && serviceLines.length > 0 && !!desiredTuningId;
+  const hasVisitDetails =
+    !!intakeNotes.trim() ||
+    !!visitNote.trim() ||
+    !!estimatedDiscount.trim() ||
+    hasStrap ||
+    hasCase ||
+    !!affiliateCode.trim() ||
+    paymentLines.some((line) => Number(line.amount || 0) > 0);
+  const canSubmitIntake = canMoveToVisit && !!branchId && hasVisitDetails;
+  const filteredRegularServices = useMemo(() => {
+    const query = serviceSearch.trim().toLowerCase();
+    if (!query) return regularServices;
+    return regularServices.filter((service) => service.name.toLowerCase().includes(query));
+  }, [regularServices, serviceSearch]);
+
+  useEffect(() => {
+    if (!serviceToast) return;
+    const timer = window.setTimeout(() => setServiceToast(''), 1200);
+    return () => window.clearTimeout(timer);
+  }, [serviceToast]);
+
+  useEffect(() => {
+    if (!showSuccessOverlay) return;
+    const timer = window.setTimeout(() => setShowSuccessOverlay(false), 1600);
+    return () => window.clearTimeout(timer);
+  }, [showSuccessOverlay]);
 
   function goNextStep() {
     const idx = STEP_ORDER.indexOf(activeStep);
@@ -245,12 +350,14 @@ export function IntakesPage() {
     if (next === 'services' && !canMoveToServices) return;
     if (next === 'visit' && !canMoveToVisit) return;
     setActiveStep(next);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   function goPrevStep() {
     const idx = STEP_ORDER.indexOf(activeStep);
     if (idx <= 0) return;
     setActiveStep(STEP_ORDER[idx - 1]);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   function resetClientSelection() {
@@ -261,6 +368,12 @@ export function IntakesPage() {
     setSearchResults([]);
     setSearchError('');
     setClientForm(EMPTY_CLIENT_FORM);
+  }
+
+  function resetInstrumentSelection() {
+    setSelectedInstrument(null);
+    setInstrumentForm(EMPTY_INSTRUMENT_FORM);
+    setIsNewInstrumentMode(!selectedClient);
   }
 
   function onSelectClient(client: ClientSearchItem) {
@@ -278,16 +391,26 @@ export function IntakesPage() {
   }
 
   function onAddCatalogService(service: WorkshopServiceLookup) {
-    if (service.isAdjust && selectedAdjustCount >= 1) {
-      setSubmitError('Solo puedes agregar un servicio de ajuste por visita.');
-      return;
-    }
     setSubmitError('');
-    setServiceLines((current) => [...current, createCatalogServiceLine(service)]);
+    setServiceLines((current) => {
+      if (service.isAdjust) {
+        if (selectedAdjustLine?.catalogServiceId === service.id) return current;
+        const nextAdjustLine = createCatalogServiceLine(service);
+        const withoutAdjust = current.filter(
+          (line) => !(line.catalogServiceId && adjustServiceIds.has(line.catalogServiceId)),
+        );
+        return [...withoutAdjust, nextAdjustLine];
+      }
+      return [...current, createCatalogServiceLine(service)];
+    });
+    setServiceToast(`Servicio agregado: ${service.name}`);
   }
 
   function onAddManualService() {
-    setServiceLines((current) => [...current, createManualServiceLine()]);
+    const newLine = createManualServiceLine();
+    setServiceLines((current) => [...current, newLine]);
+    setExpandedServiceIds((current) => [...current, newLine.id]);
+    setServiceToast('Servicio manual agregado');
   }
 
   function onUpdateServiceLine(id: string, updates: Partial<IntakeServiceLine>) {
@@ -298,6 +421,88 @@ export function IntakesPage() {
 
   function onRemoveServiceLine(id: string) {
     setServiceLines((current) => current.filter((line) => line.id !== id));
+    setExpandedServiceIds((current) => current.filter((item) => item !== id));
+  }
+
+  function toggleServiceLine(id: string) {
+    setExpandedServiceIds((current) =>
+      current.includes(id) ? current.filter((item) => item !== id) : [...current, id],
+    );
+  }
+
+  function addPaymentLine() {
+    setPaymentLines((current) => [...current, createEmptyPaymentLine()]);
+  }
+
+  function updatePaymentLine(id: string, updates: Partial<IntakePaymentLine>) {
+    setPaymentLines((current) =>
+      current.map((line) => (line.id === id ? { ...line, ...updates } : line)),
+    );
+  }
+
+  function removePaymentLine(id: string) {
+    setPaymentLines((current) => current.filter((line) => line.id !== id));
+  }
+
+  function openCustomCatalogModal(kind: CatalogKind) {
+    const modalByKind = {
+      brand: { title: 'Nueva marca', placeholder: 'Ej. Fender' },
+      color: { title: 'Nuevo color', placeholder: 'Ej. Sunburst' },
+      desiredTuning: { title: 'Nueva afinación deseada', placeholder: 'Ej. Drop C' },
+    } as const;
+    setCustomCatalogName('');
+    setCustomCatalogModal({ kind, ...modalByKind[kind] });
+  }
+
+  async function saveCustomCatalogOption() {
+    if (!customCatalogModal) return;
+    const cleanName = customCatalogName.trim();
+    if (!cleanName) return;
+    const normalizedName = capitalizeWords(cleanName);
+    const normalizedSlug = toSlug(cleanName);
+    if (!workshopId || !token) {
+      setSubmitError('No se pudo guardar opción de catálogo: falta sesión activa.');
+      return;
+    }
+
+    setSubmitError('');
+    try {
+      if (customCatalogModal.kind === 'brand') {
+        const created = await createWorkshopBrand(token, workshopId, {
+          name: normalizedName,
+          slug: normalizedSlug,
+        });
+        const newOption = { id: created.id, name: created.name };
+        setLocalBrands((current) => [...current, newOption]);
+        setInstrumentForm((current) => ({ ...current, brandId: newOption.id, customBrand: normalizedName }));
+      }
+      if (customCatalogModal.kind === 'color') {
+        const created = await createWorkshopColor(token, workshopId, {
+          name: normalizedName,
+          slug: normalizedSlug,
+        });
+        const newOption = { id: created.id, name: created.name };
+        setLocalColors((current) => [...current, newOption]);
+        setInstrumentForm((current) => ({ ...current, colorId: newOption.id, customColor: normalizedName }));
+      }
+      if (customCatalogModal.kind === 'desiredTuning') {
+        const created = await createWorkshopTuning(token, workshopId, {
+          name: normalizedName,
+          slug: normalizedSlug,
+        });
+        const newOption = { id: created.id, name: created.name };
+        setLocalTunings((current) => [...current, newOption]);
+        if (customCatalogModal.kind === 'desiredTuning') {
+          setDesiredTuningId(newOption.id);
+          setCustomDesiredTuning(normalizedName);
+        }
+      }
+
+      setCustomCatalogModal(null);
+      setServiceToast('Opción de catálogo agregada');
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : 'No se pudo guardar la opción.');
+    }
   }
 
   const createIntakeMutation = useMutation({
@@ -312,6 +517,15 @@ export function IntakesPage() {
       }
       if (!serviceLines.length) {
         throw new Error('Agrega al menos un servicio.');
+      }
+      if (!desiredTuningId) {
+        throw new Error('Selecciona la afinación deseada.');
+      }
+      const invalidPayment = paymentLines.find(
+        (line) => !!line.amount.trim() && (!Number.isFinite(Number(line.amount)) || Number(line.amount) <= 0),
+      );
+      if (invalidPayment) {
+        throw new Error('Revisa abonos: el monto debe ser mayor a 0.');
       }
 
       const invalidService = serviceLines.find(
@@ -344,17 +558,46 @@ export function IntakesPage() {
           : {
               instrumentTypeId: instrumentForm.instrumentTypeId,
               brandId: instrumentForm.brandId || undefined,
+              colorId: instrumentForm.colorId || undefined,
               model: instrumentForm.model.trim(),
               serialNumber: instrumentForm.serialNumber.trim() || undefined,
+              observations: [
+                instrumentForm.customBrand.trim()
+                  ? `Marca capturada en intake: ${instrumentForm.customBrand.trim()}`
+                  : '',
+                instrumentForm.customColor.trim()
+                  ? `Color capturado en intake: ${instrumentForm.customColor.trim()}`
+                  : '',
+              ]
+                .filter(Boolean)
+                .join(' | '),
             },
         visit: {
           branchId,
+          affiliateCode: affiliateCode.trim() || undefined,
           intakeNotes: intakeNotes.trim() || undefined,
           wantsStringChange,
           desiredTuningId: desiredTuningId || undefined,
           stringGaugeId: stringGaugeId || undefined,
           discount: Number.isFinite(discountNumber) ? discountNumber : 0,
+          diagnosis: [
+            customDesiredTuning.trim()
+              ? `Afinación deseada manual: ${customDesiredTuning.trim()}`
+              : '',
+            `¿Incluye strap?: ${hasStrap ? 'Sí' : 'No'}`,
+            `¿Incluye funda?: ${hasCase ? 'Sí' : 'No'}`,
+          ]
+            .filter(Boolean)
+            .join(' | '),
         },
+        payments: paymentLines
+          .filter((line) => Number(line.amount || 0) > 0)
+          .map((line) => ({
+            paymentMethodId: line.paymentMethodId || undefined,
+            amount: Number(line.amount),
+            notes: line.notes.trim() || undefined,
+            paidAt: toIsoDateFromDisplay(line.paidAt),
+          })),
         initialNote: visitNote.trim()
           ? {
               note: visitNote.trim(),
@@ -373,7 +616,7 @@ export function IntakesPage() {
 
       return createIntake(workshopId, payload);
     },
-    onSuccess: (result) => {
+    onSuccess: () => {
       setSubmitError('');
       setSubmitMessage('Visita creada correctamente.');
       setSearchPhone('');
@@ -392,16 +635,15 @@ export function IntakesPage() {
       setCuerdaMediaNote('');
       setVisitNote('');
       setEstimatedDiscount('');
+      setCustomDesiredTuning('');
+      setHasStrap(false);
+      setHasCase(false);
+      setAffiliateCode('');
+      setPaymentLines([]);
+      setExpandedServiceIds([]);
+      setShowConfirmIntakeModal(false);
       setActiveStep('client');
-
-      const token = (result as { tracking?: { token?: string } })?.tracking?.token;
-      if (token) {
-        const msg =
-          `Hola, te compartimos el tracking de tu visita.\n` +
-          `https://bujia.mx/tracking/visits/${token}`;
-        const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(msg)}`;
-        window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
-      }
+      setShowSuccessOverlay(true);
     },
     onError: (error: Error) => {
       setSubmitMessage('');
@@ -410,7 +652,7 @@ export function IntakesPage() {
   });
 
   return (
-    <div className="mx-auto w-full max-w-3xl px-3 pb-28 pt-3 sm:px-4">
+    <div className="mx-auto w-full max-w-3xl px-3 pb-44 pt-3 sm:px-4">
       <article className="card p-4">
         <h1 className="section-title text-lg">Intake rápido (mobile-first)</h1>
         <p className="mt-1 text-sm text-slate-500">
@@ -608,6 +850,20 @@ export function IntakesPage() {
                         <PlusCircle className="h-4 w-4" />
                         Instrumento nuevo
                       </button>
+                      {(selectedInstrument ||
+                        instrumentForm.model ||
+                        instrumentForm.serialNumber ||
+                        instrumentForm.brandId ||
+                        instrumentForm.customBrand) && (
+                        <button
+                          type="button"
+                          className="btn-secondary h-11 w-full justify-center gap-2"
+                          onClick={resetInstrumentSelection}
+                        >
+                          <XCircle className="h-4 w-4" />
+                          Limpiar instrumento
+                        </button>
+                      )}
                     </>
                   )}
                 </>
@@ -616,7 +872,7 @@ export function IntakesPage() {
               {(isNewInstrumentMode || !selectedClient || !selectedInstrument) && (
                 <div className="space-y-3 rounded-xl border border-slate-200 p-3">
                   <select
-                    className="input h-12"
+                    className="input h-14 text-base"
                     value={instrumentForm.instrumentTypeId}
                     onChange={(e) =>
                       setInstrumentForm((current) => ({
@@ -633,23 +889,33 @@ export function IntakesPage() {
                     ))}
                   </select>
 
-                  <select
-                    className="input h-12"
+                  <CatalogSelectWithCustom
                     value={instrumentForm.brandId}
-                    onChange={(e) =>
+                    options={brandsOptions}
+                    placeholder="Marca"
+                    onValueChange={(value) =>
                       setInstrumentForm((current) => ({
                         ...current,
-                        brandId: e.target.value,
+                        brandId: value,
+                        customBrand: value.startsWith('manual-brand-') ? current.customBrand : '',
                       }))
                     }
-                  >
-                    <option value="">Marca</option>
-                    {(lookupsQuery.data?.brands || []).map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.name}
-                      </option>
-                    ))}
-                  </select>
+                    onCreateOption={() => openCustomCatalogModal('brand')}
+                  />
+
+                  <CatalogSelectWithCustom
+                    value={instrumentForm.colorId}
+                    options={colorsOptions}
+                    placeholder="Color"
+                    onValueChange={(value) =>
+                      setInstrumentForm((current) => ({
+                        ...current,
+                        colorId: value,
+                        customColor: value.startsWith('manual-color-') ? current.customColor : '',
+                      }))
+                    }
+                    onCreateOption={() => openCustomCatalogModal('color')}
+                  />
 
                   <input
                     className="input h-12"
@@ -674,6 +940,25 @@ export function IntakesPage() {
                       }))
                     }
                   />
+
+                  <label className="flex items-center gap-2 rounded-xl border border-slate-200 p-3 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={hasStrap}
+                      onChange={(e) => setHasStrap(e.target.checked)}
+                    />
+                    ¿Viene con strap?
+                  </label>
+
+                  <label className="flex items-center gap-2 rounded-xl border border-slate-200 p-3 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={hasCase}
+                      onChange={(e) => setHasCase(e.target.checked)}
+                    />
+                    ¿Viene con funda?
+                  </label>
+
                 </div>
               )}
             </div>
@@ -694,35 +979,117 @@ export function IntakesPage() {
             </div>
           ) : (
             <div className="mt-4 space-y-4">
-              <div className="grid grid-cols-1 gap-2">
-                {catalogServices.map((service) => {
-                  const isAdjust = !!service.isAdjust;
-                  const disabled = isAdjust && selectedAdjustCount >= 1;
-                  return (
-                    <button
-                      key={service.id}
-                      type="button"
-                      disabled={disabled}
-                      onClick={() => onAddCatalogService(service)}
-                      className={cn(
-                        'btn-secondary min-h-12 w-full justify-between gap-2 px-3 py-2 text-left',
-                        disabled && 'cursor-not-allowed opacity-60',
-                      )}
-                    >
-                      <span className="flex min-w-0 items-center gap-2">
-                        <Wrench className="h-4 w-4 shrink-0" />
-                        <span className="truncate">{service.name}</span>
-                        {isAdjust ? (
-                          <span className="chip bg-amber-100 text-amber-700">Ajuste</span>
-                        ) : null}
-                      </span>
-                      <span className="shrink-0 text-xs text-slate-500">
-                        {currency(service.basePrice)}
-                      </span>
-                    </button>
-                  );
-                })}
+              {!!adjustServices.length && (
+                <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50/40 p-3">
+                  <h3 className="text-sm font-semibold text-amber-800">Ajuste (elige solo uno)</h3>
+                  <div className="grid grid-cols-1 gap-2">
+                    {adjustServices.map((service) => {
+                      const isSelected = selectedAdjustLine?.catalogServiceId === service.id;
+                      return (
+                        <button
+                          key={service.id}
+                          type="button"
+                          onClick={() => onAddCatalogService(service)}
+                          className={cn(
+                            'min-h-14 w-full rounded-xl border px-3 py-2 text-left',
+                            isSelected
+                              ? 'border-emerald-500 bg-emerald-50 text-emerald-800'
+                              : 'border-amber-200 bg-white hover:bg-amber-50',
+                          )}
+                        >
+                          <span className="flex min-w-0 items-center justify-between gap-2">
+                            <span className="flex min-w-0 items-center gap-2">
+                              <Wrench className="h-4 w-4 shrink-0" />
+                              <span className="truncate">{service.name}</span>
+                            </span>
+                            <span className="chip bg-amber-100 text-amber-700">
+                              {isSelected ? 'Seleccionado ✓' : 'Elegir'}
+                            </span>
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <input
+                  className="input h-12"
+                  placeholder="Buscar servicio..."
+                  value={serviceSearch}
+                  onChange={(e) => setServiceSearch(e.target.value)}
+                />
               </div>
+
+              <div className="grid grid-cols-1 gap-2">
+                {filteredRegularServices.map((service) => (
+                  <button
+                    key={service.id}
+                    type="button"
+                    onClick={() => onAddCatalogService(service)}
+                    className="min-h-14 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-left hover:bg-slate-50"
+                  >
+                    <span className="flex min-w-0 items-center gap-2">
+                      <Wrench className="h-4 w-4 shrink-0" />
+                      <span className="truncate">{service.name}</span>
+                    </span>
+                    <span className="shrink-0 text-xs text-slate-500">{currency(service.basePrice)}</span>
+                  </button>
+                ))}
+                {!filteredRegularServices.length ? (
+                  <div className="rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-500">
+                    No se encontraron servicios con ese nombre.
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="space-y-2 rounded-xl border border-slate-200 p-3">
+                <p className="text-sm font-medium text-slate-700">Afinación deseada (siempre requerida)</p>
+                <CatalogSelectWithCustom
+                  value={desiredTuningId}
+                  options={tuningOptions}
+                  placeholder="Afinación deseada"
+                  onValueChange={(value) => {
+                    setDesiredTuningId(value);
+                    setCustomDesiredTuning('');
+                  }}
+                  onCreateOption={() => openCustomCatalogModal('desiredTuning')}
+                />
+              </div>
+
+              <label className="flex items-center gap-2 rounded-xl border border-slate-200 p-3 text-sm">
+                <input
+                  type="checkbox"
+                  checked={wantsStringChange}
+                  onChange={(e) => setWantsStringChange(e.target.checked)}
+                />
+                ¿Lleva cambio de cuerdas?
+              </label>
+
+              {wantsStringChange ? (
+                <div className="space-y-2 rounded-xl border border-slate-200 p-3">
+                  <select
+                    className="input h-14 text-base"
+                    value={stringGaugeId}
+                    onChange={(e) => setStringGaugeId(e.target.value)}
+                  >
+                    <option value="">Calibre</option>
+                    {(lookupsQuery.data?.stringGauges || []).map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.name}
+                        {item.value ? ` (${item.value})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <textarea
+                    className="input min-h-20"
+                    placeholder="Si el cliente trae cuerdas propias, agrega detalle/foto de referencia"
+                    value={cuerdaMediaNote}
+                    onChange={(e) => setCuerdaMediaNote(e.target.value)}
+                  />
+                </div>
+              ) : null}
 
               <button
                 type="button"
@@ -742,16 +1109,17 @@ export function IntakesPage() {
                   {serviceLines.map((line) => (
                     <div key={line.id} className="rounded-xl border border-slate-200 p-3">
                       <div className="mb-2 flex items-center justify-between gap-2">
-                        <span
-                          className={cn(
-                            'chip',
-                            line.source === 'CATALOG'
-                              ? 'bg-emerald-50 text-emerald-700'
-                              : 'bg-sky-50 text-sky-700',
-                          )}
+                        <button
+                          type="button"
+                          className="flex-1 text-left"
+                          onClick={() => toggleServiceLine(line.id)}
                         >
-                          {line.source === 'CATALOG' ? 'Catálogo' : 'Manual'}
-                        </span>
+                          <div className="font-medium text-slate-900">{line.name || 'Servicio manual'}</div>
+                          <div className="mt-1 text-xs text-slate-500">
+                            {line.source === 'CATALOG' ? 'Catálogo' : 'Manual'} ·{' '}
+                            {expandedServiceIds.includes(line.id) ? 'Ocultar detalle' : 'Ver detalle'}
+                          </div>
+                        </button>
                         <button
                           type="button"
                           className="btn-secondary h-9 px-3"
@@ -761,7 +1129,8 @@ export function IntakesPage() {
                         </button>
                       </div>
 
-                      <div className="space-y-2">
+                      {expandedServiceIds.includes(line.id) ? (
+                        <div className="space-y-2">
                         <input
                           className="input h-11"
                           placeholder="Nombre del servicio"
@@ -806,7 +1175,8 @@ export function IntakesPage() {
                         <div className="text-right text-xs text-slate-500">
                           Subtotal: {currency(line.quantity * line.unitPrice)}
                         </div>
-                      </div>
+                        </div>
+                      ) : null}
                     </div>
                   ))}
                 </div>
@@ -818,7 +1188,7 @@ export function IntakesPage() {
 
       {activeStep === 'visit' ? (
         <article className="card mt-3 p-4">
-          <h2 className="text-base font-semibold text-slate-900">4) Cuerdas, nota y cierre</h2>
+          <h2 className="text-base font-semibold text-slate-900">4) Cierre</h2>
           <p className="mt-1 text-sm text-slate-500">
             Aquí documentas el contexto final de la visita para estimar y compartir tracking.
           </p>
@@ -830,7 +1200,7 @@ export function IntakesPage() {
           ) : (
             <div className="mt-4 space-y-4">
               <select
-                className="input h-12"
+                className="input h-14 text-base"
                 value={branchId}
                 onChange={(e) => setBranchId(e.target.value)}
               >
@@ -849,50 +1219,70 @@ export function IntakesPage() {
                 onChange={(e) => setIntakeNotes(e.target.value)}
               />
 
-              <label className="flex items-center gap-2 rounded-xl border border-slate-200 p-3 text-sm">
-                <input
-                  type="checkbox"
-                  checked={wantsStringChange}
-                  onChange={(e) => setWantsStringChange(e.target.checked)}
-                />
-                ¿Lleva cambio de cuerdas?
-              </label>
-
-              {wantsStringChange ? (
-                <div className="space-y-2 rounded-xl border border-slate-200 p-3">
-                  <select
-                    className="input h-12"
-                    value={desiredTuningId}
-                    onChange={(e) => setDesiredTuningId(e.target.value)}
+              <div className="space-y-3 rounded-xl border border-slate-200 p-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium text-slate-700">Abonos</p>
+                  <button
+                    type="button"
+                    className="btn-secondary h-9 px-3"
+                    onClick={addPaymentLine}
                   >
-                    <option value="">Afinación deseada</option>
-                    {(lookupsQuery.data?.tunings || []).map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.name}
-                      </option>
-                    ))}
-                  </select>
-                  <select
-                    className="input h-12"
-                    value={stringGaugeId}
-                    onChange={(e) => setStringGaugeId(e.target.value)}
-                  >
-                    <option value="">Calibre</option>
-                    {(lookupsQuery.data?.stringGauges || []).map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.name}
-                        {item.value ? ` (${item.value})` : ''}
-                      </option>
-                    ))}
-                  </select>
-                  <textarea
-                    className="input min-h-20"
-                    placeholder="Si el cliente trae cuerdas propias, agrega detalle/foto de referencia"
-                    value={cuerdaMediaNote}
-                    onChange={(e) => setCuerdaMediaNote(e.target.value)}
-                  />
+                    <PlusCircle className="h-4 w-4" />
+                  </button>
                 </div>
-              ) : null}
+                {!paymentLines.length ? (
+                  <p className="text-sm text-slate-500">Aún no registras abonos.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {paymentLines.map((line) => (
+                      <div key={line.id} className="rounded-xl border border-slate-200 p-3">
+                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                          <select
+                            className="input h-11"
+                            value={line.paymentMethodId}
+                            onChange={(e) =>
+                              updatePaymentLine(line.id, { paymentMethodId: e.target.value })
+                            }
+                          >
+                            <option value="">Método de pago</option>
+                            {(lookupsQuery.data?.paymentMethods || []).map((item) => (
+                              <option key={item.id} value={item.id}>
+                                {item.name}
+                              </option>
+                            ))}
+                          </select>
+                          <input
+                            className="input h-11"
+                            inputMode="decimal"
+                            placeholder="Monto"
+                            value={line.amount}
+                            onChange={(e) => updatePaymentLine(line.id, { amount: e.target.value })}
+                          />
+                          <input
+                            className="input h-11"
+                            placeholder="Fecha (dd/mm/yyyy)"
+                            value={line.paidAt}
+                            onChange={(e) => updatePaymentLine(line.id, { paidAt: e.target.value })}
+                          />
+                        </div>
+                        <textarea
+                          className="input mt-2 min-h-16"
+                          placeholder="Notas del abono (opcional)"
+                          value={line.notes}
+                          onChange={(e) => updatePaymentLine(line.id, { notes: e.target.value })}
+                        />
+                        <button
+                          type="button"
+                          className="btn-secondary mt-2 h-9 px-3"
+                          onClick={() => removePaymentLine(line.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
 
               <textarea
                 className="input min-h-24"
@@ -908,6 +1298,28 @@ export function IntakesPage() {
                 value={estimatedDiscount}
                 onChange={(e) => setEstimatedDiscount(e.target.value)}
               />
+
+              <div className="space-y-2 rounded-xl border border-slate-200 p-3">
+                <p className="text-sm font-medium text-slate-700">Código de redención (afiliado)</p>
+                <select
+                  className="input h-12"
+                  value={affiliateCode}
+                  onChange={(e) => setAffiliateCode(e.target.value)}
+                >
+                  <option value="">Sin afiliado</option>
+                  {(lookupsQuery.data?.affiliates || []).map((item) => (
+                    <option key={item.id} value={item.code || item.slug || item.name}>
+                      {item.name} {item.code ? `(${item.code})` : ''}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  className="input h-12"
+                  placeholder="O captura código manual"
+                  value={affiliateCode}
+                  onChange={(e) => setAffiliateCode(e.target.value.toUpperCase())}
+                />
+              </div>
 
               <div className="rounded-xl bg-slate-50 p-3 text-sm text-slate-700">
                 <div className="font-medium text-slate-900">Media y notas (pendiente siguiente iteración)</div>
@@ -959,8 +1371,143 @@ export function IntakesPage() {
         </div>
       ) : null}
 
+      {serviceToast ? (
+        <div className="fixed right-3 top-4 z-40 rounded-xl bg-emerald-600 px-3 py-2 text-sm text-white shadow-lg">
+          {serviceToast}
+        </div>
+      ) : null}
+
+      {showSuccessOverlay ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-emerald-600/95 px-6 text-center text-white">
+          <div>
+            <CheckCircle2 className="mx-auto h-14 w-14" />
+            <p className="mt-3 text-2xl font-semibold">¡Intake guardado!</p>
+            <p className="mt-1 text-sm text-emerald-100">Registro creado correctamente.</p>
+          </div>
+        </div>
+      ) : null}
+
+      {showConfirmIntakeModal ? (
+        <div className="fixed inset-0 z-50 bg-white">
+          <div className="h-full overflow-y-auto px-4 pb-40 pt-4">
+            <h3 className="text-xl font-semibold text-slate-900">Confirmar intake</h3>
+            <p className="mt-1 text-sm text-slate-500">Revisa la información antes de confirmar.</p>
+
+            <div className="mt-4 space-y-3">
+              <div className="rounded-xl border border-slate-200 p-3">
+                <p className="text-xs uppercase text-slate-500">Cliente</p>
+                <p className="font-medium text-slate-900">
+                  {selectedClient ? getClientDisplayName(selectedClient) : clientForm.fullName || 'Pendiente'}
+                </p>
+              </div>
+              <div className="rounded-xl border border-slate-200 p-3">
+                <p className="text-xs uppercase text-slate-500">Instrumento</p>
+                <p className="font-medium text-slate-900">{selectedInstrument?.name || instrumentForm.model || 'Pendiente'}</p>
+              </div>
+              <div className="rounded-xl border border-slate-200 p-3">
+                <p className="text-xs uppercase text-slate-500">Afinación deseada</p>
+                <p className="font-medium text-slate-900">
+                  {tuningOptions.find((item) => item.id === desiredTuningId)?.name || 'Pendiente'}
+                </p>
+              </div>
+              <div className="rounded-xl border border-slate-200 p-3">
+                <p className="text-xs uppercase text-slate-500">Afiliado</p>
+                <p className="font-medium text-slate-900">{affiliateCode || 'Sin afiliado'}</p>
+              </div>
+              <div className="rounded-xl border border-slate-200 p-3">
+                <p className="text-xs uppercase text-slate-500">Servicios</p>
+                <div className="mt-2 space-y-1 text-sm text-slate-700">
+                  {serviceLines.map((line) => (
+                    <div key={line.id} className="flex items-center justify-between gap-2">
+                      <span className="truncate">{line.name || 'Servicio manual'}</span>
+                      <span>{currency(line.quantity * line.unitPrice)}</span>
+                    </div>
+                  ))}
+                </div>
+                <p className="mt-2 text-right text-sm font-semibold text-slate-900">Total: {currency(total)}</p>
+              </div>
+              {!!paymentLines.length && (
+                <div className="rounded-xl border border-slate-200 p-3">
+                  <p className="text-xs uppercase text-slate-500">Abonos</p>
+                  {paymentLines.map((line) => (
+                    <div key={line.id} className="mt-1 flex items-center justify-between text-sm">
+                      <span>
+                        {(lookupsQuery.data?.paymentMethods || []).find((item) => item.id === line.paymentMethodId)
+                          ?.name || 'Método sin especificar'}
+                      </span>
+                      <span>{currency(Number(line.amount || 0))}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="fixed inset-x-0 bottom-0 border-t border-slate-200 bg-white px-4 py-3">
+            <div className="mx-auto flex max-w-3xl gap-2">
+              <button
+                type="button"
+                className="btn-secondary h-12 flex-1 justify-center"
+                onClick={() => setShowConfirmIntakeModal(false)}
+              >
+                Cancelar y editar
+              </button>
+              <button
+                type="button"
+                className="btn-primary h-12 flex-1 justify-center"
+                onClick={() => createIntakeMutation.mutate()}
+                disabled={createIntakeMutation.isPending}
+              >
+                Confirmar intake
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {customCatalogModal ? (
+        <div className="fixed inset-0 z-50 flex items-end bg-black/40 p-3 sm:items-center sm:justify-center">
+          <div className="w-full max-w-md rounded-2xl bg-white p-4 shadow-2xl">
+            <h3 className="text-base font-semibold text-slate-900">{customCatalogModal.title}</h3>
+            <p className="mt-1 text-sm text-slate-500">
+              Esta opción se agrega para este intake y queda seleccionada.
+            </p>
+            <input
+              className="input mt-3 h-12 text-base"
+              placeholder={customCatalogModal.placeholder}
+              value={customCatalogName}
+              onChange={(e) => setCustomCatalogName(capitalizeWords(e.target.value))}
+            />
+            <div className="mt-3 flex gap-2">
+              <button
+                type="button"
+                className="btn-secondary h-11 flex-1 justify-center"
+                onClick={() => setCustomCatalogModal(null)}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="btn-primary h-11 flex-1 justify-center"
+                onClick={saveCustomCatalogOption}
+                disabled={!customCatalogName.trim()}
+              >
+                Guardar opción
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <div className="fixed inset-x-0 bottom-16 z-30 border-t border-slate-200 bg-white/95 px-3 py-3 shadow-[0_-8px_24px_rgba(15,23,42,0.08)] backdrop-blur">
-        <div className="mx-auto flex max-w-3xl items-center gap-2">
+        <div className="mx-auto max-w-3xl space-y-2">
+          <div className="flex items-center justify-between rounded-xl bg-emerald-50 px-3 py-2 text-sm">
+            <span className="font-medium text-emerald-800">Resumen rápido</span>
+            <span className="font-semibold text-emerald-900">
+              {serviceLines.length} servicio(s) · {currency(total)}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
           <button
             type="button"
             className="btn-secondary h-12 min-w-[90px] justify-center"
@@ -988,8 +1535,8 @@ export function IntakesPage() {
             <button
               type="button"
               className="btn-primary h-12 flex-1 justify-center gap-2 text-base"
-              onClick={() => createIntakeMutation.mutate()}
-              disabled={createIntakeMutation.isPending || !workshopId}
+              onClick={() => setShowConfirmIntakeModal(true)}
+              disabled={createIntakeMutation.isPending || !workshopId || !canSubmitIntake}
             >
               {createIntakeMutation.isPending ? (
                 <>
@@ -1001,6 +1548,7 @@ export function IntakesPage() {
               )}
             </button>
           )}
+          </div>
         </div>
       </div>
     </div>

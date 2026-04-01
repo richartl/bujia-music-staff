@@ -20,6 +20,7 @@ function normalizeOptions(value: unknown): LookupOption[] {
       id: String(item.id ?? item.value ?? item.slug ?? ''),
       name: String(item.name ?? item.label ?? item.description ?? item.slug ?? 'Sin nombre'),
       slug: item.slug ? String(item.slug) : undefined,
+      code: item.code ? String(item.code) : undefined,
     }))
     .filter((item) => item.id && item.name);
 }
@@ -62,6 +63,8 @@ export async function getIntakeLookups(workshopId: string): Promise<IntakeLookup
     services: normalizeServices(data.services ?? data.workshopServices),
     tunings: normalizeOptions(data.tunings),
     stringGauges: normalizeStringGauges(data.stringGauges),
+    paymentMethods: normalizeOptions(data.paymentMethods),
+    affiliates: normalizeOptions(data.affiliates),
     visitStatuses: normalizeOptions(data.visitStatuses),
     serviceStatuses: normalizeOptions(data.serviceStatuses),
   };

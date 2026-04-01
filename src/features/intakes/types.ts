@@ -2,6 +2,7 @@ export type LookupOption = {
   id: string;
   name: string;
   slug?: string;
+  code?: string;
 };
 
 export type WorkshopServiceLookup = {
@@ -28,6 +29,8 @@ export type IntakeLookups = {
   services: WorkshopServiceLookup[];
   tunings: LookupOption[];
   stringGauges: StringGaugeLookup[];
+  paymentMethods: LookupOption[];
+  affiliates: LookupOption[];
   visitStatuses?: LookupOption[];
   serviceStatuses?: LookupOption[];
 };
@@ -76,6 +79,7 @@ export type CreateIntakePayload = {
   };
   visit: {
     branchId: string;
+    affiliateCode?: string;
     intakeNotes?: string;
     diagnosis?: string;
     wantsStringChange?: boolean;
@@ -83,6 +87,13 @@ export type CreateIntakePayload = {
     stringGaugeId?: string;
     discount?: number;
   };
+  payments?: Array<{
+    paymentMethodId?: string;
+    amount: number;
+    method?: string;
+    notes?: string;
+    paidAt?: string;
+  }>;
   initialNote?: {
     note?: string;
     isInternal?: boolean;
