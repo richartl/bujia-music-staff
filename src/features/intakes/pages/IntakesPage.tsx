@@ -156,6 +156,8 @@ export function IntakesPage() {
   const [hasCase, setHasCase] = useState(false);
   const [expandedServiceIds, setExpandedServiceIds] = useState<string[]>([]);
   const [serviceToast, setServiceToast] = useState('');
+  const [serviceSearch, setServiceSearch] = useState('');
+  const [showConfirmIntakeModal, setShowConfirmIntakeModal] = useState(false);
   const [customCatalogModal, setCustomCatalogModal] = useState<{
     kind: CatalogKind;
     title: string;
@@ -291,6 +293,11 @@ export function IntakesPage() {
     hasStrap ||
     hasCase;
   const canSubmitIntake = canMoveToVisit && !!branchId && hasVisitDetails;
+  const filteredRegularServices = useMemo(() => {
+    const query = serviceSearch.trim().toLowerCase();
+    if (!query) return regularServices;
+    return regularServices.filter((service) => service.name.toLowerCase().includes(query));
+  }, [regularServices, serviceSearch]);
 
   useEffect(() => {
     if (!serviceToast) return;
@@ -570,6 +577,7 @@ export function IntakesPage() {
       setHasStrap(false);
       setHasCase(false);
       setExpandedServiceIds([]);
+      setShowConfirmIntakeModal(false);
       setActiveStep('client');
       setShowSuccessOverlay(true);
     },
@@ -923,8 +931,17 @@ export function IntakesPage() {
                 </div>
               )}
 
+              <div className="space-y-2">
+                <input
+                  className="input h-12"
+                  placeholder="Buscar servicio..."
+                  value={serviceSearch}
+                  onChange={(e) => setServiceSearch(e.target.value)}
+                />
+              </div>
+
               <div className="grid grid-cols-1 gap-2">
-                {regularServices.map((service) => (
+                {filteredRegularServices.map((service) => (
                   <button
                     key={service.id}
                     type="button"
@@ -938,6 +955,11 @@ export function IntakesPage() {
                     <span className="shrink-0 text-xs text-slate-500">{currency(service.basePrice)}</span>
                   </button>
                 ))}
+                {!filteredRegularServices.length ? (
+                  <div className="rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-500">
+                    No se encontraron servicios con ese nombre.
+                  </div>
+                ) : null}
               </div>
 
               <div className="space-y-2 rounded-xl border border-slate-200 p-3">
@@ -1214,6 +1236,66 @@ export function IntakesPage() {
         </div>
       ) : null}
 
+      {showConfirmIntakeModal ? (
+        <div className="fixed inset-0 z-50 bg-white">
+          <div className="h-full overflow-y-auto px-4 pb-40 pt-4">
+            <h3 className="text-xl font-semibold text-slate-900">Confirmar intake</h3>
+            <p className="mt-1 text-sm text-slate-500">Revisa la información antes de confirmar.</p>
+
+            <div className="mt-4 space-y-3">
+              <div className="rounded-xl border border-slate-200 p-3">
+                <p className="text-xs uppercase text-slate-500">Cliente</p>
+                <p className="font-medium text-slate-900">
+                  {selectedClient ? getClientDisplayName(selectedClient) : clientForm.fullName || 'Pendiente'}
+                </p>
+              </div>
+              <div className="rounded-xl border border-slate-200 p-3">
+                <p className="text-xs uppercase text-slate-500">Instrumento</p>
+                <p className="font-medium text-slate-900">{selectedInstrument?.name || instrumentForm.model || 'Pendiente'}</p>
+              </div>
+              <div className="rounded-xl border border-slate-200 p-3">
+                <p className="text-xs uppercase text-slate-500">Afinación deseada</p>
+                <p className="font-medium text-slate-900">
+                  {tuningOptions.find((item) => item.id === desiredTuningId)?.name || 'Pendiente'}
+                </p>
+              </div>
+              <div className="rounded-xl border border-slate-200 p-3">
+                <p className="text-xs uppercase text-slate-500">Servicios</p>
+                <div className="mt-2 space-y-1 text-sm text-slate-700">
+                  {serviceLines.map((line) => (
+                    <div key={line.id} className="flex items-center justify-between gap-2">
+                      <span className="truncate">{line.name || 'Servicio manual'}</span>
+                      <span>{currency(line.quantity * line.unitPrice)}</span>
+                    </div>
+                  ))}
+                </div>
+                <p className="mt-2 text-right text-sm font-semibold text-slate-900">Total: {currency(total)}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="fixed inset-x-0 bottom-0 border-t border-slate-200 bg-white px-4 py-3">
+            <div className="mx-auto flex max-w-3xl gap-2">
+              <button
+                type="button"
+                className="btn-secondary h-12 flex-1 justify-center"
+                onClick={() => setShowConfirmIntakeModal(false)}
+              >
+                Cancelar y editar
+              </button>
+              <button
+                type="button"
+                className="btn-primary h-12 flex-1 justify-center"
+                onClick={() => createIntakeMutation.mutate()}
+                disabled={createIntakeMutation.isPending}
+              >
+                Confirmar intake
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {customCatalogModal ? (
         <div className="fixed inset-0 z-50 flex items-end bg-black/40 p-3 sm:items-center sm:justify-center">
           <div className="w-full max-w-md rounded-2xl bg-white p-4 shadow-2xl">
@@ -1284,7 +1366,7 @@ export function IntakesPage() {
             <button
               type="button"
               className="btn-primary h-12 flex-1 justify-center gap-2 text-base"
-              onClick={() => createIntakeMutation.mutate()}
+              onClick={() => setShowConfirmIntakeModal(true)}
               disabled={createIntakeMutation.isPending || !workshopId || !canSubmitIntake}
             >
               {createIntakeMutation.isPending ? (
