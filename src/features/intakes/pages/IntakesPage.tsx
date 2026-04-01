@@ -23,6 +23,11 @@ import { createIntake } from '../api/create-intake';
 import { getClientInstruments } from '../api/get-client-instruments';
 import { getIntakeLookups } from '../api/get-intake-lookups';
 import { CatalogSelectWithCustom } from '../components/CatalogSelectWithCustom';
+import {
+  createWorkshopBrand,
+  createWorkshopColor,
+  createWorkshopTuning,
+} from '@/features/catalogs/api/create-catalog-items';
 import type {
   ClientInstrument,
   CreateIntakePayload,
@@ -108,6 +113,7 @@ function createManualServiceLine(): IntakeServiceLine {
 
 export function IntakesPage() {
   const workshopId = authStore((state) => state.workshopId);
+  const token = authStore((state) => state.token);
 
   const [activeStep, setActiveStep] = useState<IntakeStep>('client');
   const [searchPhone, setSearchPhone] = useState('');
@@ -264,7 +270,7 @@ export function IntakesPage() {
         !!instrumentForm.instrumentTypeId &&
         (!!instrumentForm.brandId || !!instrumentForm.customBrand.trim()) &&
         !!instrumentForm.model.trim()));
-  const canMoveToVisit = canMoveToServices && serviceLines.length > 0;
+  const canMoveToVisit = canMoveToServices && serviceLines.length > 0 && !!desiredTuningId;
   const hasVisitDetails =
     !!intakeNotes.trim() ||
     !!visitNote.trim() ||
@@ -382,35 +388,51 @@ export function IntakesPage() {
     setCustomCatalogModal({ kind, ...modalByKind[kind] });
   }
 
-  function saveCustomCatalogOption() {
+  async function saveCustomCatalogOption() {
     if (!customCatalogModal) return;
     const cleanName = customCatalogName.trim();
     if (!cleanName) return;
-    const newOption = { id: `manual-${customCatalogModal.kind}-${crypto.randomUUID()}`, name: cleanName };
+    if (!workshopId || !token) {
+      setSubmitError('No se pudo guardar opción de catálogo: falta sesión activa.');
+      return;
+    }
 
-    if (customCatalogModal.kind === 'brand') {
-      setLocalBrands((current) => [...current, newOption]);
-      setInstrumentForm((current) => ({ ...current, brandId: newOption.id, customBrand: cleanName }));
+    setSubmitError('');
+    try {
+      if (customCatalogModal.kind === 'brand') {
+        const created = await createWorkshopBrand(token, workshopId, { name: cleanName });
+        const newOption = { id: created.id, name: created.name };
+        setLocalBrands((current) => [...current, newOption]);
+        setInstrumentForm((current) => ({ ...current, brandId: newOption.id, customBrand: cleanName }));
+      }
+      if (customCatalogModal.kind === 'color') {
+        const created = await createWorkshopColor(token, workshopId, { name: cleanName });
+        const newOption = { id: created.id, name: created.name };
+        setLocalColors((current) => [...current, newOption]);
+        setInstrumentForm((current) => ({ ...current, colorId: newOption.id, customColor: cleanName }));
+      }
+      if (customCatalogModal.kind === 'preferredTuning' || customCatalogModal.kind === 'desiredTuning') {
+        const created = await createWorkshopTuning(token, workshopId, { name: cleanName });
+        const newOption = { id: created.id, name: created.name };
+        setLocalTunings((current) => [...current, newOption]);
+        if (customCatalogModal.kind === 'preferredTuning') {
+          setInstrumentForm((current) => ({
+            ...current,
+            preferredTuningId: newOption.id,
+            customPreferredTuning: cleanName,
+          }));
+        }
+        if (customCatalogModal.kind === 'desiredTuning') {
+          setDesiredTuningId(newOption.id);
+          setCustomDesiredTuning(cleanName);
+        }
+      }
+
+      setCustomCatalogModal(null);
+      setServiceToast('Opción de catálogo agregada');
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : 'No se pudo guardar la opción.');
     }
-    if (customCatalogModal.kind === 'color') {
-      setLocalColors((current) => [...current, newOption]);
-      setInstrumentForm((current) => ({ ...current, colorId: newOption.id, customColor: cleanName }));
-    }
-    if (customCatalogModal.kind === 'preferredTuning') {
-      setLocalTunings((current) => [...current, newOption]);
-      setInstrumentForm((current) => ({
-        ...current,
-        preferredTuningId: newOption.id,
-        customPreferredTuning: cleanName,
-      }));
-    }
-    if (customCatalogModal.kind === 'desiredTuning') {
-      setLocalTunings((current) => [...current, newOption]);
-      setDesiredTuningId(newOption.id);
-      setCustomDesiredTuning(cleanName);
-    }
-    setCustomCatalogModal(null);
-    setServiceToast('Opción de catálogo agregada en intake');
   }
 
   const createIntakeMutation = useMutation({
@@ -425,6 +447,9 @@ export function IntakesPage() {
       }
       if (!serviceLines.length) {
         throw new Error('Agrega al menos un servicio.');
+      }
+      if (!desiredTuningId) {
+        throw new Error('Selecciona la afinación deseada.');
       }
 
       const invalidService = serviceLines.find(
@@ -920,6 +945,20 @@ export function IntakesPage() {
                 ))}
               </div>
 
+              <div className="space-y-2 rounded-xl border border-slate-200 p-3">
+                <p className="text-sm font-medium text-slate-700">Afinación deseada (siempre requerida)</p>
+                <CatalogSelectWithCustom
+                  value={desiredTuningId}
+                  options={tuningOptions}
+                  placeholder="Afinación deseada"
+                  onValueChange={(value) => {
+                    setDesiredTuningId(value);
+                    setCustomDesiredTuning('');
+                  }}
+                  onCreateOption={() => openCustomCatalogModal('desiredTuning')}
+                />
+              </div>
+
               <label className="flex items-center gap-2 rounded-xl border border-slate-200 p-3 text-sm">
                 <input
                   type="checkbox"
@@ -931,16 +970,6 @@ export function IntakesPage() {
 
               {wantsStringChange ? (
                 <div className="space-y-2 rounded-xl border border-slate-200 p-3">
-                  <CatalogSelectWithCustom
-                    value={desiredTuningId}
-                    options={tuningOptions}
-                    placeholder="Afinación deseada"
-                    onValueChange={(value) => {
-                      setDesiredTuningId(value);
-                      if (!value.startsWith('manual-desiredTuning-')) setCustomDesiredTuning('');
-                    }}
-                    onCreateOption={() => openCustomCatalogModal('desiredTuning')}
-                  />
                   <select
                     className="input h-14 text-base"
                     value={stringGaugeId}
