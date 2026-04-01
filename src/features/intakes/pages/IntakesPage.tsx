@@ -39,7 +39,7 @@ const PHONE_SEARCH_DEBOUNCE_MS = 250;
 const PHONE_SEARCH_MIN_LENGTH = 3;
 
 type IntakeStep = 'client' | 'instrument' | 'services' | 'visit';
-type CatalogKind = 'brand' | 'color' | 'preferredTuning' | 'desiredTuning';
+type CatalogKind = 'brand' | 'color' | 'desiredTuning';
 
 const STEP_ORDER: IntakeStep[] = ['client', 'instrument', 'services', 'visit'];
 
@@ -64,8 +64,6 @@ const EMPTY_INSTRUMENT_FORM = {
   customColor: '',
   model: '',
   serialNumber: '',
-  preferredTuningId: '',
-  customPreferredTuning: '',
 };
 
 function normalizePhoneInput(value: string) {
@@ -396,7 +394,6 @@ export function IntakesPage() {
     const modalByKind = {
       brand: { title: 'Nueva marca', placeholder: 'Ej. Fender' },
       color: { title: 'Nuevo color', placeholder: 'Ej. Sunburst' },
-      preferredTuning: { title: 'Nueva afinación preferida', placeholder: 'Ej. Eb Standard' },
       desiredTuning: { title: 'Nueva afinación deseada', placeholder: 'Ej. Drop C' },
     } as const;
     setCustomCatalogName('');
@@ -434,20 +431,13 @@ export function IntakesPage() {
         setLocalColors((current) => [...current, newOption]);
         setInstrumentForm((current) => ({ ...current, colorId: newOption.id, customColor: normalizedName }));
       }
-      if (customCatalogModal.kind === 'preferredTuning' || customCatalogModal.kind === 'desiredTuning') {
+      if (customCatalogModal.kind === 'desiredTuning') {
         const created = await createWorkshopTuning(token, workshopId, {
           name: normalizedName,
           slug: normalizedSlug,
         });
         const newOption = { id: created.id, name: created.name };
         setLocalTunings((current) => [...current, newOption]);
-        if (customCatalogModal.kind === 'preferredTuning') {
-          setInstrumentForm((current) => ({
-            ...current,
-            preferredTuningId: newOption.id,
-            customPreferredTuning: normalizedName,
-          }));
-        }
         if (customCatalogModal.kind === 'desiredTuning') {
           setDesiredTuningId(newOption.id);
           setCustomDesiredTuning(normalizedName);
@@ -517,12 +507,6 @@ export function IntakesPage() {
                   : '',
                 instrumentForm.customColor.trim()
                   ? `Color capturado en intake: ${instrumentForm.customColor.trim()}`
-                  : '',
-                instrumentForm.customPreferredTuning.trim()
-                  ? `Afinación preferida (manual): ${instrumentForm.customPreferredTuning.trim()}`
-                  : '',
-                instrumentForm.preferredTuningId
-                  ? `Afinación preferida (catálogo): ${instrumentForm.preferredTuningId}`
                   : '',
               ]
                 .filter(Boolean)
@@ -885,21 +869,6 @@ export function IntakesPage() {
                     }
                   />
 
-                  <CatalogSelectWithCustom
-                    value={instrumentForm.preferredTuningId}
-                    options={tuningOptions}
-                    placeholder="Afinación preferida"
-                    onValueChange={(value) =>
-                      setInstrumentForm((current) => ({
-                        ...current,
-                        preferredTuningId: value,
-                        customPreferredTuning: value.startsWith('manual-preferredTuning-')
-                          ? current.customPreferredTuning
-                          : '',
-                      }))
-                    }
-                    onCreateOption={() => openCustomCatalogModal('preferredTuning')}
-                  />
                 </div>
               )}
             </div>
