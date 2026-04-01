@@ -11,14 +11,23 @@ export type WorkshopServiceLookup = {
   description?: string | null;
   basePrice?: number | null;
   estimatedTime?: number | null;
+  isAdjust?: boolean;
   isActive?: boolean;
 };
 
+export type StringGaugeLookup = LookupOption & {
+  value?: string | null;
+  instrumentFamily?: string | null;
+};
+
 export type IntakeLookups = {
+  branches: LookupOption[];
   brands: LookupOption[];
   colors: LookupOption[];
   instrumentTypes: LookupOption[];
   services: WorkshopServiceLookup[];
+  tunings: LookupOption[];
+  stringGauges: StringGaugeLookup[];
   visitStatuses?: LookupOption[];
   serviceStatuses?: LookupOption[];
 };
@@ -50,30 +59,40 @@ export type CreateIntakePayload = {
   client?: {
     firstName: string;
     lastName?: string;
+    alias?: string;
     phone: string;
     email?: string;
+    notes?: string;
   };
   instrumentId?: string;
   instrument?: {
-    instrumentTypeId?: string;
+    instrumentTypeId: string;
     brandId?: string;
     colorId?: string;
     model?: string;
-    stringsCount?: number | null;
+    numberOfStrings?: number | null;
     serialNumber?: string;
-    notes?: string;
+    observations?: string;
   };
   visit: {
-    intakeNotes: string;
+    branchId: string;
+    intakeNotes?: string;
     diagnosis?: string;
-    receivedAt?: string;
+    wantsStringChange?: boolean;
+    desiredTuningId?: string;
+    stringGaugeId?: string;
+    discount?: number;
+  };
+  initialNote?: {
+    note?: string;
+    isInternal?: boolean;
   };
   services: Array<{
     workshopServiceId?: string;
-    name: string;
+    serviceCatalogId?: string;
+    name?: string;
     quantity: number;
-    unitPrice: number;
+    price: number;
     notes?: string;
-    isManual?: boolean;
   }>;
 };

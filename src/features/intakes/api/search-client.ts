@@ -6,7 +6,9 @@ export type ClientSearchItem = {
   firstName?: string;
   lastName?: string;
   fullName?: string;
+  alias?: string;
   phone?: string;
+  instagram?: string;
   email?: string;
   isActive?: boolean;
 };
