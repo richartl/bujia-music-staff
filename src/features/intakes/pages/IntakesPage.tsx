@@ -72,6 +72,21 @@ function normalizePhoneInput(value: string) {
   return value.replace(/[^\d+]/g, '');
 }
 
+function capitalizeWords(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .replace(/(^|\s)\S/g, (letter) => letter.toUpperCase());
+}
+
+function toSlug(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '_')
+    .replace(/[^a-z0-9_]/g, '');
+}
+
 function splitFullName(fullName: string) {
   const cleaned = fullName.trim().replace(/\s+/g, ' ');
   if (!cleaned) return { firstName: '', lastName: '' };
@@ -392,6 +407,8 @@ export function IntakesPage() {
     if (!customCatalogModal) return;
     const cleanName = customCatalogName.trim();
     if (!cleanName) return;
+    const normalizedName = capitalizeWords(cleanName);
+    const normalizedSlug = toSlug(cleanName);
     if (!workshopId || !token) {
       setSubmitError('No se pudo guardar opción de catálogo: falta sesión activa.');
       return;
@@ -400,31 +417,40 @@ export function IntakesPage() {
     setSubmitError('');
     try {
       if (customCatalogModal.kind === 'brand') {
-        const created = await createWorkshopBrand(token, workshopId, { name: cleanName });
+        const created = await createWorkshopBrand(token, workshopId, {
+          name: normalizedName,
+          slug: normalizedSlug,
+        });
         const newOption = { id: created.id, name: created.name };
         setLocalBrands((current) => [...current, newOption]);
-        setInstrumentForm((current) => ({ ...current, brandId: newOption.id, customBrand: cleanName }));
+        setInstrumentForm((current) => ({ ...current, brandId: newOption.id, customBrand: normalizedName }));
       }
       if (customCatalogModal.kind === 'color') {
-        const created = await createWorkshopColor(token, workshopId, { name: cleanName });
+        const created = await createWorkshopColor(token, workshopId, {
+          name: normalizedName,
+          slug: normalizedSlug,
+        });
         const newOption = { id: created.id, name: created.name };
         setLocalColors((current) => [...current, newOption]);
-        setInstrumentForm((current) => ({ ...current, colorId: newOption.id, customColor: cleanName }));
+        setInstrumentForm((current) => ({ ...current, colorId: newOption.id, customColor: normalizedName }));
       }
       if (customCatalogModal.kind === 'preferredTuning' || customCatalogModal.kind === 'desiredTuning') {
-        const created = await createWorkshopTuning(token, workshopId, { name: cleanName });
+        const created = await createWorkshopTuning(token, workshopId, {
+          name: normalizedName,
+          slug: normalizedSlug,
+        });
         const newOption = { id: created.id, name: created.name };
         setLocalTunings((current) => [...current, newOption]);
         if (customCatalogModal.kind === 'preferredTuning') {
           setInstrumentForm((current) => ({
             ...current,
             preferredTuningId: newOption.id,
-            customPreferredTuning: cleanName,
+            customPreferredTuning: normalizedName,
           }));
         }
         if (customCatalogModal.kind === 'desiredTuning') {
           setDesiredTuningId(newOption.id);
-          setCustomDesiredTuning(cleanName);
+          setCustomDesiredTuning(normalizedName);
         }
       }
 
@@ -1230,7 +1256,7 @@ export function IntakesPage() {
               className="input mt-3 h-12 text-base"
               placeholder={customCatalogModal.placeholder}
               value={customCatalogName}
-              onChange={(e) => setCustomCatalogName(e.target.value)}
+              onChange={(e) => setCustomCatalogName(capitalizeWords(e.target.value))}
             />
             <div className="mt-3 flex gap-2">
               <button
