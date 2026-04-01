@@ -2,6 +2,7 @@ export type LookupOption = {
   id: string;
   name: string;
   slug?: string;
+  code?: string;
 };
 
 export type WorkshopServiceLookup = {

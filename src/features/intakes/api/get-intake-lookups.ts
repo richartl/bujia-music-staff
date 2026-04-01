@@ -20,6 +20,7 @@ function normalizeOptions(value: unknown): LookupOption[] {
       id: String(item.id ?? item.value ?? item.slug ?? ''),
       name: String(item.name ?? item.label ?? item.description ?? item.slug ?? 'Sin nombre'),
       slug: item.slug ? String(item.slug) : undefined,
+      code: item.code ? String(item.code) : undefined,
     }))
     .filter((item) => item.id && item.name);
 }

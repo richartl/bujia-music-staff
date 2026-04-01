@@ -1306,8 +1306,8 @@ export function IntakesPage() {
                 >
                   <option value="">Sin afiliado</option>
                   {(lookupsQuery.data?.affiliates || []).map((item) => (
-                    <option key={item.id} value={item.slug || item.name}>
-                      {item.name} {item.slug ? `(${item.slug})` : ''}
+                    <option key={item.id} value={item.code || item.slug || item.name}>
+                      {item.name} {item.code ? `(${item.code})` : ''}
                     </option>
                   ))}
                 </select>
