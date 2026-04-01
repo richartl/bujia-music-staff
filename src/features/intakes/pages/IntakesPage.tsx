@@ -44,7 +44,6 @@ type IntakePaymentLine = {
   id: string;
   paymentMethodId: string;
   amount: string;
-  method: string;
   notes: string;
   paidAt: string;
 };
@@ -93,6 +92,12 @@ function toSlug(value: string) {
     .replace(/[^a-z0-9_]/g, '');
 }
 
+function toIsoDateFromDisplay(value: string) {
+  const match = value.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!match) return undefined;
+  return `${match[3]}-${match[2]}-${match[1]}`;
+}
+
 function splitFullName(fullName: string) {
   const cleaned = fullName.trim().replace(/\s+/g, ' ');
   if (!cleaned) return { firstName: '', lastName: '' };
@@ -133,13 +138,16 @@ function createManualServiceLine(): IntakeServiceLine {
 }
 
 function createEmptyPaymentLine(): IntakePaymentLine {
+  const now = new Date();
+  const day = String(now.getDate()).padStart(2, '0');
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const year = now.getFullYear();
   return {
     id: crypto.randomUUID(),
     paymentMethodId: '',
     amount: '',
-    method: '',
     notes: '',
-    paidAt: '',
+    paidAt: `${day}/${month}/${year}`,
   };
 }
 
@@ -585,9 +593,8 @@ export function IntakesPage() {
           .map((line) => ({
             paymentMethodId: line.paymentMethodId || undefined,
             amount: Number(line.amount),
-            method: line.method.trim() || undefined,
             notes: line.notes.trim() || undefined,
-            paidAt: line.paidAt || undefined,
+            paidAt: toIsoDateFromDisplay(line.paidAt),
           })),
         initialNote: visitNote.trim()
           ? {
@@ -932,6 +939,24 @@ export function IntakesPage() {
                     }
                   />
 
+                  <label className="flex items-center gap-2 rounded-xl border border-slate-200 p-3 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={hasStrap}
+                      onChange={(e) => setHasStrap(e.target.checked)}
+                    />
+                    ¿Viene con strap?
+                  </label>
+
+                  <label className="flex items-center gap-2 rounded-xl border border-slate-200 p-3 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={hasCase}
+                      onChange={(e) => setHasCase(e.target.checked)}
+                    />
+                    ¿Viene con funda?
+                  </label>
+
                 </div>
               )}
             </div>
@@ -1185,43 +1210,12 @@ export function IntakesPage() {
                 ))}
               </select>
 
-              <div className="space-y-2 rounded-xl border border-slate-200 p-3">
-                <p className="text-sm font-medium text-slate-700">Código de afiliado (redención)</p>
-                <select
-                  className="input h-12"
-                  value={affiliateCode}
-                  onChange={(e) => setAffiliateCode(e.target.value)}
-                >
-                  <option value="">Sin afiliado</option>
-                  {(lookupsQuery.data?.affiliates || []).map((item) => (
-                    <option key={item.id} value={item.slug || item.name}>
-                      {item.name} {item.slug ? `(${item.slug})` : ''}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  className="input h-12"
-                  placeholder="O captura código manual"
-                  value={affiliateCode}
-                  onChange={(e) => setAffiliateCode(e.target.value.toUpperCase())}
-                />
-              </div>
-
               <textarea
                 className="input min-h-24"
                 placeholder="Falla/solicitud inicial de la visita"
                 value={intakeNotes}
                 onChange={(e) => setIntakeNotes(e.target.value)}
               />
-
-              <label className="flex items-center gap-2 rounded-xl border border-slate-200 p-3 text-sm">
-                <input
-                  type="checkbox"
-                  checked={hasStrap}
-                  onChange={(e) => setHasStrap(e.target.checked)}
-                />
-                ¿Viene con strap?
-              </label>
 
               <div className="space-y-3 rounded-xl border border-slate-200 p-3">
                 <div className="flex items-center justify-between">
@@ -1264,13 +1258,7 @@ export function IntakesPage() {
                           />
                           <input
                             className="input h-11"
-                            placeholder="Método manual (fallback)"
-                            value={line.method}
-                            onChange={(e) => updatePaymentLine(line.id, { method: e.target.value })}
-                          />
-                          <input
-                            className="input h-11"
-                            type="datetime-local"
+                            placeholder="Fecha (dd/mm/yyyy)"
                             value={line.paidAt}
                             onChange={(e) => updatePaymentLine(line.id, { paidAt: e.target.value })}
                           />
@@ -1294,15 +1282,6 @@ export function IntakesPage() {
                 )}
               </div>
 
-              <label className="flex items-center gap-2 rounded-xl border border-slate-200 p-3 text-sm">
-                <input
-                  type="checkbox"
-                  checked={hasCase}
-                  onChange={(e) => setHasCase(e.target.checked)}
-                />
-                ¿Viene con funda?
-              </label>
-
               <textarea
                 className="input min-h-24"
                 placeholder="Nota general de la visita (puede ser contexto de voz/video/fotos)"
@@ -1317,6 +1296,28 @@ export function IntakesPage() {
                 value={estimatedDiscount}
                 onChange={(e) => setEstimatedDiscount(e.target.value)}
               />
+
+              <div className="space-y-2 rounded-xl border border-slate-200 p-3">
+                <p className="text-sm font-medium text-slate-700">Código de redención (afiliado)</p>
+                <select
+                  className="input h-12"
+                  value={affiliateCode}
+                  onChange={(e) => setAffiliateCode(e.target.value)}
+                >
+                  <option value="">Sin afiliado</option>
+                  {(lookupsQuery.data?.affiliates || []).map((item) => (
+                    <option key={item.id} value={item.slug || item.name}>
+                      {item.name} {item.slug ? `(${item.slug})` : ''}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  className="input h-12"
+                  placeholder="O captura código manual"
+                  value={affiliateCode}
+                  onChange={(e) => setAffiliateCode(e.target.value.toUpperCase())}
+                />
+              </div>
 
               <div className="rounded-xl bg-slate-50 p-3 text-sm text-slate-700">
                 <div className="font-medium text-slate-900">Media y notas (pendiente siguiente iteración)</div>
@@ -1428,7 +1429,10 @@ export function IntakesPage() {
                   <p className="text-xs uppercase text-slate-500">Abonos</p>
                   {paymentLines.map((line) => (
                     <div key={line.id} className="mt-1 flex items-center justify-between text-sm">
-                      <span>{line.method || 'Método catálogo'}</span>
+                      <span>
+                        {(lookupsQuery.data?.paymentMethods || []).find((item) => item.id === line.paymentMethodId)
+                          ?.name || 'Método sin especificar'}
+                      </span>
                       <span>{currency(Number(line.amount || 0))}</span>
                     </div>
                   ))}
