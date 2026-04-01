@@ -6,8 +6,16 @@
   color-scheme: light;
 }
 
+html,
+body,
+#root {
+  overscroll-behavior: none;
+}
+
 body {
   @apply min-h-screen bg-slate-50 text-slate-900 antialiased;
+  touch-action: pan-y;
+  -webkit-text-size-adjust: 100%;
 }
 
 button, input, select, textarea {
