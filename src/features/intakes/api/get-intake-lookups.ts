@@ -62,6 +62,8 @@ export async function getIntakeLookups(workshopId: string): Promise<IntakeLookup
     services: normalizeServices(data.services ?? data.workshopServices),
     tunings: normalizeOptions(data.tunings),
     stringGauges: normalizeStringGauges(data.stringGauges),
+    paymentMethods: normalizeOptions(data.paymentMethods),
+    affiliates: normalizeOptions(data.affiliates),
     visitStatuses: normalizeOptions(data.visitStatuses),
     serviceStatuses: normalizeOptions(data.serviceStatuses),
   };

@@ -40,6 +40,14 @@ const PHONE_SEARCH_MIN_LENGTH = 3;
 
 type IntakeStep = 'client' | 'instrument' | 'services' | 'visit';
 type CatalogKind = 'brand' | 'color' | 'desiredTuning';
+type IntakePaymentLine = {
+  id: string;
+  paymentMethodId: string;
+  amount: string;
+  method: string;
+  notes: string;
+  paidAt: string;
+};
 
 const STEP_ORDER: IntakeStep[] = ['client', 'instrument', 'services', 'visit'];
 
@@ -124,6 +132,17 @@ function createManualServiceLine(): IntakeServiceLine {
   };
 }
 
+function createEmptyPaymentLine(): IntakePaymentLine {
+  return {
+    id: crypto.randomUUID(),
+    paymentMethodId: '',
+    amount: '',
+    method: '',
+    notes: '',
+    paidAt: '',
+  };
+}
+
 export function IntakesPage() {
   const workshopId = authStore((state) => state.workshopId);
   const token = authStore((state) => state.token);
@@ -168,6 +187,8 @@ export function IntakesPage() {
   const [localColors, setLocalColors] = useState<{ id: string; name: string }[]>([]);
   const [localTunings, setLocalTunings] = useState<{ id: string; name: string }[]>([]);
   const [showSuccessOverlay, setShowSuccessOverlay] = useState(false);
+  const [affiliateCode, setAffiliateCode] = useState('');
+  const [paymentLines, setPaymentLines] = useState<IntakePaymentLine[]>([]);
 
   const [submitMessage, setSubmitMessage] = useState('');
   const [submitError, setSubmitError] = useState('');
@@ -291,7 +312,9 @@ export function IntakesPage() {
     !!visitNote.trim() ||
     !!estimatedDiscount.trim() ||
     hasStrap ||
-    hasCase;
+    hasCase ||
+    !!affiliateCode.trim() ||
+    paymentLines.some((line) => Number(line.amount || 0) > 0);
   const canSubmitIntake = canMoveToVisit && !!branchId && hasVisitDetails;
   const filteredRegularServices = useMemo(() => {
     const query = serviceSearch.trim().toLowerCase();
@@ -397,6 +420,20 @@ export function IntakesPage() {
     );
   }
 
+  function addPaymentLine() {
+    setPaymentLines((current) => [...current, createEmptyPaymentLine()]);
+  }
+
+  function updatePaymentLine(id: string, updates: Partial<IntakePaymentLine>) {
+    setPaymentLines((current) =>
+      current.map((line) => (line.id === id ? { ...line, ...updates } : line)),
+    );
+  }
+
+  function removePaymentLine(id: string) {
+    setPaymentLines((current) => current.filter((line) => line.id !== id));
+  }
+
   function openCustomCatalogModal(kind: CatalogKind) {
     const modalByKind = {
       brand: { title: 'Nueva marca', placeholder: 'Ej. Fender' },
@@ -474,6 +511,12 @@ export function IntakesPage() {
       if (!desiredTuningId) {
         throw new Error('Selecciona la afinación deseada.');
       }
+      const invalidPayment = paymentLines.find(
+        (line) => !!line.amount.trim() && (!Number.isFinite(Number(line.amount)) || Number(line.amount) <= 0),
+      );
+      if (invalidPayment) {
+        throw new Error('Revisa abonos: el monto debe ser mayor a 0.');
+      }
 
       const invalidService = serviceLines.find(
         (line) =>
@@ -521,6 +564,7 @@ export function IntakesPage() {
             },
         visit: {
           branchId,
+          affiliateCode: affiliateCode.trim() || undefined,
           intakeNotes: intakeNotes.trim() || undefined,
           wantsStringChange,
           desiredTuningId: desiredTuningId || undefined,
@@ -536,6 +580,15 @@ export function IntakesPage() {
             .filter(Boolean)
             .join(' | '),
         },
+        payments: paymentLines
+          .filter((line) => Number(line.amount || 0) > 0)
+          .map((line) => ({
+            paymentMethodId: line.paymentMethodId || undefined,
+            amount: Number(line.amount),
+            method: line.method.trim() || undefined,
+            notes: line.notes.trim() || undefined,
+            paidAt: line.paidAt || undefined,
+          })),
         initialNote: visitNote.trim()
           ? {
               note: visitNote.trim(),
@@ -576,6 +629,8 @@ export function IntakesPage() {
       setCustomDesiredTuning('');
       setHasStrap(false);
       setHasCase(false);
+      setAffiliateCode('');
+      setPaymentLines([]);
       setExpandedServiceIds([]);
       setShowConfirmIntakeModal(false);
       setActiveStep('client');
@@ -1130,6 +1185,28 @@ export function IntakesPage() {
                 ))}
               </select>
 
+              <div className="space-y-2 rounded-xl border border-slate-200 p-3">
+                <p className="text-sm font-medium text-slate-700">Código de afiliado (redención)</p>
+                <select
+                  className="input h-12"
+                  value={affiliateCode}
+                  onChange={(e) => setAffiliateCode(e.target.value)}
+                >
+                  <option value="">Sin afiliado</option>
+                  {(lookupsQuery.data?.affiliates || []).map((item) => (
+                    <option key={item.id} value={item.slug || item.name}>
+                      {item.name} {item.slug ? `(${item.slug})` : ''}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  className="input h-12"
+                  placeholder="O captura código manual"
+                  value={affiliateCode}
+                  onChange={(e) => setAffiliateCode(e.target.value.toUpperCase())}
+                />
+              </div>
+
               <textarea
                 className="input min-h-24"
                 placeholder="Falla/solicitud inicial de la visita"
@@ -1145,6 +1222,77 @@ export function IntakesPage() {
                 />
                 ¿Viene con strap?
               </label>
+
+              <div className="space-y-3 rounded-xl border border-slate-200 p-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium text-slate-700">Abonos</p>
+                  <button
+                    type="button"
+                    className="btn-secondary h-9 px-3"
+                    onClick={addPaymentLine}
+                  >
+                    <PlusCircle className="h-4 w-4" />
+                  </button>
+                </div>
+                {!paymentLines.length ? (
+                  <p className="text-sm text-slate-500">Aún no registras abonos.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {paymentLines.map((line) => (
+                      <div key={line.id} className="rounded-xl border border-slate-200 p-3">
+                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                          <select
+                            className="input h-11"
+                            value={line.paymentMethodId}
+                            onChange={(e) =>
+                              updatePaymentLine(line.id, { paymentMethodId: e.target.value })
+                            }
+                          >
+                            <option value="">Método de pago</option>
+                            {(lookupsQuery.data?.paymentMethods || []).map((item) => (
+                              <option key={item.id} value={item.id}>
+                                {item.name}
+                              </option>
+                            ))}
+                          </select>
+                          <input
+                            className="input h-11"
+                            inputMode="decimal"
+                            placeholder="Monto"
+                            value={line.amount}
+                            onChange={(e) => updatePaymentLine(line.id, { amount: e.target.value })}
+                          />
+                          <input
+                            className="input h-11"
+                            placeholder="Método manual (fallback)"
+                            value={line.method}
+                            onChange={(e) => updatePaymentLine(line.id, { method: e.target.value })}
+                          />
+                          <input
+                            className="input h-11"
+                            type="datetime-local"
+                            value={line.paidAt}
+                            onChange={(e) => updatePaymentLine(line.id, { paidAt: e.target.value })}
+                          />
+                        </div>
+                        <textarea
+                          className="input mt-2 min-h-16"
+                          placeholder="Notas del abono (opcional)"
+                          value={line.notes}
+                          onChange={(e) => updatePaymentLine(line.id, { notes: e.target.value })}
+                        />
+                        <button
+                          type="button"
+                          className="btn-secondary mt-2 h-9 px-3"
+                          onClick={() => removePaymentLine(line.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
 
               <label className="flex items-center gap-2 rounded-xl border border-slate-200 p-3 text-sm">
                 <input
@@ -1260,6 +1408,10 @@ export function IntakesPage() {
                 </p>
               </div>
               <div className="rounded-xl border border-slate-200 p-3">
+                <p className="text-xs uppercase text-slate-500">Afiliado</p>
+                <p className="font-medium text-slate-900">{affiliateCode || 'Sin afiliado'}</p>
+              </div>
+              <div className="rounded-xl border border-slate-200 p-3">
                 <p className="text-xs uppercase text-slate-500">Servicios</p>
                 <div className="mt-2 space-y-1 text-sm text-slate-700">
                   {serviceLines.map((line) => (
@@ -1271,6 +1423,17 @@ export function IntakesPage() {
                 </div>
                 <p className="mt-2 text-right text-sm font-semibold text-slate-900">Total: {currency(total)}</p>
               </div>
+              {!!paymentLines.length && (
+                <div className="rounded-xl border border-slate-200 p-3">
+                  <p className="text-xs uppercase text-slate-500">Abonos</p>
+                  {paymentLines.map((line) => (
+                    <div key={line.id} className="mt-1 flex items-center justify-between text-sm">
+                      <span>{line.method || 'Método catálogo'}</span>
+                      <span>{currency(Number(line.amount || 0))}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
