@@ -350,12 +350,14 @@ export function IntakesPage() {
     if (next === 'services' && !canMoveToServices) return;
     if (next === 'visit' && !canMoveToVisit) return;
     setActiveStep(next);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   function goPrevStep() {
     const idx = STEP_ORDER.indexOf(activeStep);
     if (idx <= 0) return;
     setActiveStep(STEP_ORDER[idx - 1]);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   function resetClientSelection() {
