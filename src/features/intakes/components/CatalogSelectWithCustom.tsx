@@ -38,7 +38,7 @@ export function CatalogSelectWithCustom({
 
   return (
     <div className="space-y-2">
-      <select className="input h-12" value={selectValue} onChange={handleSelectChange}>
+      <select className="input h-14 text-base" value={selectValue} onChange={handleSelectChange}>
         <option value="">{placeholder}</option>
         {options.map((item) => (
           <option key={item.id} value={item.id}>
@@ -50,7 +50,7 @@ export function CatalogSelectWithCustom({
 
       {selectValue === CUSTOM_OPTION_VALUE ? (
         <input
-          className="input h-12"
+          className="input h-12 text-base"
           placeholder={customPlaceholder}
           value={customValue}
           onChange={(event) => onCustomValueChange(event.target.value)}

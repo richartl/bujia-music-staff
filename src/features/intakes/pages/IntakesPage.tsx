@@ -41,7 +41,7 @@ const STEP_LABEL: Record<IntakeStep, string> = {
   client: 'Cliente',
   instrument: 'Instrumento',
   services: 'Servicios',
-  visit: 'Cuerdas y nota',
+  visit: 'Cierre',
 };
 
 const EMPTY_CLIENT_FORM = {
@@ -58,7 +58,6 @@ const EMPTY_INSTRUMENT_FORM = {
   customColor: '',
   model: '',
   serialNumber: '',
-  hasStrap: false,
   preferredTuningId: '',
   customPreferredTuning: '',
 };
@@ -133,6 +132,10 @@ export function IntakesPage() {
   const [visitNote, setVisitNote] = useState('');
   const [estimatedDiscount, setEstimatedDiscount] = useState('');
   const [customDesiredTuning, setCustomDesiredTuning] = useState('');
+  const [hasStrap, setHasStrap] = useState(false);
+  const [hasCase, setHasCase] = useState(false);
+  const [expandedServiceIds, setExpandedServiceIds] = useState<string[]>([]);
+  const [serviceToast, setServiceToast] = useState('');
 
   const [submitMessage, setSubmitMessage] = useState('');
   const [submitError, setSubmitError] = useState('');
@@ -220,14 +223,16 @@ export function IntakesPage() {
   const catalogServices = lookupsQuery.data?.services || [];
   const instruments = instrumentsQuery.data || [];
 
-  const selectedAdjustCount = useMemo(() => {
-    const adjustIds = new Set(
-      catalogServices.filter((item) => item.isAdjust).map((item) => item.id),
-    );
-    return serviceLines.filter(
-      (line) => line.catalogServiceId && adjustIds.has(line.catalogServiceId),
-    ).length;
-  }, [catalogServices, serviceLines]);
+  const adjustServiceIds = useMemo(
+    () => new Set(catalogServices.filter((item) => item.isAdjust).map((item) => item.id)),
+    [catalogServices],
+  );
+  const selectedAdjustLine = useMemo(
+    () =>
+      serviceLines.find((line) => line.catalogServiceId && adjustServiceIds.has(line.catalogServiceId)) ||
+      null,
+    [adjustServiceIds, serviceLines],
+  );
 
   const total = useMemo(
     () => serviceLines.reduce((sum, line) => sum + line.quantity * line.unitPrice, 0),
@@ -244,6 +249,19 @@ export function IntakesPage() {
         (!!instrumentForm.brandId || !!instrumentForm.customBrand.trim()) &&
         !!instrumentForm.model.trim()));
   const canMoveToVisit = canMoveToServices && serviceLines.length > 0;
+  const hasVisitDetails =
+    !!intakeNotes.trim() ||
+    !!visitNote.trim() ||
+    !!estimatedDiscount.trim() ||
+    hasStrap ||
+    hasCase;
+  const canSubmitIntake = canMoveToVisit && !!branchId && hasVisitDetails;
+
+  useEffect(() => {
+    if (!serviceToast) return;
+    const timer = window.setTimeout(() => setServiceToast(''), 1200);
+    return () => window.clearTimeout(timer);
+  }, [serviceToast]);
 
   function goNextStep() {
     const idx = STEP_ORDER.indexOf(activeStep);
@@ -292,16 +310,25 @@ export function IntakesPage() {
   }
 
   function onAddCatalogService(service: WorkshopServiceLookup) {
-    if (service.isAdjust && selectedAdjustCount >= 1) {
-      setSubmitError('Solo puedes agregar un servicio de ajuste por visita.');
-      return;
-    }
     setSubmitError('');
-    setServiceLines((current) => [...current, createCatalogServiceLine(service)]);
+    setServiceLines((current) => {
+      if (service.isAdjust) {
+        const nextAdjustLine = createCatalogServiceLine(service);
+        const withoutAdjust = current.filter(
+          (line) => !(line.catalogServiceId && adjustServiceIds.has(line.catalogServiceId)),
+        );
+        return [...withoutAdjust, nextAdjustLine];
+      }
+      return [...current, createCatalogServiceLine(service)];
+    });
+    setServiceToast(`Servicio agregado: ${service.name}`);
   }
 
   function onAddManualService() {
-    setServiceLines((current) => [...current, createManualServiceLine()]);
+    const newLine = createManualServiceLine();
+    setServiceLines((current) => [...current, newLine]);
+    setExpandedServiceIds((current) => [...current, newLine.id]);
+    setServiceToast('Servicio manual agregado');
   }
 
   function onUpdateServiceLine(id: string, updates: Partial<IntakeServiceLine>) {
@@ -312,6 +339,13 @@ export function IntakesPage() {
 
   function onRemoveServiceLine(id: string) {
     setServiceLines((current) => current.filter((line) => line.id !== id));
+    setExpandedServiceIds((current) => current.filter((item) => item !== id));
+  }
+
+  function toggleServiceLine(id: string) {
+    setExpandedServiceIds((current) =>
+      current.includes(id) ? current.filter((item) => item !== id) : [...current, id],
+    );
   }
 
   const createIntakeMutation = useMutation({
@@ -368,7 +402,6 @@ export function IntakesPage() {
                 instrumentForm.customColor.trim()
                   ? `Color capturado en intake: ${instrumentForm.customColor.trim()}`
                   : '',
-                `¿Incluye strap?: ${instrumentForm.hasStrap ? 'Sí' : 'No'}`,
                 instrumentForm.customPreferredTuning.trim()
                   ? `Afinación preferida (manual): ${instrumentForm.customPreferredTuning.trim()}`
                   : '',
@@ -386,9 +419,15 @@ export function IntakesPage() {
           desiredTuningId: desiredTuningId || undefined,
           stringGaugeId: stringGaugeId || undefined,
           discount: Number.isFinite(discountNumber) ? discountNumber : 0,
-          diagnosis: customDesiredTuning.trim()
-            ? `Afinación deseada manual: ${customDesiredTuning.trim()}`
-            : undefined,
+          diagnosis: [
+            customDesiredTuning.trim()
+              ? `Afinación deseada manual: ${customDesiredTuning.trim()}`
+              : '',
+            `¿Incluye strap?: ${hasStrap ? 'Sí' : 'No'}`,
+            `¿Incluye funda?: ${hasCase ? 'Sí' : 'No'}`,
+          ]
+            .filter(Boolean)
+            .join(' | '),
         },
         initialNote: visitNote.trim()
           ? {
@@ -408,7 +447,7 @@ export function IntakesPage() {
 
       return createIntake(workshopId, payload);
     },
-    onSuccess: (result) => {
+    onSuccess: () => {
       setSubmitError('');
       setSubmitMessage('Visita creada correctamente.');
       setSearchPhone('');
@@ -428,16 +467,10 @@ export function IntakesPage() {
       setVisitNote('');
       setEstimatedDiscount('');
       setCustomDesiredTuning('');
+      setHasStrap(false);
+      setHasCase(false);
+      setExpandedServiceIds([]);
       setActiveStep('client');
-
-      const token = (result as { tracking?: { token?: string } })?.tracking?.token;
-      if (token) {
-        const msg =
-          `Hola, te compartimos el tracking de tu visita.\n` +
-          `https://bujia.mx/tracking/visits/${token}`;
-        const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(msg)}`;
-        window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
-      }
     },
     onError: (error: Error) => {
       setSubmitMessage('');
@@ -446,7 +479,7 @@ export function IntakesPage() {
   });
 
   return (
-    <div className="mx-auto w-full max-w-3xl px-3 pb-28 pt-3 sm:px-4">
+    <div className="mx-auto w-full max-w-3xl px-3 pb-44 pt-3 sm:px-4">
       <article className="card p-4">
         <h1 className="section-title text-lg">Intake rápido (mobile-first)</h1>
         <p className="mt-1 text-sm text-slate-500">
@@ -666,7 +699,7 @@ export function IntakesPage() {
               {(isNewInstrumentMode || !selectedClient || !selectedInstrument) && (
                 <div className="space-y-3 rounded-xl border border-slate-200 p-3">
                   <select
-                    className="input h-12"
+                    className="input h-14 text-base"
                     value={instrumentForm.instrumentTypeId}
                     onChange={(e) =>
                       setInstrumentForm((current) => ({
@@ -747,20 +780,6 @@ export function IntakesPage() {
                     }
                   />
 
-                  <label className="flex items-center gap-2 rounded-xl border border-slate-200 p-3 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={instrumentForm.hasStrap}
-                      onChange={(e) =>
-                        setInstrumentForm((current) => ({
-                          ...current,
-                          hasStrap: e.target.checked,
-                        }))
-                      }
-                    />
-                    ¿Viene con strap?
-                  </label>
-
                   <CatalogSelectWithCustom
                     value={instrumentForm.preferredTuningId}
                     customValue={instrumentForm.customPreferredTuning}
@@ -803,23 +822,33 @@ export function IntakesPage() {
               <div className="grid grid-cols-1 gap-2">
                 {catalogServices.map((service) => {
                   const isAdjust = !!service.isAdjust;
-                  const disabled = isAdjust && selectedAdjustCount >= 1;
+                  const isSelectedAdjust = selectedAdjustLine?.catalogServiceId === service.id;
                   return (
                     <button
                       key={service.id}
                       type="button"
-                      disabled={disabled}
                       onClick={() => onAddCatalogService(service)}
                       className={cn(
-                        'btn-secondary min-h-12 w-full justify-between gap-2 px-3 py-2 text-left',
-                        disabled && 'cursor-not-allowed opacity-60',
+                        'min-h-14 w-full rounded-xl border px-3 py-2 text-left',
+                        isAdjust && isSelectedAdjust
+                          ? 'border-emerald-500 bg-emerald-50 text-emerald-800'
+                          : 'border-slate-200 bg-white hover:bg-slate-50',
                       )}
                     >
                       <span className="flex min-w-0 items-center gap-2">
                         <Wrench className="h-4 w-4 shrink-0" />
                         <span className="truncate">{service.name}</span>
                         {isAdjust ? (
-                          <span className="chip bg-amber-100 text-amber-700">Ajuste</span>
+                          <span
+                            className={cn(
+                              'chip',
+                              isSelectedAdjust
+                                ? 'bg-emerald-100 text-emerald-700'
+                                : 'bg-amber-100 text-amber-700',
+                            )}
+                          >
+                            Ajuste {isSelectedAdjust ? '✓' : ''}
+                          </span>
                         ) : null}
                       </span>
                       <span className="shrink-0 text-xs text-slate-500">
@@ -829,6 +858,48 @@ export function IntakesPage() {
                   );
                 })}
               </div>
+
+              <label className="flex items-center gap-2 rounded-xl border border-slate-200 p-3 text-sm">
+                <input
+                  type="checkbox"
+                  checked={wantsStringChange}
+                  onChange={(e) => setWantsStringChange(e.target.checked)}
+                />
+                ¿Lleva cambio de cuerdas?
+              </label>
+
+              {wantsStringChange ? (
+                <div className="space-y-2 rounded-xl border border-slate-200 p-3">
+                  <CatalogSelectWithCustom
+                    value={desiredTuningId}
+                    customValue={customDesiredTuning}
+                    options={lookupsQuery.data?.tunings || []}
+                    placeholder="Afinación deseada"
+                    customPlaceholder="Escribe afinación deseada"
+                    onValueChange={setDesiredTuningId}
+                    onCustomValueChange={setCustomDesiredTuning}
+                  />
+                  <select
+                    className="input h-14 text-base"
+                    value={stringGaugeId}
+                    onChange={(e) => setStringGaugeId(e.target.value)}
+                  >
+                    <option value="">Calibre</option>
+                    {(lookupsQuery.data?.stringGauges || []).map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.name}
+                        {item.value ? ` (${item.value})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <textarea
+                    className="input min-h-20"
+                    placeholder="Si el cliente trae cuerdas propias, agrega detalle/foto de referencia"
+                    value={cuerdaMediaNote}
+                    onChange={(e) => setCuerdaMediaNote(e.target.value)}
+                  />
+                </div>
+              ) : null}
 
               <button
                 type="button"
@@ -848,16 +919,17 @@ export function IntakesPage() {
                   {serviceLines.map((line) => (
                     <div key={line.id} className="rounded-xl border border-slate-200 p-3">
                       <div className="mb-2 flex items-center justify-between gap-2">
-                        <span
-                          className={cn(
-                            'chip',
-                            line.source === 'CATALOG'
-                              ? 'bg-emerald-50 text-emerald-700'
-                              : 'bg-sky-50 text-sky-700',
-                          )}
+                        <button
+                          type="button"
+                          className="flex-1 text-left"
+                          onClick={() => toggleServiceLine(line.id)}
                         >
-                          {line.source === 'CATALOG' ? 'Catálogo' : 'Manual'}
-                        </span>
+                          <div className="font-medium text-slate-900">{line.name || 'Servicio manual'}</div>
+                          <div className="mt-1 text-xs text-slate-500">
+                            {line.source === 'CATALOG' ? 'Catálogo' : 'Manual'} ·{' '}
+                            {expandedServiceIds.includes(line.id) ? 'Ocultar detalle' : 'Ver detalle'}
+                          </div>
+                        </button>
                         <button
                           type="button"
                           className="btn-secondary h-9 px-3"
@@ -867,7 +939,8 @@ export function IntakesPage() {
                         </button>
                       </div>
 
-                      <div className="space-y-2">
+                      {expandedServiceIds.includes(line.id) ? (
+                        <div className="space-y-2">
                         <input
                           className="input h-11"
                           placeholder="Nombre del servicio"
@@ -912,7 +985,8 @@ export function IntakesPage() {
                         <div className="text-right text-xs text-slate-500">
                           Subtotal: {currency(line.quantity * line.unitPrice)}
                         </div>
-                      </div>
+                        </div>
+                      ) : null}
                     </div>
                   ))}
                 </div>
@@ -924,7 +998,7 @@ export function IntakesPage() {
 
       {activeStep === 'visit' ? (
         <article className="card mt-3 p-4">
-          <h2 className="text-base font-semibold text-slate-900">4) Cuerdas, nota y cierre</h2>
+          <h2 className="text-base font-semibold text-slate-900">4) Cierre</h2>
           <p className="mt-1 text-sm text-slate-500">
             Aquí documentas el contexto final de la visita para estimar y compartir tracking.
           </p>
@@ -958,44 +1032,20 @@ export function IntakesPage() {
               <label className="flex items-center gap-2 rounded-xl border border-slate-200 p-3 text-sm">
                 <input
                   type="checkbox"
-                  checked={wantsStringChange}
-                  onChange={(e) => setWantsStringChange(e.target.checked)}
+                  checked={hasStrap}
+                  onChange={(e) => setHasStrap(e.target.checked)}
                 />
-                ¿Lleva cambio de cuerdas?
+                ¿Viene con strap?
               </label>
 
-              {wantsStringChange ? (
-                <div className="space-y-2 rounded-xl border border-slate-200 p-3">
-                  <CatalogSelectWithCustom
-                    value={desiredTuningId}
-                    customValue={customDesiredTuning}
-                    options={lookupsQuery.data?.tunings || []}
-                    placeholder="Afinación deseada"
-                    customPlaceholder="Escribe afinación deseada"
-                    onValueChange={setDesiredTuningId}
-                    onCustomValueChange={setCustomDesiredTuning}
-                  />
-                  <select
-                    className="input h-12"
-                    value={stringGaugeId}
-                    onChange={(e) => setStringGaugeId(e.target.value)}
-                  >
-                    <option value="">Calibre</option>
-                    {(lookupsQuery.data?.stringGauges || []).map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.name}
-                        {item.value ? ` (${item.value})` : ''}
-                      </option>
-                    ))}
-                  </select>
-                  <textarea
-                    className="input min-h-20"
-                    placeholder="Si el cliente trae cuerdas propias, agrega detalle/foto de referencia"
-                    value={cuerdaMediaNote}
-                    onChange={(e) => setCuerdaMediaNote(e.target.value)}
-                  />
-                </div>
-              ) : null}
+              <label className="flex items-center gap-2 rounded-xl border border-slate-200 p-3 text-sm">
+                <input
+                  type="checkbox"
+                  checked={hasCase}
+                  onChange={(e) => setHasCase(e.target.checked)}
+                />
+                ¿Viene con funda?
+              </label>
 
               <textarea
                 className="input min-h-24"
@@ -1062,6 +1112,21 @@ export function IntakesPage() {
         </div>
       ) : null}
 
+      {serviceToast ? (
+        <div className="fixed right-3 top-4 z-40 rounded-xl bg-emerald-600 px-3 py-2 text-sm text-white shadow-lg">
+          {serviceToast}
+        </div>
+      ) : null}
+
+      <div className="fixed inset-x-0 bottom-[122px] z-20 border-t border-emerald-200 bg-emerald-50/95 px-3 py-2 backdrop-blur">
+        <div className="mx-auto flex max-w-3xl items-center justify-between text-sm">
+          <span className="font-medium text-emerald-800">Resumen rápido</span>
+          <span className="font-semibold text-emerald-900">
+            {serviceLines.length} servicio(s) · {currency(total)}
+          </span>
+        </div>
+      </div>
+
       <div className="fixed inset-x-0 bottom-16 z-30 border-t border-slate-200 bg-white/95 px-3 py-3 shadow-[0_-8px_24px_rgba(15,23,42,0.08)] backdrop-blur">
         <div className="mx-auto flex max-w-3xl items-center gap-2">
           <button
@@ -1092,7 +1157,7 @@ export function IntakesPage() {
               type="button"
               className="btn-primary h-12 flex-1 justify-center gap-2 text-base"
               onClick={() => createIntakeMutation.mutate()}
-              disabled={createIntakeMutation.isPending || !workshopId}
+              disabled={createIntakeMutation.isPending || !workshopId || !canSubmitIntake}
             >
               {createIntakeMutation.isPending ? (
                 <>
