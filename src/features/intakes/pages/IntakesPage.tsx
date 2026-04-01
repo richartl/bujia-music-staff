@@ -22,6 +22,7 @@ import { searchClientByPhone, type ClientSearchItem } from '../api/search-client
 import { createIntake } from '../api/create-intake';
 import { getClientInstruments } from '../api/get-client-instruments';
 import { getIntakeLookups } from '../api/get-intake-lookups';
+import { CatalogSelectWithCustom } from '../components/CatalogSelectWithCustom';
 import type {
   ClientInstrument,
   CreateIntakePayload,
@@ -52,8 +53,14 @@ const EMPTY_CLIENT_FORM = {
 const EMPTY_INSTRUMENT_FORM = {
   instrumentTypeId: '',
   brandId: '',
+  customBrand: '',
+  colorId: '',
+  customColor: '',
   model: '',
   serialNumber: '',
+  hasStrap: false,
+  preferredTuningId: '',
+  customPreferredTuning: '',
 };
 
 function normalizePhoneInput(value: string) {
@@ -125,6 +132,7 @@ export function IntakesPage() {
   const [cuerdaMediaNote, setCuerdaMediaNote] = useState('');
   const [visitNote, setVisitNote] = useState('');
   const [estimatedDiscount, setEstimatedDiscount] = useState('');
+  const [customDesiredTuning, setCustomDesiredTuning] = useState('');
 
   const [submitMessage, setSubmitMessage] = useState('');
   const [submitError, setSubmitError] = useState('');
@@ -231,9 +239,9 @@ export function IntakesPage() {
   const canMoveToServices =
     canMoveToInstrument &&
     (!!selectedInstrument ||
-      (isNewInstrumentMode &&
+      ((isNewInstrumentMode || !selectedClient) &&
         !!instrumentForm.instrumentTypeId &&
-        !!instrumentForm.brandId &&
+        (!!instrumentForm.brandId || !!instrumentForm.customBrand.trim()) &&
         !!instrumentForm.model.trim()));
   const canMoveToVisit = canMoveToServices && serviceLines.length > 0;
 
@@ -261,6 +269,12 @@ export function IntakesPage() {
     setSearchResults([]);
     setSearchError('');
     setClientForm(EMPTY_CLIENT_FORM);
+  }
+
+  function resetInstrumentSelection() {
+    setSelectedInstrument(null);
+    setInstrumentForm(EMPTY_INSTRUMENT_FORM);
+    setIsNewInstrumentMode(!selectedClient);
   }
 
   function onSelectClient(client: ClientSearchItem) {
@@ -344,8 +358,26 @@ export function IntakesPage() {
           : {
               instrumentTypeId: instrumentForm.instrumentTypeId,
               brandId: instrumentForm.brandId || undefined,
+              colorId: instrumentForm.colorId || undefined,
               model: instrumentForm.model.trim(),
               serialNumber: instrumentForm.serialNumber.trim() || undefined,
+              observations: [
+                instrumentForm.customBrand.trim()
+                  ? `Marca capturada en intake: ${instrumentForm.customBrand.trim()}`
+                  : '',
+                instrumentForm.customColor.trim()
+                  ? `Color capturado en intake: ${instrumentForm.customColor.trim()}`
+                  : '',
+                `¿Incluye strap?: ${instrumentForm.hasStrap ? 'Sí' : 'No'}`,
+                instrumentForm.customPreferredTuning.trim()
+                  ? `Afinación preferida (manual): ${instrumentForm.customPreferredTuning.trim()}`
+                  : '',
+                instrumentForm.preferredTuningId
+                  ? `Afinación preferida (catálogo): ${instrumentForm.preferredTuningId}`
+                  : '',
+              ]
+                .filter(Boolean)
+                .join(' | '),
             },
         visit: {
           branchId,
@@ -354,6 +386,9 @@ export function IntakesPage() {
           desiredTuningId: desiredTuningId || undefined,
           stringGaugeId: stringGaugeId || undefined,
           discount: Number.isFinite(discountNumber) ? discountNumber : 0,
+          diagnosis: customDesiredTuning.trim()
+            ? `Afinación deseada manual: ${customDesiredTuning.trim()}`
+            : undefined,
         },
         initialNote: visitNote.trim()
           ? {
@@ -392,6 +427,7 @@ export function IntakesPage() {
       setCuerdaMediaNote('');
       setVisitNote('');
       setEstimatedDiscount('');
+      setCustomDesiredTuning('');
       setActiveStep('client');
 
       const token = (result as { tracking?: { token?: string } })?.tracking?.token;
@@ -608,6 +644,20 @@ export function IntakesPage() {
                         <PlusCircle className="h-4 w-4" />
                         Instrumento nuevo
                       </button>
+                      {(selectedInstrument ||
+                        instrumentForm.model ||
+                        instrumentForm.serialNumber ||
+                        instrumentForm.brandId ||
+                        instrumentForm.customBrand) && (
+                        <button
+                          type="button"
+                          className="btn-secondary h-11 w-full justify-center gap-2"
+                          onClick={resetInstrumentSelection}
+                        >
+                          <XCircle className="h-4 w-4" />
+                          Limpiar instrumento
+                        </button>
+                      )}
                     </>
                   )}
                 </>
@@ -633,23 +683,45 @@ export function IntakesPage() {
                     ))}
                   </select>
 
-                  <select
-                    className="input h-12"
+                  <CatalogSelectWithCustom
                     value={instrumentForm.brandId}
-                    onChange={(e) =>
+                    customValue={instrumentForm.customBrand}
+                    options={lookupsQuery.data?.brands || []}
+                    placeholder="Marca"
+                    customPlaceholder="Escribe marca"
+                    onValueChange={(value) =>
                       setInstrumentForm((current) => ({
                         ...current,
-                        brandId: e.target.value,
+                        brandId: value,
                       }))
                     }
-                  >
-                    <option value="">Marca</option>
-                    {(lookupsQuery.data?.brands || []).map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.name}
-                      </option>
-                    ))}
-                  </select>
+                    onCustomValueChange={(value) =>
+                      setInstrumentForm((current) => ({
+                        ...current,
+                        customBrand: value,
+                      }))
+                    }
+                  />
+
+                  <CatalogSelectWithCustom
+                    value={instrumentForm.colorId}
+                    customValue={instrumentForm.customColor}
+                    options={lookupsQuery.data?.colors || []}
+                    placeholder="Color"
+                    customPlaceholder="Escribe color"
+                    onValueChange={(value) =>
+                      setInstrumentForm((current) => ({
+                        ...current,
+                        colorId: value,
+                      }))
+                    }
+                    onCustomValueChange={(value) =>
+                      setInstrumentForm((current) => ({
+                        ...current,
+                        customColor: value,
+                      }))
+                    }
+                  />
 
                   <input
                     className="input h-12"
@@ -671,6 +743,40 @@ export function IntakesPage() {
                       setInstrumentForm((current) => ({
                         ...current,
                         serialNumber: e.target.value,
+                      }))
+                    }
+                  />
+
+                  <label className="flex items-center gap-2 rounded-xl border border-slate-200 p-3 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={instrumentForm.hasStrap}
+                      onChange={(e) =>
+                        setInstrumentForm((current) => ({
+                          ...current,
+                          hasStrap: e.target.checked,
+                        }))
+                      }
+                    />
+                    ¿Viene con strap?
+                  </label>
+
+                  <CatalogSelectWithCustom
+                    value={instrumentForm.preferredTuningId}
+                    customValue={instrumentForm.customPreferredTuning}
+                    options={lookupsQuery.data?.tunings || []}
+                    placeholder="Afinación preferida"
+                    customPlaceholder="Escribe afinación preferida"
+                    onValueChange={(value) =>
+                      setInstrumentForm((current) => ({
+                        ...current,
+                        preferredTuningId: value,
+                      }))
+                    }
+                    onCustomValueChange={(value) =>
+                      setInstrumentForm((current) => ({
+                        ...current,
+                        customPreferredTuning: value,
                       }))
                     }
                   />
@@ -860,18 +966,15 @@ export function IntakesPage() {
 
               {wantsStringChange ? (
                 <div className="space-y-2 rounded-xl border border-slate-200 p-3">
-                  <select
-                    className="input h-12"
+                  <CatalogSelectWithCustom
                     value={desiredTuningId}
-                    onChange={(e) => setDesiredTuningId(e.target.value)}
-                  >
-                    <option value="">Afinación deseada</option>
-                    {(lookupsQuery.data?.tunings || []).map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.name}
-                      </option>
-                    ))}
-                  </select>
+                    customValue={customDesiredTuning}
+                    options={lookupsQuery.data?.tunings || []}
+                    placeholder="Afinación deseada"
+                    customPlaceholder="Escribe afinación deseada"
+                    onValueChange={setDesiredTuningId}
+                    onCustomValueChange={setCustomDesiredTuning}
+                  />
                   <select
                     className="input h-12"
                     value={stringGaugeId}
