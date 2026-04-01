@@ -34,6 +34,7 @@ const PHONE_SEARCH_DEBOUNCE_MS = 250;
 const PHONE_SEARCH_MIN_LENGTH = 3;
 
 type IntakeStep = 'client' | 'instrument' | 'services' | 'visit';
+type CatalogKind = 'brand' | 'color' | 'preferredTuning' | 'desiredTuning';
 
 const STEP_ORDER: IntakeStep[] = ['client', 'instrument', 'services', 'visit'];
 
@@ -136,6 +137,16 @@ export function IntakesPage() {
   const [hasCase, setHasCase] = useState(false);
   const [expandedServiceIds, setExpandedServiceIds] = useState<string[]>([]);
   const [serviceToast, setServiceToast] = useState('');
+  const [customCatalogModal, setCustomCatalogModal] = useState<{
+    kind: CatalogKind;
+    title: string;
+    placeholder: string;
+  } | null>(null);
+  const [customCatalogName, setCustomCatalogName] = useState('');
+  const [localBrands, setLocalBrands] = useState<{ id: string; name: string }[]>([]);
+  const [localColors, setLocalColors] = useState<{ id: string; name: string }[]>([]);
+  const [localTunings, setLocalTunings] = useState<{ id: string; name: string }[]>([]);
+  const [showSuccessOverlay, setShowSuccessOverlay] = useState(false);
 
   const [submitMessage, setSubmitMessage] = useState('');
   const [submitError, setSubmitError] = useState('');
@@ -221,6 +232,11 @@ export function IntakesPage() {
   }, [searchPhone, selectedClient, workshopId]);
 
   const catalogServices = lookupsQuery.data?.services || [];
+  const adjustServices = catalogServices.filter((service) => service.isAdjust);
+  const regularServices = catalogServices.filter((service) => !service.isAdjust);
+  const brandsOptions = [...(lookupsQuery.data?.brands || []), ...localBrands];
+  const colorsOptions = [...(lookupsQuery.data?.colors || []), ...localColors];
+  const tuningOptions = [...(lookupsQuery.data?.tunings || []), ...localTunings];
   const instruments = instrumentsQuery.data || [];
 
   const adjustServiceIds = useMemo(
@@ -262,6 +278,12 @@ export function IntakesPage() {
     const timer = window.setTimeout(() => setServiceToast(''), 1200);
     return () => window.clearTimeout(timer);
   }, [serviceToast]);
+
+  useEffect(() => {
+    if (!showSuccessOverlay) return;
+    const timer = window.setTimeout(() => setShowSuccessOverlay(false), 1600);
+    return () => window.clearTimeout(timer);
+  }, [showSuccessOverlay]);
 
   function goNextStep() {
     const idx = STEP_ORDER.indexOf(activeStep);
@@ -313,6 +335,7 @@ export function IntakesPage() {
     setSubmitError('');
     setServiceLines((current) => {
       if (service.isAdjust) {
+        if (selectedAdjustLine?.catalogServiceId === service.id) return current;
         const nextAdjustLine = createCatalogServiceLine(service);
         const withoutAdjust = current.filter(
           (line) => !(line.catalogServiceId && adjustServiceIds.has(line.catalogServiceId)),
@@ -346,6 +369,48 @@ export function IntakesPage() {
     setExpandedServiceIds((current) =>
       current.includes(id) ? current.filter((item) => item !== id) : [...current, id],
     );
+  }
+
+  function openCustomCatalogModal(kind: CatalogKind) {
+    const modalByKind = {
+      brand: { title: 'Nueva marca', placeholder: 'Ej. Fender' },
+      color: { title: 'Nuevo color', placeholder: 'Ej. Sunburst' },
+      preferredTuning: { title: 'Nueva afinación preferida', placeholder: 'Ej. Eb Standard' },
+      desiredTuning: { title: 'Nueva afinación deseada', placeholder: 'Ej. Drop C' },
+    } as const;
+    setCustomCatalogName('');
+    setCustomCatalogModal({ kind, ...modalByKind[kind] });
+  }
+
+  function saveCustomCatalogOption() {
+    if (!customCatalogModal) return;
+    const cleanName = customCatalogName.trim();
+    if (!cleanName) return;
+    const newOption = { id: `manual-${customCatalogModal.kind}-${crypto.randomUUID()}`, name: cleanName };
+
+    if (customCatalogModal.kind === 'brand') {
+      setLocalBrands((current) => [...current, newOption]);
+      setInstrumentForm((current) => ({ ...current, brandId: newOption.id, customBrand: cleanName }));
+    }
+    if (customCatalogModal.kind === 'color') {
+      setLocalColors((current) => [...current, newOption]);
+      setInstrumentForm((current) => ({ ...current, colorId: newOption.id, customColor: cleanName }));
+    }
+    if (customCatalogModal.kind === 'preferredTuning') {
+      setLocalTunings((current) => [...current, newOption]);
+      setInstrumentForm((current) => ({
+        ...current,
+        preferredTuningId: newOption.id,
+        customPreferredTuning: cleanName,
+      }));
+    }
+    if (customCatalogModal.kind === 'desiredTuning') {
+      setLocalTunings((current) => [...current, newOption]);
+      setDesiredTuningId(newOption.id);
+      setCustomDesiredTuning(cleanName);
+    }
+    setCustomCatalogModal(null);
+    setServiceToast('Opción de catálogo agregada en intake');
   }
 
   const createIntakeMutation = useMutation({
@@ -471,6 +536,7 @@ export function IntakesPage() {
       setHasCase(false);
       setExpandedServiceIds([]);
       setActiveStep('client');
+      setShowSuccessOverlay(true);
     },
     onError: (error: Error) => {
       setSubmitMessage('');
@@ -718,42 +784,30 @@ export function IntakesPage() {
 
                   <CatalogSelectWithCustom
                     value={instrumentForm.brandId}
-                    customValue={instrumentForm.customBrand}
-                    options={lookupsQuery.data?.brands || []}
+                    options={brandsOptions}
                     placeholder="Marca"
-                    customPlaceholder="Escribe marca"
                     onValueChange={(value) =>
                       setInstrumentForm((current) => ({
                         ...current,
                         brandId: value,
+                        customBrand: value.startsWith('manual-brand-') ? current.customBrand : '',
                       }))
                     }
-                    onCustomValueChange={(value) =>
-                      setInstrumentForm((current) => ({
-                        ...current,
-                        customBrand: value,
-                      }))
-                    }
+                    onCreateOption={() => openCustomCatalogModal('brand')}
                   />
 
                   <CatalogSelectWithCustom
                     value={instrumentForm.colorId}
-                    customValue={instrumentForm.customColor}
-                    options={lookupsQuery.data?.colors || []}
+                    options={colorsOptions}
                     placeholder="Color"
-                    customPlaceholder="Escribe color"
                     onValueChange={(value) =>
                       setInstrumentForm((current) => ({
                         ...current,
                         colorId: value,
+                        customColor: value.startsWith('manual-color-') ? current.customColor : '',
                       }))
                     }
-                    onCustomValueChange={(value) =>
-                      setInstrumentForm((current) => ({
-                        ...current,
-                        customColor: value,
-                      }))
-                    }
+                    onCreateOption={() => openCustomCatalogModal('color')}
                   />
 
                   <input
@@ -782,22 +836,18 @@ export function IntakesPage() {
 
                   <CatalogSelectWithCustom
                     value={instrumentForm.preferredTuningId}
-                    customValue={instrumentForm.customPreferredTuning}
-                    options={lookupsQuery.data?.tunings || []}
+                    options={tuningOptions}
                     placeholder="Afinación preferida"
-                    customPlaceholder="Escribe afinación preferida"
                     onValueChange={(value) =>
                       setInstrumentForm((current) => ({
                         ...current,
                         preferredTuningId: value,
+                        customPreferredTuning: value.startsWith('manual-preferredTuning-')
+                          ? current.customPreferredTuning
+                          : '',
                       }))
                     }
-                    onCustomValueChange={(value) =>
-                      setInstrumentForm((current) => ({
-                        ...current,
-                        customPreferredTuning: value,
-                      }))
-                    }
+                    onCreateOption={() => openCustomCatalogModal('preferredTuning')}
                   />
                 </div>
               )}
@@ -819,44 +869,55 @@ export function IntakesPage() {
             </div>
           ) : (
             <div className="mt-4 space-y-4">
-              <div className="grid grid-cols-1 gap-2">
-                {catalogServices.map((service) => {
-                  const isAdjust = !!service.isAdjust;
-                  const isSelectedAdjust = selectedAdjustLine?.catalogServiceId === service.id;
-                  return (
-                    <button
-                      key={service.id}
-                      type="button"
-                      onClick={() => onAddCatalogService(service)}
-                      className={cn(
-                        'min-h-14 w-full rounded-xl border px-3 py-2 text-left',
-                        isAdjust && isSelectedAdjust
-                          ? 'border-emerald-500 bg-emerald-50 text-emerald-800'
-                          : 'border-slate-200 bg-white hover:bg-slate-50',
-                      )}
-                    >
-                      <span className="flex min-w-0 items-center gap-2">
-                        <Wrench className="h-4 w-4 shrink-0" />
-                        <span className="truncate">{service.name}</span>
-                        {isAdjust ? (
-                          <span
-                            className={cn(
-                              'chip',
-                              isSelectedAdjust
-                                ? 'bg-emerald-100 text-emerald-700'
-                                : 'bg-amber-100 text-amber-700',
-                            )}
-                          >
-                            Ajuste {isSelectedAdjust ? '✓' : ''}
+              {!!adjustServices.length && (
+                <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50/40 p-3">
+                  <h3 className="text-sm font-semibold text-amber-800">Ajuste (elige solo uno)</h3>
+                  <div className="grid grid-cols-1 gap-2">
+                    {adjustServices.map((service) => {
+                      const isSelected = selectedAdjustLine?.catalogServiceId === service.id;
+                      return (
+                        <button
+                          key={service.id}
+                          type="button"
+                          onClick={() => onAddCatalogService(service)}
+                          className={cn(
+                            'min-h-14 w-full rounded-xl border px-3 py-2 text-left',
+                            isSelected
+                              ? 'border-emerald-500 bg-emerald-50 text-emerald-800'
+                              : 'border-amber-200 bg-white hover:bg-amber-50',
+                          )}
+                        >
+                          <span className="flex min-w-0 items-center justify-between gap-2">
+                            <span className="flex min-w-0 items-center gap-2">
+                              <Wrench className="h-4 w-4 shrink-0" />
+                              <span className="truncate">{service.name}</span>
+                            </span>
+                            <span className="chip bg-amber-100 text-amber-700">
+                              {isSelected ? 'Seleccionado ✓' : 'Elegir'}
+                            </span>
                           </span>
-                        ) : null}
-                      </span>
-                      <span className="shrink-0 text-xs text-slate-500">
-                        {currency(service.basePrice)}
-                      </span>
-                    </button>
-                  );
-                })}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 gap-2">
+                {regularServices.map((service) => (
+                  <button
+                    key={service.id}
+                    type="button"
+                    onClick={() => onAddCatalogService(service)}
+                    className="min-h-14 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-left hover:bg-slate-50"
+                  >
+                    <span className="flex min-w-0 items-center gap-2">
+                      <Wrench className="h-4 w-4 shrink-0" />
+                      <span className="truncate">{service.name}</span>
+                    </span>
+                    <span className="shrink-0 text-xs text-slate-500">{currency(service.basePrice)}</span>
+                  </button>
+                ))}
               </div>
 
               <label className="flex items-center gap-2 rounded-xl border border-slate-200 p-3 text-sm">
@@ -872,12 +933,13 @@ export function IntakesPage() {
                 <div className="space-y-2 rounded-xl border border-slate-200 p-3">
                   <CatalogSelectWithCustom
                     value={desiredTuningId}
-                    customValue={customDesiredTuning}
-                    options={lookupsQuery.data?.tunings || []}
+                    options={tuningOptions}
                     placeholder="Afinación deseada"
-                    customPlaceholder="Escribe afinación deseada"
-                    onValueChange={setDesiredTuningId}
-                    onCustomValueChange={setCustomDesiredTuning}
+                    onValueChange={(value) => {
+                      setDesiredTuningId(value);
+                      if (!value.startsWith('manual-desiredTuning-')) setCustomDesiredTuning('');
+                    }}
+                    onCreateOption={() => openCustomCatalogModal('desiredTuning')}
                   />
                   <select
                     className="input h-14 text-base"
@@ -1010,7 +1072,7 @@ export function IntakesPage() {
           ) : (
             <div className="mt-4 space-y-4">
               <select
-                className="input h-12"
+                className="input h-14 text-base"
                 value={branchId}
                 onChange={(e) => setBranchId(e.target.value)}
               >
@@ -1118,17 +1180,59 @@ export function IntakesPage() {
         </div>
       ) : null}
 
-      <div className="fixed inset-x-0 bottom-[122px] z-20 border-t border-emerald-200 bg-emerald-50/95 px-3 py-2 backdrop-blur">
-        <div className="mx-auto flex max-w-3xl items-center justify-between text-sm">
-          <span className="font-medium text-emerald-800">Resumen rápido</span>
-          <span className="font-semibold text-emerald-900">
-            {serviceLines.length} servicio(s) · {currency(total)}
-          </span>
+      {showSuccessOverlay ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-emerald-600/95 px-6 text-center text-white">
+          <div>
+            <CheckCircle2 className="mx-auto h-14 w-14" />
+            <p className="mt-3 text-2xl font-semibold">¡Intake guardado!</p>
+            <p className="mt-1 text-sm text-emerald-100">Registro creado correctamente.</p>
+          </div>
         </div>
-      </div>
+      ) : null}
+
+      {customCatalogModal ? (
+        <div className="fixed inset-0 z-50 flex items-end bg-black/40 p-3 sm:items-center sm:justify-center">
+          <div className="w-full max-w-md rounded-2xl bg-white p-4 shadow-2xl">
+            <h3 className="text-base font-semibold text-slate-900">{customCatalogModal.title}</h3>
+            <p className="mt-1 text-sm text-slate-500">
+              Esta opción se agrega para este intake y queda seleccionada.
+            </p>
+            <input
+              className="input mt-3 h-12 text-base"
+              placeholder={customCatalogModal.placeholder}
+              value={customCatalogName}
+              onChange={(e) => setCustomCatalogName(e.target.value)}
+            />
+            <div className="mt-3 flex gap-2">
+              <button
+                type="button"
+                className="btn-secondary h-11 flex-1 justify-center"
+                onClick={() => setCustomCatalogModal(null)}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="btn-primary h-11 flex-1 justify-center"
+                onClick={saveCustomCatalogOption}
+                disabled={!customCatalogName.trim()}
+              >
+                Guardar opción
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <div className="fixed inset-x-0 bottom-16 z-30 border-t border-slate-200 bg-white/95 px-3 py-3 shadow-[0_-8px_24px_rgba(15,23,42,0.08)] backdrop-blur">
-        <div className="mx-auto flex max-w-3xl items-center gap-2">
+        <div className="mx-auto max-w-3xl space-y-2">
+          <div className="flex items-center justify-between rounded-xl bg-emerald-50 px-3 py-2 text-sm">
+            <span className="font-medium text-emerald-800">Resumen rápido</span>
+            <span className="font-semibold text-emerald-900">
+              {serviceLines.length} servicio(s) · {currency(total)}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
           <button
             type="button"
             className="btn-secondary h-12 min-w-[90px] justify-center"
@@ -1169,6 +1273,7 @@ export function IntakesPage() {
               )}
             </button>
           )}
+          </div>
         </div>
       </div>
     </div>
