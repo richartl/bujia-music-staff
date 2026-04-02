@@ -554,15 +554,9 @@ export function VisitDetailPage() {
               {(event.attachments || []).length ? (
                 <div className="mt-2 space-y-1">
                   {(event.attachments || []).map((attachment) => (
-                    <a
-                      key={attachment.id}
-                      href={attachment.url || attachment.publicUrl || '#'}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="block truncate text-xs text-sky-700"
-                    >
-                      📎 {attachment.originalName || attachment.id}
-                    </a>
+                    <div key={attachment.id} className="rounded bg-slate-50 p-1">
+                      <AttachmentPreview attachment={attachment} />
+                    </div>
                   ))}
                 </div>
               ) : null}

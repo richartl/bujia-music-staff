@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useParams } from 'react-router-dom';
 import { dateTime } from '@/lib/utils';
 import { getPublicTracking } from '@/features/visits/api/trackingApi';
+import type { NoteAttachment } from '@/features/visits/api/types';
 
 export function PublicTrackingPage() {
   const { token = '' } = useParams();
@@ -61,9 +62,9 @@ export function PublicTrackingPage() {
                 <div key={note.id} className="mt-1 rounded bg-slate-50 p-2 text-xs text-slate-700">
                   <p>{note.note}</p>
                   {(note.attachments || []).filter((a) => !!a.publicUrl).map((attachment) => (
-                    <a key={attachment.id} href={attachment.publicUrl} target="_blank" rel="noreferrer" className="mt-1 block text-sky-700">
-                      {attachment.originalName || 'Adjunto'}
-                    </a>
+                    <div key={attachment.id} className="mt-1">
+                      <PublicAttachmentPreview attachment={attachment} />
+                    </div>
                   ))}
                 </div>
               ))}
@@ -72,5 +73,25 @@ export function PublicTrackingPage() {
         </div>
       </section>
     </main>
+  );
+}
+
+function PublicAttachmentPreview({ attachment }: { attachment: NoteAttachment }) {
+  const url = attachment.publicUrl || attachment.url || '';
+  const mimeType = attachment.mimeType || '';
+  if (!url) return null;
+  if (mimeType.startsWith('image/')) {
+    return <img src={url} alt={attachment.originalName || 'adjunto'} className="h-20 w-20 rounded object-cover" />;
+  }
+  if (mimeType.startsWith('video/')) {
+    return <video src={url} controls className="h-24 w-full rounded object-cover" />;
+  }
+  if (mimeType.startsWith('audio/')) {
+    return <audio src={url} controls className="h-8 w-full" />;
+  }
+  return (
+    <a href={url} target="_blank" rel="noreferrer" className="text-sky-700">
+      {attachment.originalName || 'Adjunto'}
+    </a>
   );
 }
