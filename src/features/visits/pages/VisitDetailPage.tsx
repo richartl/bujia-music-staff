@@ -67,6 +67,12 @@ export function VisitDetailPage() {
   const [noteModalText, setNoteModalText] = useState('');
   const [noteModalIsInternal, setNoteModalIsInternal] = useState(false);
   const [noteModalFile, setNoteModalFile] = useState<File | null>(null);
+  const [confirmModal, setConfirmModal] = useState<{
+    title: string;
+    message: string;
+    action: () => Promise<void> | void;
+  } | null>(null);
+  const [deleteServiceModal, setDeleteServiceModal] = useState<{ serviceId: string; reason: string } | null>(null);
   const queryClient = useQueryClient();
 
   const visitQuery = useQuery({
@@ -275,42 +281,67 @@ export function VisitDetailPage() {
       window.alert('Ya existe un servicio de ajuste. Usa el botón Modificar ajuste.');
       return;
     }
-    const confirmAdd = window.confirm(`¿Agregar servicio "${service.name}"?`);
-    if (!confirmAdd) return;
-    await createServiceMutation.mutateAsync({
-      workshopServiceId: service.id,
-      quantity: 1,
-      price: Number(service.basePrice || 0),
-      notes: '',
+    setConfirmModal({
+      title: 'Confirmar servicio',
+      message: `¿Agregar servicio "${service.name}"?`,
+      action: async () => {
+        await createServiceMutation.mutateAsync({
+          workshopServiceId: service.id,
+          quantity: 1,
+          price: Number(service.basePrice || 0),
+          notes: '',
+          isAdjust: !!service.isAdjust,
+        });
+      },
     });
   }
 
   async function addManualService() {
-    const confirmAdd = window.confirm(`¿Agregar servicio manual "${manualService.name}"?`);
-    if (!confirmAdd) return;
-    await createServiceMutation.mutateAsync({
-      name: manualService.name,
-      quantity: Number(manualService.quantity || 1),
-      price: Number(manualService.price || 0),
-      notes: manualService.notes || undefined,
+    setConfirmModal({
+      title: 'Confirmar servicio manual',
+      message: `¿Agregar servicio manual "${manualService.name}"?`,
+      action: async () => {
+        await createServiceMutation.mutateAsync({
+          name: manualService.name,
+          quantity: Number(manualService.quantity || 1),
+          price: Number(manualService.price || 0),
+          notes: manualService.notes || undefined,
+        });
+      },
     });
   }
 
   async function swapAdjustService(nextAdjustService: WorkshopServiceLookup) {
     if (!existingAdjustService) return;
-    const confirmSwap = window.confirm(
-      `¿Cambiar ajuste a "${nextAdjustService.name}"? Esto reemplazará el ajuste actual.`,
-    );
-    if (!confirmSwap) return;
-    await patchVisitService(visitId, existingAdjustService.id, {
-      workshopServiceId: nextAdjustService.id,
-      quantity: existingAdjustService.quantity || 1,
-      price: Number(nextAdjustService.basePrice || existingAdjustService.price || 0),
-      notes: existingAdjustService.notes || undefined,
-      isAdjust: true,
+    setConfirmModal({
+      title: 'Cambiar servicio de ajuste',
+      message: `¿Cambiar ajuste a "${nextAdjustService.name}"?`,
+      action: async () => {
+        await patchVisitService(visitId, existingAdjustService.id, {
+          workshopServiceId: nextAdjustService.id,
+          quantity: existingAdjustService.quantity || 1,
+          price: Number(nextAdjustService.basePrice || existingAdjustService.price || 0),
+          notes: existingAdjustService.notes || undefined,
+          isAdjust: true,
+        });
+        await queryClient.invalidateQueries({ queryKey: ['visit-services', visitId] });
+        setIsAdjustSwitchModalOpen(false);
+      },
     });
+  }
+
+  async function confirmDeleteService() {
+    if (!deleteServiceModal) return;
+    const targetService = (servicesQuery.data || []).find((item) => item.id === deleteServiceModal.serviceId);
+    if (deleteServiceModal.reason.trim() && targetService) {
+      await createVisitServiceNote(targetService.id, {
+        note: `Servicio eliminado: ${deleteServiceModal.reason.trim()}`,
+        isInternal: true,
+      });
+    }
+    await deleteVisitService(visitId, deleteServiceModal.serviceId);
     await queryClient.invalidateQueries({ queryKey: ['visit-services', visitId] });
-    setIsAdjustSwitchModalOpen(false);
+    setDeleteServiceModal(null);
   }
 
   async function submitServiceNoteModal() {
@@ -448,25 +479,23 @@ export function VisitDetailPage() {
           </button>
           {(servicesQuery.data || []).map((service) => (
             <article key={service.id} className="rounded-xl border border-slate-200 p-3">
-              <input className="input h-10" defaultValue={service.name || ''} onBlur={(e) => patchVisitService(visitId, service.id, { name: e.target.value }).then(() => queryClient.invalidateQueries({ queryKey: ['visit-services', visitId] }))} />
+              <div className="rounded-lg bg-slate-50 p-2">
+                <p className="text-sm font-semibold text-slate-900">{service.name || 'Servicio'}</p>
+                <p className="text-xs text-slate-500">
+                  Cantidad: {service.quantity || 1} · Precio: {currency(Number(service.price || 0))}
+                  {service.isAdjust ? ' · Ajuste' : ''}
+                </p>
+              </div>
               <div className="mt-2 flex gap-2">
                 <button type="button" className="btn-secondary h-8 px-3" onClick={() => setNoteModalServiceId(service.id)}>Agregar nota</button>
+                <button type="button" className="btn-secondary h-8 px-3" onClick={() => setIsServiceModalOpen(true)}>Modificar</button>
                 {service.isAdjust ? (
                   <button type="button" className="btn-secondary h-8 px-3" onClick={() => setIsAdjustSwitchModalOpen(true)}>Modificar ajuste</button>
                 ) : null}
                 <button
                   type="button"
                   className="btn-secondary h-8 px-3"
-                  onClick={() => {
-                    const reason = window.prompt('Motivo de eliminación del servicio (se guardará como nota interna):', '');
-                    if (reason && reason.trim()) {
-                      void createVisitServiceNote(service.id, { note: `Servicio eliminado: ${reason.trim()}`, isInternal: true });
-                    }
-                    if (!window.confirm('¿Seguro que deseas eliminar este servicio?')) return;
-                    void deleteVisitService(visitId, service.id).then(() =>
-                      queryClient.invalidateQueries({ queryKey: ['visit-services', visitId] }),
-                    );
-                  }}
+                  onClick={() => setDeleteServiceModal({ serviceId: service.id, reason: '' })}
                 >
                   Eliminar servicio
                 </button>
@@ -619,6 +648,49 @@ export function VisitDetailPage() {
             <div className="mt-3 grid grid-cols-2 gap-2">
               <button type="button" className="btn-secondary h-10 justify-center" onClick={() => setNoteModalServiceId(null)}>Cancelar</button>
               <button type="button" className="btn-primary h-10 justify-center" onClick={() => void submitServiceNoteModal()} disabled={!noteModalText.trim()}>Guardar</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {deleteServiceModal ? (
+        <div className="fixed inset-0 z-50 flex items-end bg-black/40 p-3">
+          <div className="w-full rounded-2xl bg-white p-4">
+            <h4 className="text-sm font-semibold text-slate-900">Eliminar servicio</h4>
+            <p className="mt-1 text-xs text-slate-600">Puedes agregar motivo para historial interno (opcional).</p>
+            <textarea
+              className="input mt-2 min-h-20"
+              placeholder="Motivo de eliminación"
+              value={deleteServiceModal.reason}
+              onChange={(e) =>
+                setDeleteServiceModal((current) => (current ? { ...current, reason: e.target.value } : current))
+              }
+            />
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <button type="button" className="btn-secondary h-10 justify-center" onClick={() => setDeleteServiceModal(null)}>Cancelar</button>
+              <button type="button" className="btn-primary h-10 justify-center" onClick={() => void confirmDeleteService()}>Confirmar</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {confirmModal ? (
+        <div className="fixed inset-0 z-50 flex items-end bg-black/40 p-3">
+          <div className="w-full rounded-2xl bg-white p-4">
+            <h4 className="text-sm font-semibold text-slate-900">{confirmModal.title}</h4>
+            <p className="mt-1 text-sm text-slate-700">{confirmModal.message}</p>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <button type="button" className="btn-secondary h-10 justify-center" onClick={() => setConfirmModal(null)}>Cancelar</button>
+              <button
+                type="button"
+                className="btn-primary h-10 justify-center"
+                onClick={async () => {
+                  await confirmModal.action();
+                  setConfirmModal(null);
+                }}
+              >
+                Confirmar
+              </button>
             </div>
           </div>
         </div>

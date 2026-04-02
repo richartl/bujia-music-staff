@@ -17,10 +17,10 @@ async function uploadBinary(uploadUrl: string, file: File, headers?: Record<stri
 
 export async function uploadVisitNoteAttachment(noteId: string, file: File) {
   const payload = {
+    originalName: file.name.slice(0, 255),
     mediaKind: resolveMediaKind(file.type),
     mimeType: file.type || 'application/octet-stream',
     sizeBytes: file.size,
-    fileName: file.name,
   };
 
   try {
@@ -67,10 +67,10 @@ export async function deleteVisitNoteAttachment(noteId: string, attachmentId: st
 
 export async function uploadVisitServiceNoteAttachment(noteId: string, file: File) {
   const payload = {
+    originalName: file.name.slice(0, 255),
     mediaKind: resolveMediaKind(file.type),
     mimeType: file.type || 'application/octet-stream',
     sizeBytes: file.size,
-    fileName: file.name,
   };
 
   try {
