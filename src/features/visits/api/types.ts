@@ -88,7 +88,7 @@ export type VisitService = {
   id: string;
   workshopServiceId?: string;
   name?: string;
-  status?: string;
+  status?: string | { id?: string; name?: string };
   quantity?: number;
   price?: number;
   notes?: string;

@@ -272,7 +272,13 @@ export function VisitDetailPage() {
   const activeServices = useMemo(
     () =>
       (servicesQuery.data || []).filter((service) => {
-        const normalized = (service.status || '').toUpperCase();
+        const rawStatus =
+          typeof service.status === 'string'
+            ? service.status
+            : typeof service.status === 'object' && service.status && 'name' in service.status
+              ? String((service.status as { name?: string }).name || '')
+              : '';
+        const normalized = rawStatus.toUpperCase();
         return !['CANCELLED', 'CANCELED', 'CANCELADO'].includes(normalized);
       }),
     [servicesQuery.data],
