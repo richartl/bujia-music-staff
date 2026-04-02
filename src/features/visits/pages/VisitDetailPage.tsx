@@ -32,14 +32,12 @@ import { getVisitTimeline, getVisitTrackingLink, regenerateVisitTrackingLink } f
 import { getVisitDetail, getWorkshopVisitStatuses, patchVisit } from '../api/visitsApi';
 import type { NoteAttachment, UpdateVisitPayload, VisitNote } from '../api/types';
 
-type TabKey = 'summary' | 'services' | 'notes' | 'tracking' | 'attachments';
+type TabKey = 'summary' | 'services' | 'finance';
 
 const TABS: Array<{ key: TabKey; label: string }> = [
   { key: 'summary', label: 'Resumen' },
   { key: 'services', label: 'Servicios' },
-  { key: 'notes', label: 'Notas' },
-  { key: 'tracking', label: 'Tracking' },
-  { key: 'attachments', label: 'Adjuntos' },
+  { key: 'finance', label: 'Finanzas' },
 ];
 
 function getErrorMessage(error: unknown) {
@@ -75,6 +73,9 @@ export function VisitDetailPage() {
   const [deleteServiceModal, setDeleteServiceModal] = useState<{ serviceId: string; reason: string } | null>(null);
   const [serviceDetailModalId, setServiceDetailModalId] = useState<string | null>(null);
   const [mediaPreview, setMediaPreview] = useState<{ url: string; mimeType: string; name: string } | null>(null);
+  const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
+  const [isCancelVisitModalOpen, setIsCancelVisitModalOpen] = useState(false);
+  const [paymentModalIndex, setPaymentModalIndex] = useState<number | null>(null);
   const queryClient = useQueryClient();
 
   const visitQuery = useQuery({
@@ -291,6 +292,23 @@ export function VisitDetailPage() {
     () => activeServices.find((service) => service.id === serviceDetailModalId) || null,
     [activeServices, serviceDetailModalId],
   );
+  const adjustService = useMemo(
+    () => activeServices.find((service) => service.isAdjust) || null,
+    [activeServices],
+  );
+  const regularServices = useMemo(
+    () => activeServices.filter((service) => !service.isAdjust),
+    [activeServices],
+  );
+  const payments = useMemo(() => {
+    const raw = (visit as unknown as { payments?: Array<{ amount?: number | string; paymentMethod?: { name?: string } | null; paidAt?: string; notes?: string }> } | undefined)?.payments || [];
+    return raw.map((item) => ({
+      amount: Number(item.amount || 0),
+      paymentMethod: item.paymentMethod?.name || 'Método',
+      paidAt: item.paidAt || '',
+      notes: item.notes || '',
+    }));
+  }, [visit]);
 
   async function addCatalogService(service: WorkshopServiceLookup) {
     if (
@@ -398,7 +416,17 @@ export function VisitDetailPage() {
       <section className="card p-4">
         <p className="text-xs font-semibold text-slate-500">{visit.folio}</p>
         <h1 className="mt-1 text-lg font-semibold text-slate-900">{visit.instrument?.name || 'Detalle de visita'}</h1>
-        <p className="text-sm text-slate-500">{visit.client?.fullName || 'Cliente'} · {currentStatus}</p>
+        <p className="text-sm text-slate-500">
+          {visit.client?.fullName || 'Cliente'} · {visit.client?.phone || 'Sin teléfono'} · {currentStatus}
+        </p>
+        <div className="mt-2 flex gap-2">
+          <button type="button" className="btn-secondary h-8 px-3 text-xs" onClick={() => setIsStatusModalOpen(true)}>
+            Cambiar estado
+          </button>
+          <button type="button" className="h-8 rounded-lg border border-rose-200 bg-rose-50 px-3 text-xs font-semibold text-rose-700" onClick={() => setIsCancelVisitModalOpen(true)}>
+            Cancelar visita
+          </button>
+        </div>
         <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 p-2">
           <p className="text-[11px] font-semibold uppercase text-slate-500">Tracking público</p>
           <p className="mt-1 break-all text-xs text-sky-700">{resolvedTrackingUrl || 'No disponible'}</p>
@@ -437,22 +465,41 @@ export function VisitDetailPage() {
 
       {tab === 'summary' ? (
         <section className="card space-y-2 p-4">
-          <textarea className="input min-h-20" placeholder="Intake notes" defaultValue={visit.intakeNotes || ''} onChange={(e) => setEditPayload((current) => ({ ...current, intakeNotes: e.target.value }))} />
-          <textarea className="input min-h-20" placeholder="Diagnosis" defaultValue={visit.diagnosis || ''} onChange={(e) => setEditPayload((current) => ({ ...current, diagnosis: e.target.value }))} />
-          <textarea className="input min-h-20" placeholder="Notas internas" defaultValue={visit.internalNotes || ''} onChange={(e) => setEditPayload((current) => ({ ...current, internalNotes: e.target.value }))} />
-          <select className="input h-11" defaultValue={visit.statusId || ''} onChange={(e) => setEditPayload((current) => ({ ...current, statusId: e.target.value }))}>
-            <option value="">Estatus</option>
-            {(statusesQuery.data || []).map((status) => <option key={status.id} value={status.id}>{status.name}</option>)}
-          </select>
-          <button type="button" className="btn-primary h-11 w-full justify-center" onClick={() => updateVisitMutation.mutate()} disabled={updateVisitMutation.isPending}>
-            Guardar cambios
-          </button>
-          {updateVisitMutation.isError ? <p className="text-sm text-red-700">{getErrorMessage(updateVisitMutation.error)}</p> : null}
-        </section>
-      ) : null}
-
-      {tab === 'notes' ? (
-        <section className="card space-y-3 p-4">
+          <h3 className="text-sm font-semibold text-slate-800">Resumen de visita (solo lectura)</h3>
+          <div className="grid grid-cols-2 gap-2 text-sm">
+            <p className="text-slate-500">Afinación deseada</p>
+            <p className="text-right text-slate-800">{((visit as unknown as Record<string, unknown>).desiredTuning as { name?: string } | undefined)?.name || '-'}</p>
+            <p className="text-slate-500">Calibre de cuerdas</p>
+            <p className="text-right text-slate-800">{((visit as unknown as Record<string, unknown>).stringGauge as { name?: string } | undefined)?.name || '-'}</p>
+            <p className="text-slate-500">Trae funda</p>
+            <p className="text-right text-slate-800">{visit.hasCase ? 'Sí' : 'No'}</p>
+            <p className="text-slate-500">Trae strap</p>
+            <p className="text-right text-slate-800">{visit.hasStrap ? 'Sí' : 'No'}</p>
+            <p className="text-slate-500">Cambio de cuerdas</p>
+            <p className="text-right text-slate-800">{visit.wantsStringChange ? 'Sí' : 'No'}</p>
+            <p className="text-slate-500">Registró</p>
+            <p className="text-right text-slate-800">{((visit as unknown as Record<string, unknown>).createdByUser as { name?: string } | undefined)?.name || '-'}</p>
+          </div>
+          <div className="rounded-lg border border-slate-200 p-2">
+            <p className="text-xs font-semibold uppercase text-slate-500">Resumen del instrumento</p>
+            <p className="mt-1 text-sm text-slate-700">
+              {visit.instrument?.name || '-'} {visit.instrument?.model ? `· ${visit.instrument.model}` : ''}
+              {visit.instrument?.colorName ? `· ${visit.instrument.colorName}` : ''}
+            </p>
+          </div>
+          <div className="rounded-lg border border-slate-200 p-2">
+            <p className="text-xs font-semibold uppercase text-slate-500">Adjuntos de registro</p>
+            {(noteAttachmentsQueries.data?.[((notesQuery.data || [])[0] || { id: '' }).id] || []).length ? (
+              (noteAttachmentsQueries.data?.[((notesQuery.data || [])[0] || { id: '' }).id] || []).map((attachment) => (
+                <div key={attachment.id} className="mt-1">
+                  <AttachmentPreview attachment={attachment} onOpen={setMediaPreview} />
+                </div>
+              ))
+            ) : (
+              <p className="mt-1 text-xs text-slate-500">Sin adjuntos de registro.</p>
+            )}
+          </div>
+          <h3 className="pt-2 text-sm font-semibold text-slate-800">Notas generales de la visita</h3>
           <QuickNoteForm onSubmit={(payload) => createNoteMutation.mutate(payload)} isPending={createNoteMutation.isPending} />
           {(notesQuery.data || []).map((note) => (
             <article key={note.id} className="rounded-xl border border-slate-200 p-3">
@@ -463,14 +510,12 @@ export function VisitDetailPage() {
                 </span>
               </div>
               <p className="mt-1 text-xs text-slate-500">{note.createdAt ? dateTime(note.createdAt) : 'Sin fecha'}</p>
-
               <div className="mt-2 flex gap-2">
                 <button type="button" className="btn-secondary h-9 px-3" onClick={() => updateVisitNote(visitId, note.id, { isInternal: !note.isInternal }).then(() => queryClient.invalidateQueries({ queryKey: ['visit-notes', visitId] }))}>
                   Cambiar visibilidad
                 </button>
                 <MediaQuickAttach onSelect={(file) => uploadVisitNoteAttachment(note.id, file).then(() => queryClient.invalidateQueries({ queryKey: ['visit-note-attachments'] }))} />
               </div>
-
               <div className="mt-2 space-y-1">
                 {(noteAttachmentsQueries.data?.[note.id] || []).map((attachment) => (
                   <div key={attachment.id} className="flex items-center justify-between rounded-lg bg-slate-50 px-2 py-1 text-xs">
@@ -495,7 +540,30 @@ export function VisitDetailPage() {
           >
             Agregar servicio
           </button>
-          {activeServices.map((service) => (
+          {adjustService ? (
+            <article className="rounded-xl border border-indigo-300 bg-indigo-50 p-3">
+              <p className="text-xs font-semibold uppercase text-indigo-700">Servicio de ajuste</p>
+              <button
+                type="button"
+                className="mt-1 text-left text-sm font-semibold text-slate-900 underline-offset-2 hover:underline"
+                onDoubleClick={() => setServiceDetailModalId(adjustService.id)}
+              >
+                {adjustService.name || 'Servicio ajuste'}
+              </button>
+              <p className="text-xs text-slate-600">
+                Cantidad: {adjustService.quantity || 1} · Precio: {currency(Number(adjustService.price || 0))}
+              </p>
+              <p className="mt-1 text-xs text-indigo-700">
+                Notas: {(serviceNotesQuery.data?.[adjustService.id] || []).length} (doble click para detalle)
+              </p>
+              <div className="mt-2 flex gap-2">
+                <button type="button" className="btn-secondary h-8 px-3" onClick={() => setNoteModalServiceId(adjustService.id)}>Agregar nota</button>
+                <button type="button" className="btn-secondary h-8 px-3" onClick={() => setIsAdjustSwitchModalOpen(true)}>Modificar ajuste</button>
+                <button type="button" className="btn-secondary h-8 px-3" onClick={() => setDeleteServiceModal({ serviceId: adjustService.id, reason: '' })}>Eliminar</button>
+              </div>
+            </article>
+          ) : null}
+          {regularServices.map((service) => (
             <article key={service.id} className="rounded-xl border border-slate-200 p-3">
               <div className="rounded-lg bg-slate-50 p-2">
                 <button
@@ -507,15 +575,12 @@ export function VisitDetailPage() {
                 </button>
                 <p className="text-xs text-slate-500">
                   Cantidad: {service.quantity || 1} · Precio: {currency(Number(service.price || 0))}
-                  {service.isAdjust ? ' · Ajuste' : ''}
                 </p>
+                <p className="mt-1 text-xs text-slate-600">Notas: {(serviceNotesQuery.data?.[service.id] || []).length} (doble click para detalle)</p>
               </div>
               <div className="mt-2 flex gap-2">
                 <button type="button" className="btn-secondary h-8 px-3" onClick={() => setNoteModalServiceId(service.id)}>Agregar nota</button>
                 <button type="button" className="btn-secondary h-8 px-3" onClick={() => setIsServiceModalOpen(true)}>Modificar</button>
-                {service.isAdjust ? (
-                  <button type="button" className="btn-secondary h-8 px-3" onClick={() => setIsAdjustSwitchModalOpen(true)}>Modificar ajuste</button>
-                ) : null}
                 <button
                   type="button"
                   className="btn-secondary h-8 px-3"
@@ -524,82 +589,104 @@ export function VisitDetailPage() {
                   Eliminar servicio
                 </button>
               </div>
-              <div className="mt-2 space-y-1">
-                {(serviceNotesQuery.data?.[service.id] || []).map((note) => (
-                  <div key={note.id} className="rounded-lg bg-slate-50 p-2 text-sm">
-                    <p>{note.note}</p>
-                    <div className="mt-1 flex gap-2">
-                      <button
-                        type="button"
-                        className={`rounded-full px-2 py-1 text-xs ${note.isInternal ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}
-                        onClick={() =>
-                          patchVisitServiceNote(service.id, note.id, { isInternal: !note.isInternal }).then(() =>
-                            queryClient.invalidateQueries({ queryKey: ['service-notes-batch'] }),
-                          )
-                        }
-                      >
-                        {note.isInternal ? 'Interna' : 'Pública'}
-                      </button>
-                      <button type="button" className="text-xs text-red-600" onClick={() => deleteVisitServiceNote(service.id, note.id).then(() => queryClient.invalidateQueries({ queryKey: ['service-notes-batch'] }))}>Eliminar</button>
-                      <MediaQuickAttach onSelect={(file) => uploadVisitServiceNoteAttachment(note.id, file).then(() => queryClient.invalidateQueries({ queryKey: ['service-note-attachments-batch'] }))} />
-                    </div>
-                    {(serviceAttachmentsQuery.data?.[note.id] || []).map((attachment) => (
-                      <div key={attachment.id} className="mt-1 flex items-center justify-between text-xs">
-                        <AttachmentPreview attachment={attachment} onOpen={setMediaPreview} />
-                        <button type="button" className="text-red-600" onClick={() => deleteVisitServiceNoteAttachment(note.id, attachment.id).then(() => queryClient.invalidateQueries({ queryKey: ['service-note-attachments-batch'] }))}>Eliminar</button>
-                      </div>
-                    ))}
-                  </div>
-                ))}
-              </div>
             </article>
           ))}
         </section>
       ) : null}
 
-      {tab === 'tracking' ? (
+      {tab === 'finance' ? (
         <section className="card space-y-3 p-4">
-          <h3 className="text-sm font-semibold text-slate-800">Timeline interno (histórico completo)</h3>
-          {timelineQuery.isLoading ? <p className="text-sm text-slate-500">Cargando timeline…</p> : null}
-          {normalizedTrackingItems.map((event) => (
-            <div
-              key={`${event.type}-${event.occurredAt}-${event.title}`}
-              className={`rounded-lg border p-2 ${
-                event.type.includes('INTERNA')
-                  ? 'border-amber-200 bg-amber-50/40'
-                  : event.type.includes('SERVICIO')
-                    ? 'border-sky-200 bg-sky-50/40'
-                    : 'border-emerald-200 bg-emerald-50/40'
-              }`}
-            >
-              <p className="text-xs font-semibold text-slate-500">{event.type}</p>
-              <p className="text-sm text-slate-800">{event.title}</p>
-              <p className="text-xs text-slate-500">{event.occurredAt ? dateTime(event.occurredAt) : '-'}</p>
-              {(event.attachments || []).length ? (
-                <div className="mt-2 space-y-1">
-                  {(event.attachments || []).map((attachment) => (
-                    <div key={attachment.id} className="rounded bg-slate-50 p-1">
-                      <AttachmentPreview attachment={attachment} onOpen={setMediaPreview} />
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-          ))}
-
-          <div className="rounded-lg border border-slate-200 p-3">
-            <h4 className="text-sm font-semibold text-slate-800">Link público</h4>
-            <p className="mt-1 break-all text-xs text-sky-700">{resolvedTrackingUrl || 'No disponible'}</p>
-            <div className="mt-2 flex gap-2">
-              <button type="button" className="btn-secondary h-9 px-3" onClick={() => navigator.clipboard.writeText(resolvedTrackingUrl)} disabled={!resolvedTrackingUrl}>Copiar</button>
-              <button type="button" className="btn-primary h-9 px-3" onClick={() => setIsRegenerateModalOpen(true)}>Regenerar</button>
-            </div>
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <p className="text-xs font-semibold uppercase text-slate-500">Resumen</p>
+            <p className="mt-1 text-sm text-slate-700">Total visita: {currency(Number(visit.total || 0))}</p>
+            <p className="text-sm text-slate-700">Subtotal: {currency(Number(visit.subtotal || 0))} · Descuento: {currency(Number(visit.discount || 0))}</p>
           </div>
+          <button type="button" className="btn-primary h-10 w-full justify-center">
+            Agregar abono
+          </button>
+          {!payments.length ? (
+            <p className="text-sm text-slate-500">Aún no hay abonos registrados.</p>
+          ) : (
+            payments.map((payment, index) => (
+              <button key={`${payment.paidAt}-${index}`} type="button" className="w-full rounded-lg border border-slate-200 p-3 text-left" onDoubleClick={() => setPaymentModalIndex(index)}>
+                <p className="text-sm font-semibold text-slate-900">{currency(payment.amount)} · {payment.paymentMethod}</p>
+                <p className="text-xs text-slate-500">{payment.paidAt ? dateTime(payment.paidAt) : 'Sin fecha'}</p>
+                {payment.notes ? <p className="mt-1 text-xs text-slate-600">{payment.notes}</p> : null}
+              </button>
+            ))
+          )}
         </section>
       ) : null}
 
-      {tab === 'attachments' ? (
-        <section className="card p-4 text-sm text-slate-600">Gestiona adjuntos desde tabs de Notas y Servicios (mobile-first).</section>
+      {isStatusModalOpen ? (
+        <div className="fixed inset-0 z-50 flex items-end bg-black/40 p-3">
+          <div className="w-full rounded-2xl bg-white p-4">
+            <h4 className="text-sm font-semibold text-slate-900">Cambiar estado de la visita</h4>
+            <div className="mt-2 space-y-2">
+              {(statusesQuery.data || []).map((status) => (
+                <button
+                  key={status.id}
+                  type="button"
+                  className="w-full rounded-lg border border-slate-200 p-2 text-left"
+                  onClick={() => {
+                    setEditPayload((current) => ({ ...current, statusId: status.id }));
+                    updateVisitMutation.mutate();
+                    setIsStatusModalOpen(false);
+                  }}
+                >
+                  {status.name}
+                </button>
+              ))}
+            </div>
+            <button type="button" className="btn-secondary mt-3 h-10 w-full justify-center" onClick={() => setIsStatusModalOpen(false)}>
+              Cerrar
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {isCancelVisitModalOpen ? (
+        <div className="fixed inset-0 z-50 flex items-end bg-black/40 p-3">
+          <div className="w-full rounded-2xl bg-white p-4">
+            <h4 className="text-sm font-semibold text-rose-700">Cancelar visita</h4>
+            <p className="mt-1 text-sm text-slate-600">Esta acción cambiará el estatus de la visita a cancelado.</p>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <button type="button" className="btn-secondary h-10 justify-center" onClick={() => setIsCancelVisitModalOpen(false)}>No</button>
+              <button
+                type="button"
+                className="h-10 rounded-xl bg-rose-600 px-3 text-sm font-semibold text-white"
+                onClick={() => {
+                  const cancelled = (statusesQuery.data || []).find((status) =>
+                    (status.slug || '').toLowerCase().includes('cancel') || status.name.toLowerCase().includes('cancel'),
+                  );
+                  if (cancelled) {
+                    setEditPayload((current) => ({ ...current, statusId: cancelled.id }));
+                    updateVisitMutation.mutate();
+                  }
+                  setIsCancelVisitModalOpen(false);
+                }}
+              >
+                Sí, cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {paymentModalIndex !== null ? (
+        <div className="fixed inset-0 z-50 flex items-end bg-black/40 p-3">
+          <div className="w-full rounded-2xl bg-white p-4">
+            <h4 className="text-sm font-semibold text-slate-900">Detalle de abono</h4>
+            <p className="mt-1 text-sm text-slate-700">{currency(payments[paymentModalIndex]?.amount || 0)}</p>
+            <p className="text-xs text-slate-500">{payments[paymentModalIndex]?.paymentMethod}</p>
+            <p className="text-xs text-slate-500">{payments[paymentModalIndex]?.paidAt ? dateTime(payments[paymentModalIndex].paidAt) : 'Sin fecha'}</p>
+            <textarea className="input mt-2 min-h-20" defaultValue={payments[paymentModalIndex]?.notes || ''} />
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <button type="button" className="btn-secondary h-10 justify-center" onClick={() => setPaymentModalIndex(null)}>Cerrar</button>
+              <button type="button" className="btn-primary h-10 justify-center">Guardar cambios</button>
+            </div>
+          </div>
+        </div>
       ) : null}
 
       {isServiceModalOpen ? (
