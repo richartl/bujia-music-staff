@@ -109,6 +109,13 @@ export type VisitTimelineEvent = {
   description?: string;
   isPublic?: boolean;
   occurredAt?: string;
+  actor?: { id?: string; name?: string } | null;
+  service?: {
+    id?: string;
+    name?: string;
+    status?: { id?: string; code?: string; name?: string; color?: string } | null;
+  } | null;
+  attachment?: NoteAttachment | null;
   metadata?: Record<string, unknown>;
 };
 
@@ -119,13 +126,32 @@ export type TrackingLinkResponse = {
 };
 
 export type TrackingResponse = {
+  tracking?: {
+    token?: string;
+    isActive?: boolean;
+    expiresAt?: string | null;
+    lastAccessedAt?: string | null;
+    url?: string;
+  };
   workshop?: { id: string; name: string };
-  client?: { id: string; name?: string };
-  instrument?: { id: string; name?: string };
+  client?: { id?: string; name?: string; displayName?: string; code?: string };
+  instrument?: {
+    id?: string;
+    name?: string;
+    nickname?: string | null;
+    model?: string | null;
+    serialNumber?: string | null;
+    brand?: { name?: string } | null;
+    instrumentType?: { name?: string } | null;
+  };
   branch?: { id: string; name?: string };
-  status?: { id?: string; name?: string; color?: string };
+  status?: { id?: string; code?: string; name?: string; color?: string };
   visit?: VisitResponse;
-  services?: Array<VisitService & { serviceNotes?: Array<VisitServiceNote & { attachments?: NoteAttachment[] }> }>;
+  services?: Array<VisitService & {
+    status?: string | { id?: string; code?: string; name?: string; color?: string };
+    serviceNotes?: Array<VisitServiceNote & { attachments?: NoteAttachment[] }>;
+    notes?: Array<VisitServiceNote & { attachments?: NoteAttachment[] }>;
+  }>;
   trackingLinks?: TrackingLinkResponse[];
   timeline?: VisitTimelineEvent[];
 };

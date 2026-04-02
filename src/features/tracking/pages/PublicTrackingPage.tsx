@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useParams } from 'react-router-dom';
 import { dateTime } from '@/lib/utils';
 import { getPublicTracking } from '@/features/visits/api/trackingApi';
-import type { NoteAttachment } from '@/features/visits/api/types';
+import type { NoteAttachment, TrackingResponse, VisitServiceNote, VisitTimelineEvent } from '@/features/visits/api/types';
 
 export function PublicTrackingPage() {
   const { token = '' } = useParams();
@@ -27,45 +27,70 @@ export function PublicTrackingPage() {
   const timeline = (data.timeline || [])
     .filter((event) => event.isPublic !== false)
     .sort((a, b) => new Date(b.occurredAt || 0).getTime() - new Date(a.occurredAt || 0).getTime());
-  const clientName = data.client?.name || data.visit?.client?.fullName || [data.visit?.client?.firstName, data.visit?.client?.lastName].filter(Boolean).join(' ') || '-';
-  const instrumentName = data.instrument?.name || data.visit?.instrument?.name || '-';
+  const clientName =
+    data.client?.displayName ||
+    data.client?.name ||
+    data.visit?.client?.fullName ||
+    [data.visit?.client?.firstName, data.visit?.client?.lastName].filter(Boolean).join(' ') ||
+    '-';
+  const instrumentName =
+    buildInstrumentDisplayName(data) ||
+    data.instrument?.name ||
+    data.visit?.instrument?.name ||
+    '-';
   const currentStatus = data.status?.name || data.visit?.status?.name || '-';
   const statusColors = getStatusColors(data.status?.color || data.visit?.status?.color);
+  const heroGradient = getSoftGradient((data.status?.color || data.visit?.status?.color) ?? undefined);
 
   return (
-    <main className="mx-auto max-w-2xl space-y-3 p-3">
-      <section className={`card border p-4 ${statusColors.container}`}>
-        <h1 className="text-lg font-semibold text-slate-900">Tracking de tu instrumento</h1>
-        <p className="mt-1 text-sm text-slate-600">{data.workshop?.name} · {data.branch?.name || 'Sucursal'}</p>
-        <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
-          <p className="text-slate-500">Cliente</p>
-          <p className="text-right font-medium text-slate-800">{clientName}</p>
-          <p className="text-slate-500">Instrumento</p>
-          <p className="text-right font-medium text-slate-800">{instrumentName}</p>
-          <p className="text-slate-500">Estado</p>
-          <p className="text-right">
-            <span
-              className={`rounded-full px-2 py-1 text-xs font-semibold ${statusColors.badge}`}
-              style={statusColors.customColor ? { backgroundColor: statusColors.customColor, color: '#ffffff' } : undefined}
-            >
-              {currentStatus}
-            </span>
-          </p>
+    <main className="mx-auto max-w-3xl space-y-4 p-3 pb-8">
+      <section className="overflow-hidden rounded-2xl border border-slate-200 shadow-sm">
+        <div className="p-4" style={{ background: heroGradient }}>
+          <h1 className="text-lg font-bold text-slate-900">Tracking de tu instrumento</h1>
+          <p className="mt-1 text-sm text-slate-700">{data.workshop?.name} · {data.branch?.name || 'Sucursal'}</p>
+          <div className="mt-3 grid grid-cols-1 gap-2 text-sm sm:grid-cols-3">
+            <InfoPill label="Cliente" value={clientName} />
+            <InfoPill label="Instrumento" value={instrumentName} />
+            <div className="rounded-xl bg-white/80 p-3 backdrop-blur-sm">
+              <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">Estado actual</p>
+              <p className="mt-1">
+                <span
+                  className={`rounded-full px-2.5 py-1 text-xs font-semibold ${statusColors.badge}`}
+                  style={statusColors.customColor ? { backgroundColor: statusColors.customColor, color: '#ffffff' } : undefined}
+                >
+                  {currentStatus}
+                </span>
+              </p>
+            </div>
+          </div>
         </div>
       </section>
 
-      <section className="card p-4">
+      <section className="card border border-slate-200 p-4 shadow-sm">
         <h2 className="text-sm font-semibold text-slate-800">Timeline público (más reciente primero)</h2>
-        <div className="mt-2 space-y-2">
+        <div className="mt-3 space-y-3">
           {timeline.map((event) => (
-            <article key={`${event.eventType}-${event.occurredAt}-${event.title}`} className={`rounded-lg border p-2 ${getEventColors(event.eventType)}`}>
-              <p className="text-xs font-semibold text-slate-600">{event.eventType}</p>
-              <p className="text-sm text-slate-800">{event.title || event.description || 'Actualización'}</p>
-              <p className="text-xs text-slate-500">{event.occurredAt ? dateTime(event.occurredAt) : '-'}</p>
-              <div className="mt-2 space-y-1">
-                {extractTimelineAttachments(event.metadata).map((attachment) => (
-                  <div key={attachment.id || `${attachment.publicUrl}-${attachment.originalName}`} className="rounded bg-white/70 p-2">
-                    <PublicAttachmentPreview attachment={attachment} onOpen={setPreview} inlinePlayable />
+            <article
+              key={`${event.id || event.eventType}-${event.occurredAt}-${event.title}`}
+              className={`rounded-xl border p-3 shadow-sm ${getEventColors(event.eventType)}`}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="rounded-full bg-white/90 px-2 py-0.5 text-[11px] font-bold text-slate-700">
+                  {humanizeEventType(event.eventType)}
+                </p>
+                <p className="text-[11px] font-medium text-slate-600">{event.occurredAt ? dateTime(event.occurredAt) : '-'}</p>
+              </div>
+              <p className="mt-2 text-sm font-medium text-slate-900">{event.title || event.description || 'Actualización'}</p>
+              {event.service?.name ? (
+                <p className="mt-1 text-xs text-slate-700">Servicio: {event.service.name}</p>
+              ) : null}
+              {event.actor?.name ? (
+                <p className="text-xs text-slate-500">Actualizado por: {event.actor.name}</p>
+              ) : null}
+              <div className="mt-2 space-y-2">
+                {extractTimelineAttachments(event).map((attachment) => (
+                  <div key={attachment.id || `${attachment.publicUrl}-${attachment.originalName}`} className="rounded-lg bg-white/80 p-2">
+                    <PublicAttachmentPreview attachment={attachment} onOpen={setPreview} inlinePlayable withName />
                   </div>
                 ))}
               </div>
@@ -74,18 +99,27 @@ export function PublicTrackingPage() {
         </div>
       </section>
 
-      <section className="card p-4">
+      <section className="card border border-slate-200 p-4 shadow-sm">
         <h2 className="text-sm font-semibold text-slate-800">Servicios visibles</h2>
-        <div className="mt-2 space-y-2">
+        <div className="mt-3 space-y-3">
           {(data.services || []).map((service) => (
-            <article key={service.id} className="rounded-lg border border-slate-200 p-2">
-              <p className="text-sm font-medium text-slate-900">{service.name || 'Servicio'}</p>
-              {(service.serviceNotes || []).map((note) => (
-                <div key={note.id} className="mt-1 rounded bg-slate-50 p-2 text-xs text-slate-700">
-                  <p>{note.note}</p>
+            <article key={service.id} className="rounded-xl border border-slate-200 bg-white p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm font-semibold text-slate-900">{service.name || 'Servicio'}</p>
+                <span
+                  className="rounded-full px-2 py-0.5 text-xs font-semibold text-white"
+                  style={{ backgroundColor: typeof service.status === 'object' && service.status?.color ? service.status.color : '#64748B' }}
+                >
+                  {typeof service.status === 'object' && service.status?.name ? service.status.name : 'Sin estado'}
+                </span>
+              </div>
+              <p className="mt-1 text-xs text-slate-500">Cantidad: {service.quantity || 1}</p>
+              {getServiceNotes(service).map((note) => (
+                <div key={note.id} className="mt-2 rounded-lg border border-slate-100 bg-slate-50 p-2 text-xs text-slate-700">
+                  <p className="text-sm text-slate-800">{note.note}</p>
                   {(note.attachments || []).filter((a) => !!a.publicUrl || !!a.url).map((attachment) => (
-                    <div key={attachment.id} className="mt-1">
-                      <PublicAttachmentPreview attachment={attachment} onOpen={setPreview} inlinePlayable />
+                    <div key={attachment.id} className="mt-2 rounded bg-white p-2">
+                      <PublicAttachmentPreview attachment={attachment} onOpen={setPreview} inlinePlayable withName />
                     </div>
                   ))}
                 </div>
@@ -126,6 +160,15 @@ function detectMimeType(attachment: NoteAttachment) {
   return '';
 }
 
+function InfoPill({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl bg-white/80 p-3 backdrop-blur-sm">
+      <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">{label}</p>
+      <p className="mt-1 text-sm font-semibold text-slate-900">{value}</p>
+    </div>
+  );
+}
+
 function getStatusColors(statusColor?: string | null) {
   if (!statusColor) return { container: 'border-slate-200 bg-white', badge: 'bg-slate-100 text-slate-700', customColor: null };
   return {
@@ -137,24 +180,56 @@ function getStatusColors(statusColor?: string | null) {
 
 function getEventColors(eventType: string) {
   const normalized = eventType.toUpperCase();
-  if (normalized.includes('ENTRADA') || normalized.includes('RECEPCION')) return 'border-cyan-200 bg-cyan-50/70';
-  if (normalized.includes('DIAGNOST')) return 'border-violet-200 bg-violet-50/70';
-  if (normalized.includes('PROCESO') || normalized.includes('SERVICIO')) return 'border-sky-200 bg-sky-50/70';
-  if (normalized.includes('LISTO') || normalized.includes('FINALIZ')) return 'border-emerald-200 bg-emerald-50/70';
-  if (normalized.includes('ENTREGA') || normalized.includes('CERR')) return 'border-green-200 bg-green-50/70';
-  if (normalized.includes('CANCEL')) return 'border-rose-200 bg-rose-50/70';
-  return 'border-slate-200 bg-slate-50/70';
+  if (normalized.includes('VISIT_CREATED')) return 'border-cyan-300 bg-gradient-to-r from-cyan-50 to-sky-100';
+  if (normalized.includes('STATUS')) return 'border-amber-300 bg-gradient-to-r from-amber-50 to-yellow-100';
+  if (normalized.includes('NOTE')) return 'border-violet-300 bg-gradient-to-r from-violet-50 to-fuchsia-100';
+  if (normalized.includes('ATTACHMENT')) return 'border-emerald-300 bg-gradient-to-r from-emerald-50 to-lime-100';
+  if (normalized.includes('CANCEL')) return 'border-rose-300 bg-gradient-to-r from-rose-50 to-red-100';
+  if (normalized.includes('SERVICE')) return 'border-blue-300 bg-gradient-to-r from-blue-50 to-indigo-100';
+  return 'border-slate-300 bg-gradient-to-r from-slate-50 to-slate-100';
 }
 
-function extractTimelineAttachments(metadata?: Record<string, unknown>) {
-  if (!metadata) return [];
+function getSoftGradient(color?: string | null) {
+  if (!color) return 'linear-gradient(135deg, #E0F2FE 0%, #F8FAFC 100%)';
+  return `linear-gradient(135deg, ${color}22 0%, #F8FAFC 100%)`;
+}
+
+function humanizeEventType(eventType: string) {
+  return eventType
+    .toLowerCase()
+    .split('_')
+    .map((chunk) => chunk.charAt(0).toUpperCase() + chunk.slice(1))
+    .join(' ');
+}
+
+type TrackingService = NonNullable<TrackingResponse['services']>[number];
+
+function getServiceNotes(service: TrackingService): Array<VisitServiceNote & { attachments?: NoteAttachment[] }> {
+  return service.serviceNotes || service.notes || [];
+}
+
+function buildInstrumentDisplayName(data: TrackingResponse) {
+  const pieces = [
+    data.instrument?.brand?.name,
+    data.instrument?.model,
+    data.instrument?.nickname,
+    data.instrument?.instrumentType?.name,
+  ].filter(Boolean);
+  return pieces.join(' · ');
+}
+
+function extractTimelineAttachments(event: VisitTimelineEvent) {
+  const direct = normalizeAttachment(event.attachment, 0);
+  const metadata = event.metadata;
+  if (!metadata) return direct ? [direct] : [];
   const rawAttachments =
     (Array.isArray(metadata.attachments) ? metadata.attachments : null) ||
     (Array.isArray(metadata.files) ? metadata.files : null) ||
     [];
-  return rawAttachments
+  const normalized = rawAttachments
     .map((item, index) => normalizeAttachment(item, index))
     .filter((attachment): attachment is NoteAttachment => !!attachment && !!(attachment.publicUrl || attachment.url));
+  return direct ? [direct, ...normalized] : normalized;
 }
 
 function normalizeAttachment(input: unknown, index: number): NoteAttachment | null {
@@ -178,17 +253,34 @@ function normalizeAttachment(input: unknown, index: number): NoteAttachment | nu
   };
 }
 
-function PublicAttachmentPreview({ attachment, onOpen, inlinePlayable = false }: { attachment: NoteAttachment; onOpen: (payload: { url: string; mimeType: string; name: string }) => void; inlinePlayable?: boolean }) {
+function PublicAttachmentPreview({
+  attachment,
+  onOpen,
+  inlinePlayable = false,
+  withName = false,
+}: {
+  attachment: NoteAttachment;
+  onOpen: (payload: { url: string; mimeType: string; name: string }) => void;
+  inlinePlayable?: boolean;
+  withName?: boolean;
+}) {
   const url = attachment.publicUrl || attachment.url || '';
   const mimeType = detectMimeType(attachment);
   if (!url) return null;
+  const label = attachment.originalName || 'Adjunto';
   const open = () => onOpen({ url, mimeType, name: attachment.originalName || 'Adjunto' });
   if (mimeType.startsWith('image/')) {
-    return <button type="button" onClick={open}><img src={url} alt={attachment.originalName || 'adjunto'} className="h-20 w-20 rounded object-cover" /></button>;
+    return (
+      <div className="space-y-1">
+        {withName ? <p className="truncate text-xs font-medium text-slate-600">{label}</p> : null}
+        <button type="button" onClick={open}><img src={url} alt={attachment.originalName || 'adjunto'} className="h-24 w-24 rounded object-cover" /></button>
+      </div>
+    );
   }
   if (mimeType.startsWith('video/')) {
     return (
       <div className="space-y-1">
+        {withName ? <p className="truncate text-xs font-medium text-slate-600">{label}</p> : null}
         {inlinePlayable ? <video src={url} controls className="h-32 w-full rounded object-cover" /> : null}
         <button type="button" onClick={open}><video src={url} className="h-24 w-full rounded object-cover" /></button>
       </div>
@@ -197,12 +289,13 @@ function PublicAttachmentPreview({ attachment, onOpen, inlinePlayable = false }:
   if (mimeType.startsWith('audio/')) {
     return (
       <div className="space-y-1">
+        {withName ? <p className="truncate text-xs font-medium text-slate-600">{label}</p> : null}
         {inlinePlayable ? <audio src={url} controls className="w-full" /> : null}
         <button type="button" onClick={open} className="rounded bg-slate-100 px-2 py-1 text-xs text-slate-700">🎤 Escuchar nota</button>
       </div>
     );
   }
   return (
-    <button type="button" onClick={open} className="text-sky-700">{attachment.originalName || 'Adjunto'}</button>
+    <button type="button" onClick={open} className="text-sky-700">{label}</button>
   );
 }
