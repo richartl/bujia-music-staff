@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useParams } from 'react-router-dom';
 import { dateTime } from '@/lib/utils';
@@ -6,6 +7,7 @@ import type { NoteAttachment } from '@/features/visits/api/types';
 
 export function PublicTrackingPage() {
   const { token = '' } = useParams();
+  const [preview, setPreview] = useState<{ url: string; mimeType: string; name: string } | null>(null);
 
   const trackingQuery = useQuery({
     queryKey: ['public-tracking', token],
@@ -63,7 +65,7 @@ export function PublicTrackingPage() {
                   <p>{note.note}</p>
                   {(note.attachments || []).filter((a) => !!a.publicUrl).map((attachment) => (
                     <div key={attachment.id} className="mt-1">
-                      <PublicAttachmentPreview attachment={attachment} />
+                      <PublicAttachmentPreview attachment={attachment} onOpen={setPreview} />
                     </div>
                   ))}
                 </div>
@@ -72,26 +74,53 @@ export function PublicTrackingPage() {
           ))}
         </div>
       </section>
+      {preview ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-3">
+          <div className="w-full max-w-md rounded-2xl bg-white p-3">
+            <p className="truncate text-sm font-medium text-slate-800">{preview.name}</p>
+            <div className="mt-2">
+              {preview.mimeType.startsWith('image/') ? (
+                <img src={preview.url} alt={preview.name} className="max-h-[70vh] w-full rounded object-contain" />
+              ) : preview.mimeType.startsWith('video/') ? (
+                <video src={preview.url} controls className="max-h-[70vh] w-full rounded object-contain" />
+              ) : preview.mimeType.startsWith('audio/') ? (
+                <audio src={preview.url} controls className="w-full" />
+              ) : (
+                <a href={preview.url} target="_blank" rel="noreferrer" className="text-sky-700">Abrir archivo</a>
+              )}
+            </div>
+            <button type="button" className="btn-secondary mt-3 h-10 w-full justify-center" onClick={() => setPreview(null)}>Cerrar</button>
+          </div>
+        </div>
+      ) : null}
     </main>
   );
 }
 
-function PublicAttachmentPreview({ attachment }: { attachment: NoteAttachment }) {
+function detectMimeType(attachment: NoteAttachment) {
+  if (attachment.mimeType) return attachment.mimeType;
+  const name = (attachment.originalName || '').toLowerCase();
+  if (/(png|jpg|jpeg|gif|webp)$/.test(name)) return 'image/*';
+  if (/(mp4|mov|webm|m4v)$/.test(name)) return 'video/*';
+  if (/(mp3|wav|ogg|m4a|aac)$/.test(name)) return 'audio/*';
+  return '';
+}
+
+function PublicAttachmentPreview({ attachment, onOpen }: { attachment: NoteAttachment; onOpen: (payload: { url: string; mimeType: string; name: string }) => void }) {
   const url = attachment.publicUrl || attachment.url || '';
-  const mimeType = attachment.mimeType || '';
+  const mimeType = detectMimeType(attachment);
   if (!url) return null;
+  const open = () => onOpen({ url, mimeType, name: attachment.originalName || 'Adjunto' });
   if (mimeType.startsWith('image/')) {
-    return <img src={url} alt={attachment.originalName || 'adjunto'} className="h-20 w-20 rounded object-cover" />;
+    return <button type="button" onClick={open}><img src={url} alt={attachment.originalName || 'adjunto'} className="h-20 w-20 rounded object-cover" /></button>;
   }
   if (mimeType.startsWith('video/')) {
-    return <video src={url} controls className="h-24 w-full rounded object-cover" />;
+    return <button type="button" onClick={open}><video src={url} className="h-24 w-full rounded object-cover" /></button>;
   }
   if (mimeType.startsWith('audio/')) {
-    return <audio src={url} controls className="h-8 w-full" />;
+    return <button type="button" onClick={open} className="rounded bg-slate-100 px-2 py-1 text-xs text-slate-700">🎤 Escuchar nota</button>;
   }
   return (
-    <a href={url} target="_blank" rel="noreferrer" className="text-sky-700">
-      {attachment.originalName || 'Adjunto'}
-    </a>
+    <button type="button" onClick={open} className="text-sky-700">{attachment.originalName || 'Adjunto'}</button>
   );
 }

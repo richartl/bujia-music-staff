@@ -74,6 +74,7 @@ export function VisitDetailPage() {
   } | null>(null);
   const [deleteServiceModal, setDeleteServiceModal] = useState<{ serviceId: string; reason: string } | null>(null);
   const [serviceDetailModalId, setServiceDetailModalId] = useState<string | null>(null);
+  const [mediaPreview, setMediaPreview] = useState<{ url: string; mimeType: string; name: string } | null>(null);
   const queryClient = useQueryClient();
 
   const visitQuery = useQuery({
@@ -268,13 +269,21 @@ export function VisitDetailPage() {
     if (!query) return serviceCatalog;
     return serviceCatalog.filter((service) => service.name.toLowerCase().includes(query));
   }, [serviceCatalog, serviceSearch]);
-  const existingAdjustService = useMemo(
-    () => (servicesQuery.data || []).find((service) => service.isAdjust),
+  const activeServices = useMemo(
+    () =>
+      (servicesQuery.data || []).filter((service) => {
+        const normalized = (service.status || '').toUpperCase();
+        return !['CANCELLED', 'CANCELED', 'CANCELADO'].includes(normalized);
+      }),
     [servicesQuery.data],
   );
+  const existingAdjustService = useMemo(
+    () => activeServices.find((service) => service.isAdjust),
+    [activeServices],
+  );
   const selectedServiceDetail = useMemo(
-    () => (servicesQuery.data || []).find((service) => service.id === serviceDetailModalId) || null,
-    [serviceDetailModalId, servicesQuery.data],
+    () => activeServices.find((service) => service.id === serviceDetailModalId) || null,
+    [activeServices, serviceDetailModalId],
   );
 
   async function addCatalogService(service: WorkshopServiceLookup) {
@@ -337,7 +346,7 @@ export function VisitDetailPage() {
 
   async function confirmDeleteService() {
     if (!deleteServiceModal) return;
-    const targetService = (servicesQuery.data || []).find((item) => item.id === deleteServiceModal.serviceId);
+    const targetService = activeServices.find((item) => item.id === deleteServiceModal.serviceId);
     if (deleteServiceModal.reason.trim() && targetService) {
       await createVisitServiceNote(targetService.id, {
         note: `Servicio eliminado: ${deleteServiceModal.reason.trim()}`,
@@ -459,7 +468,7 @@ export function VisitDetailPage() {
               <div className="mt-2 space-y-1">
                 {(noteAttachmentsQueries.data?.[note.id] || []).map((attachment) => (
                   <div key={attachment.id} className="flex items-center justify-between rounded-lg bg-slate-50 px-2 py-1 text-xs">
-                    <AttachmentPreview attachment={attachment} />
+                    <AttachmentPreview attachment={attachment} onOpen={setMediaPreview} />
                     <button type="button" className="text-red-600" onClick={() => deleteVisitNoteAttachment(note.id, attachment.id).then(() => queryClient.invalidateQueries({ queryKey: ['visit-note-attachments'] }))}>
                       Eliminar
                     </button>
@@ -480,7 +489,7 @@ export function VisitDetailPage() {
           >
             Agregar servicio
           </button>
-          {(servicesQuery.data || []).map((service) => (
+          {activeServices.map((service) => (
             <article key={service.id} className="rounded-xl border border-slate-200 p-3">
               <div className="rounded-lg bg-slate-50 p-2">
                 <button
@@ -530,7 +539,7 @@ export function VisitDetailPage() {
                     </div>
                     {(serviceAttachmentsQuery.data?.[note.id] || []).map((attachment) => (
                       <div key={attachment.id} className="mt-1 flex items-center justify-between text-xs">
-                        <AttachmentPreview attachment={attachment} />
+                        <AttachmentPreview attachment={attachment} onOpen={setMediaPreview} />
                         <button type="button" className="text-red-600" onClick={() => deleteVisitServiceNoteAttachment(note.id, attachment.id).then(() => queryClient.invalidateQueries({ queryKey: ['service-note-attachments-batch'] }))}>Eliminar</button>
                       </div>
                     ))}
@@ -547,7 +556,16 @@ export function VisitDetailPage() {
           <h3 className="text-sm font-semibold text-slate-800">Timeline interno (histórico completo)</h3>
           {timelineQuery.isLoading ? <p className="text-sm text-slate-500">Cargando timeline…</p> : null}
           {normalizedTrackingItems.map((event) => (
-            <div key={`${event.type}-${event.occurredAt}-${event.title}`} className="rounded-lg border border-slate-200 p-2">
+            <div
+              key={`${event.type}-${event.occurredAt}-${event.title}`}
+              className={`rounded-lg border p-2 ${
+                event.type.includes('INTERNA')
+                  ? 'border-amber-200 bg-amber-50/40'
+                  : event.type.includes('SERVICIO')
+                    ? 'border-sky-200 bg-sky-50/40'
+                    : 'border-emerald-200 bg-emerald-50/40'
+              }`}
+            >
               <p className="text-xs font-semibold text-slate-500">{event.type}</p>
               <p className="text-sm text-slate-800">{event.title}</p>
               <p className="text-xs text-slate-500">{event.occurredAt ? dateTime(event.occurredAt) : '-'}</p>
@@ -555,7 +573,7 @@ export function VisitDetailPage() {
                 <div className="mt-2 space-y-1">
                   {(event.attachments || []).map((attachment) => (
                     <div key={attachment.id} className="rounded bg-slate-50 p-1">
-                      <AttachmentPreview attachment={attachment} />
+                      <AttachmentPreview attachment={attachment} onOpen={setMediaPreview} />
                     </div>
                   ))}
                 </div>
@@ -727,7 +745,7 @@ export function VisitDetailPage() {
                   </div>
                   {(serviceAttachmentsQuery.data?.[note.id] || []).map((attachment) => (
                     <div key={attachment.id} className="mt-1">
-                      <AttachmentPreview attachment={attachment} />
+                      <AttachmentPreview attachment={attachment} onOpen={setMediaPreview} />
                     </div>
                   ))}
                 </div>
@@ -735,6 +753,28 @@ export function VisitDetailPage() {
             </div>
             <button type="button" className="btn-secondary mt-3 h-10 w-full justify-center" onClick={() => setServiceDetailModalId(null)}>
               Cerrar detalle
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {mediaPreview ? (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-3">
+          <div className="w-full max-w-md rounded-2xl bg-white p-3">
+            <p className="truncate text-sm font-medium text-slate-800">{mediaPreview.name}</p>
+            <div className="mt-2">
+              {mediaPreview.mimeType.startsWith('image/') ? (
+                <img src={mediaPreview.url} alt={mediaPreview.name} className="max-h-[70vh] w-full rounded object-contain" />
+              ) : mediaPreview.mimeType.startsWith('video/') ? (
+                <video src={mediaPreview.url} controls className="max-h-[70vh] w-full rounded object-contain" />
+              ) : mediaPreview.mimeType.startsWith('audio/') ? (
+                <audio src={mediaPreview.url} controls className="w-full" />
+              ) : (
+                <a href={mediaPreview.url} target="_blank" rel="noreferrer" className="text-sky-700">Abrir archivo</a>
+              )}
+            </div>
+            <button type="button" className="btn-secondary mt-3 h-10 w-full justify-center" onClick={() => setMediaPreview(null)}>
+              Cerrar
             </button>
           </div>
         </div>
@@ -782,23 +822,33 @@ function QuickNoteForm({ onSubmit, isPending }: { onSubmit: (payload: { note: st
   );
 }
 
-function AttachmentPreview({ attachment }: { attachment: NoteAttachment }) {
+function detectMimeType(attachment: NoteAttachment) {
+  if (attachment.mimeType) return attachment.mimeType;
+  const name = (attachment.originalName || '').toLowerCase();
+  if (/(png|jpg|jpeg|gif|webp)$/.test(name)) return 'image/*';
+  if (/(mp4|mov|webm|m4v)$/.test(name)) return 'video/*';
+  if (/(mp3|wav|ogg|m4a|aac)$/.test(name)) return 'audio/*';
+  return '';
+}
+
+function AttachmentPreview({ attachment, onOpen }: { attachment: NoteAttachment; onOpen: (payload: { url: string; mimeType: string; name: string }) => void }) {
   const url = attachment.url || attachment.publicUrl || '';
-  const mimeType = attachment.mimeType || '';
+  const mimeType = detectMimeType(attachment);
   if (!url) return <span className="truncate text-sky-700">{attachment.originalName || attachment.id}</span>;
+
+  const open = () => onOpen({ url, mimeType, name: attachment.originalName || attachment.id });
+
   if (mimeType.startsWith('image/')) {
-    return <img src={url} alt={attachment.originalName || 'image'} className="h-12 w-12 rounded object-cover" />;
+    return <button type="button" onClick={open}><img src={url} alt={attachment.originalName || 'image'} className="h-12 w-12 rounded object-cover" /></button>;
   }
   if (mimeType.startsWith('video/')) {
-    return <video src={url} className="h-12 w-20 rounded object-cover" controls />;
+    return <button type="button" onClick={open}><video src={url} className="h-12 w-20 rounded object-cover" /></button>;
   }
   if (mimeType.startsWith('audio/')) {
-    return <audio src={url} controls className="h-8 w-36" />;
+    return <button type="button" onClick={open} className="rounded bg-slate-100 px-2 py-1 text-xs text-slate-700">🎤 Escuchar nota</button>;
   }
   return (
-    <a href={url} target="_blank" rel="noreferrer" className="truncate text-sky-700">
-      {attachment.originalName || attachment.id}
-    </a>
+    <button type="button" onClick={open} className="truncate text-sky-700">{attachment.originalName || attachment.id}</button>
   );
 }
 
