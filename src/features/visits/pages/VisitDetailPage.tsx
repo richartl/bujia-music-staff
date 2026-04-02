@@ -59,6 +59,7 @@ export function VisitDetailPage() {
   const [isRegenerateModalOpen, setIsRegenerateModalOpen] = useState(false);
   const [isServiceModalOpen, setIsServiceModalOpen] = useState(false);
   const [serviceSearch, setServiceSearch] = useState('');
+  const [catalogServiceNote, setCatalogServiceNote] = useState('');
   const [showManualServiceForm, setShowManualServiceForm] = useState(false);
   const [manualService, setManualService] = useState({ name: '', quantity: '1', price: '0', notes: '' });
   const [isAdjustSwitchModalOpen, setIsAdjustSwitchModalOpen] = useState(false);
@@ -158,6 +159,7 @@ export function VisitDetailPage() {
       setShowManualServiceForm(false);
       setManualService({ name: '', quantity: '1', price: '0', notes: '' });
       setServiceSearch('');
+      setCatalogServiceNote('');
     },
   });
 
@@ -329,8 +331,7 @@ export function VisitDetailPage() {
           workshopServiceId: service.id,
           quantity: 1,
           price: Number(service.basePrice || 0),
-          notes: '',
-          isAdjust: !!service.isAdjust,
+          notes: catalogServiceNote.trim() || undefined,
         });
       },
     });
@@ -362,7 +363,6 @@ export function VisitDetailPage() {
           quantity: existingAdjustService.quantity || 1,
           price: Number(nextAdjustService.basePrice || existingAdjustService.price || 0),
           notes: existingAdjustService.notes || undefined,
-          isAdjust: true,
         });
         await queryClient.invalidateQueries({ queryKey: ['visit-services', visitId] });
         setIsAdjustSwitchModalOpen(false);
@@ -788,6 +788,12 @@ export function VisitDetailPage() {
                 </button>
               ))}
             </div>
+            <textarea
+              className="input mt-2 min-h-16"
+              placeholder="Nota para el servicio (opcional)"
+              value={catalogServiceNote}
+              onChange={(event) => setCatalogServiceNote(event.target.value)}
+            />
 
             <button type="button" className="btn-secondary mt-3 h-9 w-full justify-center" onClick={() => setShowManualServiceForm((v) => !v)}>
               {showManualServiceForm ? 'Ocultar manual' : 'Agregar manual'}
@@ -806,7 +812,14 @@ export function VisitDetailPage() {
               </div>
             ) : null}
 
-            <button type="button" className="btn-secondary mt-3 h-10 w-full justify-center" onClick={() => setIsServiceModalOpen(false)}>
+            <button
+              type="button"
+              className="btn-secondary mt-3 h-10 w-full justify-center"
+              onClick={() => {
+                setCatalogServiceNote('');
+                setIsServiceModalOpen(false);
+              }}
+            >
               Cerrar
             </button>
           </div>
