@@ -73,6 +73,7 @@ export function VisitDetailPage() {
     action: () => Promise<void> | void;
   } | null>(null);
   const [deleteServiceModal, setDeleteServiceModal] = useState<{ serviceId: string; reason: string } | null>(null);
+  const [serviceDetailModalId, setServiceDetailModalId] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
   const visitQuery = useQuery({
@@ -271,6 +272,10 @@ export function VisitDetailPage() {
     () => (servicesQuery.data || []).find((service) => service.isAdjust),
     [servicesQuery.data],
   );
+  const selectedServiceDetail = useMemo(
+    () => (servicesQuery.data || []).find((service) => service.id === serviceDetailModalId) || null,
+    [serviceDetailModalId, servicesQuery.data],
+  );
 
   async function addCatalogService(service: WorkshopServiceLookup) {
     if (
@@ -448,15 +453,13 @@ export function VisitDetailPage() {
                 <button type="button" className="btn-secondary h-9 px-3" onClick={() => updateVisitNote(visitId, note.id, { isInternal: !note.isInternal }).then(() => queryClient.invalidateQueries({ queryKey: ['visit-notes', visitId] }))}>
                   Cambiar visibilidad
                 </button>
-                <UploadButton onSelect={(file) => uploadVisitNoteAttachment(note.id, file).then(() => queryClient.invalidateQueries({ queryKey: ['visit-note-attachments'] }))} />
+                <MediaQuickAttach onSelect={(file) => uploadVisitNoteAttachment(note.id, file).then(() => queryClient.invalidateQueries({ queryKey: ['visit-note-attachments'] }))} />
               </div>
 
               <div className="mt-2 space-y-1">
                 {(noteAttachmentsQueries.data?.[note.id] || []).map((attachment) => (
                   <div key={attachment.id} className="flex items-center justify-between rounded-lg bg-slate-50 px-2 py-1 text-xs">
-                    <a href={attachment.url || attachment.publicUrl || '#'} target="_blank" rel="noreferrer" className="truncate text-sky-700">
-                      {attachment.originalName || attachment.id}
-                    </a>
+                    <AttachmentPreview attachment={attachment} />
                     <button type="button" className="text-red-600" onClick={() => deleteVisitNoteAttachment(note.id, attachment.id).then(() => queryClient.invalidateQueries({ queryKey: ['visit-note-attachments'] }))}>
                       Eliminar
                     </button>
@@ -480,7 +483,13 @@ export function VisitDetailPage() {
           {(servicesQuery.data || []).map((service) => (
             <article key={service.id} className="rounded-xl border border-slate-200 p-3">
               <div className="rounded-lg bg-slate-50 p-2">
-                <p className="text-sm font-semibold text-slate-900">{service.name || 'Servicio'}</p>
+                <button
+                  type="button"
+                  className="text-left text-sm font-semibold text-slate-900 underline-offset-2 hover:underline"
+                  onDoubleClick={() => setServiceDetailModalId(service.id)}
+                >
+                  {service.name || 'Servicio'}
+                </button>
                 <p className="text-xs text-slate-500">
                   Cantidad: {service.quantity || 1} · Precio: {currency(Number(service.price || 0))}
                   {service.isAdjust ? ' · Ajuste' : ''}
@@ -505,13 +514,23 @@ export function VisitDetailPage() {
                   <div key={note.id} className="rounded-lg bg-slate-50 p-2 text-sm">
                     <p>{note.note}</p>
                     <div className="mt-1 flex gap-2">
-                      <button type="button" className="text-xs text-slate-600" onClick={() => patchVisitServiceNote(service.id, note.id, { isInternal: !note.isInternal }).then(() => queryClient.invalidateQueries({ queryKey: ['service-notes-batch'] }))}>Toggle interna</button>
+                      <button
+                        type="button"
+                        className={`rounded-full px-2 py-1 text-xs ${note.isInternal ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}
+                        onClick={() =>
+                          patchVisitServiceNote(service.id, note.id, { isInternal: !note.isInternal }).then(() =>
+                            queryClient.invalidateQueries({ queryKey: ['service-notes-batch'] }),
+                          )
+                        }
+                      >
+                        {note.isInternal ? 'Interna' : 'Pública'}
+                      </button>
                       <button type="button" className="text-xs text-red-600" onClick={() => deleteVisitServiceNote(service.id, note.id).then(() => queryClient.invalidateQueries({ queryKey: ['service-notes-batch'] }))}>Eliminar</button>
-                      <UploadButton onSelect={(file) => uploadVisitServiceNoteAttachment(note.id, file).then(() => queryClient.invalidateQueries({ queryKey: ['service-note-attachments-batch'] }))} />
+                      <MediaQuickAttach onSelect={(file) => uploadVisitServiceNoteAttachment(note.id, file).then(() => queryClient.invalidateQueries({ queryKey: ['service-note-attachments-batch'] }))} />
                     </div>
                     {(serviceAttachmentsQuery.data?.[note.id] || []).map((attachment) => (
                       <div key={attachment.id} className="mt-1 flex items-center justify-between text-xs">
-                        <a href={attachment.url || attachment.publicUrl || '#'} target="_blank" rel="noreferrer" className="truncate text-sky-700">{attachment.originalName || attachment.id}</a>
+                        <AttachmentPreview attachment={attachment} />
                         <button type="button" className="text-red-600" onClick={() => deleteVisitServiceNoteAttachment(note.id, attachment.id).then(() => queryClient.invalidateQueries({ queryKey: ['service-note-attachments-batch'] }))}>Eliminar</button>
                       </div>
                     ))}
@@ -636,14 +655,14 @@ export function VisitDetailPage() {
           <div className="w-full rounded-2xl bg-white p-4">
             <h4 className="text-sm font-semibold text-slate-900">Nueva nota de servicio</h4>
             <textarea className="input mt-2 min-h-20" placeholder="Descripción de la nota" value={noteModalText} onChange={(e) => setNoteModalText(e.target.value)} />
-            <label className="mt-2 flex items-center gap-2 text-sm text-slate-700">
-              <input type="checkbox" checked={noteModalIsInternal} onChange={(e) => setNoteModalIsInternal(e.target.checked)} />
-              Nota interna (desactiva para tracking cliente)
-            </label>
-            <label className="btn-secondary mt-2 h-10 w-full cursor-pointer justify-center">
-              Adjuntar foto/video/audio
-              <input type="file" className="hidden" accept="image/*,video/*,audio/*" onChange={(e) => setNoteModalFile(e.target.files?.[0] || null)} />
-            </label>
+            <button
+              type="button"
+              className={`mt-2 flex h-10 w-full items-center justify-center rounded-xl text-sm ${noteModalIsInternal ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}
+              onClick={() => setNoteModalIsInternal((value) => !value)}
+            >
+              {noteModalIsInternal ? 'Interna (oculta en tracking)' : 'Pública (visible en tracking)'}
+            </button>
+            <MediaQuickAttach onSelect={(file) => setNoteModalFile(file)} />
             {noteModalFile ? <p className="mt-1 text-xs text-slate-500">{noteModalFile.name}</p> : null}
             <div className="mt-3 grid grid-cols-2 gap-2">
               <button type="button" className="btn-secondary h-10 justify-center" onClick={() => setNoteModalServiceId(null)}>Cancelar</button>
@@ -696,6 +715,37 @@ export function VisitDetailPage() {
         </div>
       ) : null}
 
+      {selectedServiceDetail ? (
+        <div className="fixed inset-0 z-50 flex items-end bg-black/40 p-3">
+          <div className="w-full rounded-2xl bg-white p-4">
+            <h4 className="text-sm font-semibold text-slate-900">{selectedServiceDetail.name || 'Detalle de servicio'}</h4>
+            <p className="mt-1 text-xs text-slate-500">
+              Cantidad: {selectedServiceDetail.quantity || 1} · Precio: {currency(Number(selectedServiceDetail.price || 0))}
+            </p>
+            <div className="mt-3 max-h-72 space-y-2 overflow-y-auto">
+              {(serviceNotesQuery.data?.[selectedServiceDetail.id] || []).map((note) => (
+                <div key={note.id} className="rounded-lg border border-slate-200 p-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm text-slate-800">{note.note}</p>
+                    <span className={`rounded-full px-2 py-0.5 text-xs ${note.isInternal ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                      {note.isInternal ? 'Interna' : 'Pública'}
+                    </span>
+                  </div>
+                  {(serviceAttachmentsQuery.data?.[note.id] || []).map((attachment) => (
+                    <div key={attachment.id} className="mt-1">
+                      <AttachmentPreview attachment={attachment} />
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+            <button type="button" className="btn-secondary mt-3 h-10 w-full justify-center" onClick={() => setServiceDetailModalId(null)}>
+              Cerrar detalle
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       {isRegenerateModalOpen ? (
         <div className="fixed inset-0 z-50 flex items-end bg-black/40 p-3">
           <div className="w-full rounded-2xl bg-white p-4">
@@ -738,21 +788,38 @@ function QuickNoteForm({ onSubmit, isPending }: { onSubmit: (payload: { note: st
   );
 }
 
-function UploadButton({ onSelect }: { onSelect: (file: File) => void }) {
+function AttachmentPreview({ attachment }: { attachment: NoteAttachment }) {
+  const url = attachment.url || attachment.publicUrl || '';
+  const mimeType = attachment.mimeType || '';
+  if (!url) return <span className="truncate text-sky-700">{attachment.originalName || attachment.id}</span>;
+  if (mimeType.startsWith('image/')) {
+    return <img src={url} alt={attachment.originalName || 'image'} className="h-12 w-12 rounded object-cover" />;
+  }
+  if (mimeType.startsWith('video/')) {
+    return <video src={url} className="h-12 w-20 rounded object-cover" controls />;
+  }
+  if (mimeType.startsWith('audio/')) {
+    return <audio src={url} controls className="h-8 w-36" />;
+  }
   return (
-    <label className="btn-secondary h-8 cursor-pointer px-3 text-xs">
-      Adjuntar
-      <input
-        type="file"
-        className="hidden"
-        accept="image/*,video/*,audio/*"
-        onChange={(event) => {
-          const file = event.target.files?.[0];
-          if (!file) return;
-          onSelect(file);
-          event.target.value = '';
-        }}
-      />
-    </label>
+    <a href={url} target="_blank" rel="noreferrer" className="truncate text-sky-700">
+      {attachment.originalName || attachment.id}
+    </a>
+  );
+}
+
+function MediaQuickAttach({ onSelect }: { onSelect: (file: File) => void }) {
+  const photoId = `photo-${crypto.randomUUID()}`;
+  const videoId = `video-${crypto.randomUUID()}`;
+  const audioId = `audio-${crypto.randomUUID()}`;
+  return (
+    <div className="grid grid-cols-3 gap-1">
+      <label htmlFor={photoId} className="btn-secondary h-8 cursor-pointer px-2 text-[11px]">Foto</label>
+      <label htmlFor={videoId} className="btn-secondary h-8 cursor-pointer px-2 text-[11px]">Video</label>
+      <label htmlFor={audioId} className="btn-secondary h-8 cursor-pointer px-2 text-[11px]">Voz</label>
+      <input id={photoId} type="file" className="hidden" accept="image/*" capture="environment" onChange={(event) => { const file = event.target.files?.[0]; if (!file) return; onSelect(file); event.target.value = ''; }} />
+      <input id={videoId} type="file" className="hidden" accept="video/*" capture="environment" onChange={(event) => { const file = event.target.files?.[0]; if (!file) return; onSelect(file); event.target.value = ''; }} />
+      <input id={audioId} type="file" className="hidden" accept="audio/*" capture="user" onChange={(event) => { const file = event.target.files?.[0]; if (!file) return; onSelect(file); event.target.value = ''; }} />
+    </div>
   );
 }
