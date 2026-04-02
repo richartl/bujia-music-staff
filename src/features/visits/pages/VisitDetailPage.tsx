@@ -32,12 +32,13 @@ import { getVisitTimeline, getVisitTrackingLink, regenerateVisitTrackingLink } f
 import { getVisitDetail, getWorkshopVisitStatuses, patchVisit } from '../api/visitsApi';
 import type { NoteAttachment, UpdateVisitPayload, VisitNote } from '../api/types';
 
-type TabKey = 'summary' | 'services' | 'finance';
+type TabKey = 'summary' | 'services' | 'finance' | 'tracking';
 
 const TABS: Array<{ key: TabKey; label: string }> = [
   { key: 'summary', label: 'Resumen' },
   { key: 'services', label: 'Servicios' },
   { key: 'finance', label: 'Finanzas' },
+  { key: 'tracking', label: 'Tracking' },
 ];
 
 function getErrorMessage(error: unknown) {
@@ -76,6 +77,7 @@ export function VisitDetailPage() {
   const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
   const [isCancelVisitModalOpen, setIsCancelVisitModalOpen] = useState(false);
   const [paymentModalIndex, setPaymentModalIndex] = useState<number | null>(null);
+  const [uploadingCount, setUploadingCount] = useState(0);
   const queryClient = useQueryClient();
 
   const visitQuery = useQuery({
@@ -389,7 +391,9 @@ export function VisitDetailPage() {
       isInternal: noteModalIsInternal,
     });
     if (noteModalFile) {
-      await uploadVisitServiceNoteAttachment(createdNote.id, noteModalFile);
+      await withUploading(async () => {
+        await uploadVisitServiceNoteAttachment(createdNote.id, noteModalFile);
+      });
     }
     await queryClient.invalidateQueries({ queryKey: ['service-notes-batch'] });
     await queryClient.invalidateQueries({ queryKey: ['service-note-attachments-batch'] });
@@ -397,6 +401,15 @@ export function VisitDetailPage() {
     setNoteModalText('');
     setNoteModalIsInternal(false);
     setNoteModalFile(null);
+  }
+
+  async function withUploading(task: () => Promise<void>) {
+    setUploadingCount((value) => value + 1);
+    try {
+      await task();
+    } finally {
+      setUploadingCount((value) => Math.max(0, value - 1));
+    }
   }
 
   if (!instrumentId) {
@@ -411,8 +424,24 @@ export function VisitDetailPage() {
     return <section className="card p-4 text-sm text-red-700">{getErrorMessage(visitQuery.error)}</section>;
   }
 
+  const isBusy =
+    uploadingCount > 0 ||
+    createNoteMutation.isPending ||
+    createServiceMutation.isPending ||
+    updateVisitMutation.isPending ||
+    saveTrackingLinkMutation.isPending ||
+    notesQuery.isFetching ||
+    servicesQuery.isFetching ||
+    timelineQuery.isFetching;
+
   return (
     <div className="space-y-3">
+      {isBusy ? (
+        <div className="fixed right-3 top-3 z-50 flex items-center gap-2 rounded-full bg-slate-900 px-3 py-2 text-xs text-white shadow-lg">
+          <Spinner />
+          Procesando…
+        </div>
+      ) : null}
       <section className="card p-4">
         <p className="text-xs font-semibold text-slate-500">{visit.folio}</p>
         <h1 className="mt-1 text-lg font-semibold text-slate-900">{visit.instrument?.name || 'Detalle de visita'}</h1>
@@ -449,7 +478,7 @@ export function VisitDetailPage() {
       </section>
 
       <section className="card p-2">
-        <div className="grid grid-cols-5 gap-1">
+        <div className="grid grid-cols-4 gap-1">
           {TABS.map((item) => (
             <button
               key={item.key}
@@ -514,7 +543,14 @@ export function VisitDetailPage() {
                 <button type="button" className="btn-secondary h-9 px-3" onClick={() => updateVisitNote(visitId, note.id, { isInternal: !note.isInternal }).then(() => queryClient.invalidateQueries({ queryKey: ['visit-notes', visitId] }))}>
                   Cambiar visibilidad
                 </button>
-                <MediaQuickAttach onSelect={(file) => uploadVisitNoteAttachment(note.id, file).then(() => queryClient.invalidateQueries({ queryKey: ['visit-note-attachments'] }))} />
+                <MediaQuickAttach
+                  onSelect={(file) =>
+                    withUploading(async () => {
+                      await uploadVisitNoteAttachment(note.id, file);
+                      await queryClient.invalidateQueries({ queryKey: ['visit-note-attachments'] });
+                    })
+                  }
+                />
               </div>
               <div className="mt-2 space-y-1">
                 {(noteAttachmentsQueries.data?.[note.id] || []).map((attachment) => (
@@ -615,6 +651,46 @@ export function VisitDetailPage() {
               </button>
             ))
           )}
+        </section>
+      ) : null}
+
+      {tab === 'tracking' ? (
+        <section className="card space-y-3 p-4">
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <h3 className="text-sm font-semibold text-slate-800">Tracking interno</h3>
+            <p className="mt-1 break-all text-xs text-sky-700">{resolvedTrackingUrl || 'No disponible'}</p>
+            <div className="mt-2 flex gap-2">
+              <button type="button" className="btn-secondary h-9 px-3" onClick={() => navigator.clipboard.writeText(resolvedTrackingUrl)} disabled={!resolvedTrackingUrl}>Copiar</button>
+              <button type="button" className="btn-primary h-9 px-3" onClick={() => setIsRegenerateModalOpen(true)}>Regenerar</button>
+            </div>
+          </div>
+          <div className="space-y-2">
+            {normalizedTrackingItems.map((event) => (
+              <article
+                key={`${event.type}-${event.occurredAt}-${event.title}`}
+                className={`rounded-xl border p-3 ${
+                  event.type.includes('INTERNA')
+                    ? 'border-amber-300 bg-gradient-to-r from-amber-50 to-yellow-50'
+                    : event.type.includes('SERVICIO')
+                      ? 'border-blue-300 bg-gradient-to-r from-blue-50 to-indigo-50'
+                      : 'border-emerald-300 bg-gradient-to-r from-emerald-50 to-lime-50'
+                }`}
+              >
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">{event.type}</p>
+                <p className="mt-1 text-sm font-medium text-slate-900">{event.title}</p>
+                <p className="text-xs text-slate-500">{event.occurredAt ? dateTime(event.occurredAt) : '-'}</p>
+                {(event.attachments || []).length ? (
+                  <div className="mt-2 space-y-1">
+                    {(event.attachments || []).map((attachment) => (
+                      <div key={attachment.id} className="rounded bg-white/70 p-1">
+                        <AttachmentPreview attachment={attachment} onOpen={setMediaPreview} />
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </article>
+            ))}
+          </div>
         </section>
       ) : null}
 
@@ -913,6 +989,10 @@ function QuickNoteForm({ onSubmit, isPending }: { onSubmit: (payload: { note: st
       </button>
     </div>
   );
+}
+
+function Spinner() {
+  return <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />;
 }
 
 function detectMimeType(attachment: NoteAttachment) {
