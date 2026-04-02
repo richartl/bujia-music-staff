@@ -32,8 +32,8 @@ export type VisitResponse = {
   desiredTuningId?: string | null;
   stringGaugeId?: string | null;
   branch?: { id: string; name: string } | null;
-  client?: { id: string; fullName?: string; firstName?: string; lastName?: string } | null;
-  instrument?: { id: string; name?: string; model?: string } | null;
+  client?: { id: string; fullName?: string; firstName?: string; lastName?: string; phone?: string } | null;
+  instrument?: { id: string; name?: string; model?: string; colorName?: string } | null;
 };
 
 export type UpdateVisitPayload = Partial<{

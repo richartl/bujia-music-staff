@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { authStore } from '@/stores/auth-store';
 import { currency, dateTime } from '@/lib/utils';
-import { getVisitsByInstrument, getWorkshopVisitStatuses } from '../api/visitsApi';
+import { getWorkshopVisitStatuses, getWorkshopVisits } from '../api/visitsApi';
 
 function statusColor(color?: string | null) {
   if (!color) return '#0f172a';
@@ -12,15 +12,13 @@ function statusColor(color?: string | null) {
 
 export function VisitsBoardPage() {
   const workshopId = authStore((state) => state.workshopId);
-  const [instrumentId, setInstrumentId] = useState('');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
-  const [onlyActive, setOnlyActive] = useState(true);
 
   const visitsQuery = useQuery({
-    queryKey: ['visits-by-instrument', workshopId, instrumentId],
-    queryFn: () => getVisitsByInstrument(workshopId!, instrumentId),
-    enabled: !!workshopId && !!instrumentId,
+    queryKey: ['workshop-visits', workshopId],
+    queryFn: () => getWorkshopVisits(workshopId!),
+    enabled: !!workshopId,
   });
 
   const statusesQuery = useQuery({
@@ -32,31 +30,25 @@ export function VisitsBoardPage() {
   const filteredVisits = useMemo(() => {
     const items = visitsQuery.data || [];
     return items.filter((visit) => {
-      if (onlyActive && !visit.isActive) return false;
+      if (!visit.isActive) return false;
       if (statusFilter !== 'ALL' && (visit.statusId || visit.status?.id) !== statusFilter) return false;
-      const haystack = `${visit.folio} ${visit.client?.fullName || ''} ${visit.instrument?.name || ''}`.toLowerCase();
+      const haystack = `${visit.folio} ${visit.client?.fullName || ''} ${visit.client?.phone || ''} ${visit.instrument?.name || ''} ${visit.instrument?.model || ''} ${visit.instrument?.colorName || ''}`.toLowerCase();
       if (search.trim() && !haystack.includes(search.trim().toLowerCase())) return false;
       return true;
     });
-  }, [onlyActive, search, statusFilter, visitsQuery.data]);
+  }, [search, statusFilter, visitsQuery.data]);
 
   return (
     <div className="space-y-3">
       <section className="card p-4">
         <h1 className="section-title">Visitas activas</h1>
-        <p className="mt-1 text-sm text-slate-500">Mobile first: busca por instrumento y filtra rápidamente.</p>
+        <p className="mt-1 text-sm text-slate-500">Visitas activas del taller para uso diario en mostrador.</p>
 
         <div className="mt-3 space-y-2">
           <input
             className="input h-11"
-            value={instrumentId}
-            placeholder="Instrument ID (requerido para backend)"
-            onChange={(event) => setInstrumentId(event.target.value)}
-          />
-          <input
-            className="input h-11"
             value={search}
-            placeholder="Buscar por folio / cliente / instrumento"
+            placeholder="Buscar por folio, teléfono cliente, modelo o color"
             onChange={(event) => setSearch(event.target.value)}
           />
           <select className="input h-11" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
@@ -67,10 +59,6 @@ export function VisitsBoardPage() {
               </option>
             ))}
           </select>
-          <label className="flex items-center gap-2 text-sm text-slate-600">
-            <input type="checkbox" checked={onlyActive} onChange={(event) => setOnlyActive(event.target.checked)} />
-            Solo activas (`isActive === true`)
-          </label>
         </div>
       </section>
 
@@ -83,7 +71,7 @@ export function VisitsBoardPage() {
       ) : null}
 
       {!filteredVisits.length && !visitsQuery.isLoading ? (
-        <section className="card p-4 text-sm text-slate-500">Sin resultados. Ajusta filtros o instrumentId.</section>
+        <section className="card p-4 text-sm text-slate-500">Sin resultados. Ajusta filtros o búsqueda.</section>
       ) : null}
 
       <section className="grid gap-3">
@@ -93,7 +81,7 @@ export function VisitsBoardPage() {
               <div>
                 <p className="text-xs font-semibold text-slate-500">{visit.folio}</p>
                 <h3 className="text-base font-semibold text-slate-900">{visit.instrument?.name || 'Instrumento'}</h3>
-                <p className="text-sm text-slate-500">{visit.client?.fullName || 'Cliente sin nombre'}</p>
+                <p className="text-sm text-slate-500">{visit.client?.fullName || 'Cliente sin nombre'} {visit.client?.phone ? `· ${visit.client.phone}` : ''}</p>
               </div>
               <span
                 className="rounded-full px-2 py-1 text-xs font-semibold"
@@ -107,6 +95,8 @@ export function VisitsBoardPage() {
               <p className="text-right font-semibold text-slate-900">{currency(Number(visit.total || 0))}</p>
               <p className="text-slate-500">Apertura</p>
               <p className="text-right text-slate-700">{visit.openedAt ? dateTime(visit.openedAt) : '-'}</p>
+              <p className="text-slate-500">Modelo / Color</p>
+              <p className="text-right text-slate-700">{visit.instrument?.model || '-'} {visit.instrument?.colorName ? `· ${visit.instrument.colorName}` : ''}</p>
             </div>
             <Link
               to={`/app/visits/${visit.id}?instrumentId=${visit.instrumentId}`}

@@ -8,6 +8,11 @@ export async function getVisitsByInstrument(workshopId: string, instrumentId: st
   return data;
 }
 
+export async function getWorkshopVisits(workshopId: string) {
+  const { data } = await http.get<VisitResponse[]>(`/workshops/${workshopId}/visits`);
+  return data;
+}
+
 export async function getVisitDetail(workshopId: string, instrumentId: string, visitId: string) {
   const { data } = await http.get<VisitResponse>(
     `/workshops/${workshopId}/instruments/${instrumentId}/visits/${visitId}`,

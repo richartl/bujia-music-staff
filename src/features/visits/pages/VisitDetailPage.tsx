@@ -179,6 +179,14 @@ export function VisitDetailPage() {
     return statusesQuery.data?.find((status) => status.id === visit?.statusId)?.name || 'Sin estatus';
   }, [statusesQuery.data, visit?.status?.name, visit?.statusId]);
 
+  const resolvedTrackingUrl = useMemo(() => {
+    const publicUrl = trackingLinkQuery.data?.publicUrl;
+    if (!publicUrl) return '';
+    if (publicUrl.startsWith('http://') || publicUrl.startsWith('https://')) return publicUrl;
+    const base = typeof window !== 'undefined' ? window.location.origin : '';
+    return `${base}${publicUrl.startsWith('/') ? publicUrl : `/${publicUrl}`}`;
+  }, [trackingLinkQuery.data?.publicUrl]);
+
   if (!instrumentId) {
     return <section className="card p-4 text-sm text-amber-700">Falta `instrumentId` en la URL.</section>;
   }
@@ -197,6 +205,18 @@ export function VisitDetailPage() {
         <p className="text-xs font-semibold text-slate-500">{visit.folio}</p>
         <h1 className="mt-1 text-lg font-semibold text-slate-900">{visit.instrument?.name || 'Detalle de visita'}</h1>
         <p className="text-sm text-slate-500">{visit.client?.fullName || 'Cliente'} · {currentStatus}</p>
+        <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 p-2">
+          <p className="text-[11px] font-semibold uppercase text-slate-500">Tracking público</p>
+          <p className="mt-1 break-all text-xs text-sky-700">{resolvedTrackingUrl || 'No disponible'}</p>
+          <button
+            type="button"
+            className="btn-secondary mt-2 h-8 px-3"
+            onClick={() => navigator.clipboard.writeText(resolvedTrackingUrl)}
+            disabled={!resolvedTrackingUrl}
+          >
+            Copiar URL completa
+          </button>
+        </div>
 
         <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
           <p className="text-slate-500">Total</p>
@@ -323,9 +343,9 @@ export function VisitDetailPage() {
 
           <div className="rounded-lg border border-slate-200 p-3">
             <h4 className="text-sm font-semibold text-slate-800">Link público</h4>
-            <p className="mt-1 break-all text-xs text-sky-700">{trackingLinkQuery.data?.publicUrl || 'No disponible'}</p>
+            <p className="mt-1 break-all text-xs text-sky-700">{resolvedTrackingUrl || 'No disponible'}</p>
             <div className="mt-2 flex gap-2">
-              <button type="button" className="btn-secondary h-9 px-3" onClick={() => navigator.clipboard.writeText(trackingLinkQuery.data?.publicUrl || '')}>Copiar</button>
+              <button type="button" className="btn-secondary h-9 px-3" onClick={() => navigator.clipboard.writeText(resolvedTrackingUrl)} disabled={!resolvedTrackingUrl}>Copiar</button>
               <button type="button" className="btn-primary h-9 px-3" onClick={() => setIsRegenerateModalOpen(true)}>Regenerar</button>
             </div>
           </div>
