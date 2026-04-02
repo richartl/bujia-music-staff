@@ -15,6 +15,14 @@ async function uploadBinary(uploadUrl: string, file: File, headers?: Record<stri
   await filesApi.putBinaryToSignedUrl(uploadUrl, file, headers || {});
 }
 
+function resolveUploadUrl(payload: { uploadUrl?: string; signedUrl?: string; upload?: { uploadUrl?: string; signedUrl?: string; url?: string } }) {
+  return payload.uploadUrl || payload.signedUrl || payload.upload?.uploadUrl || payload.upload?.signedUrl || payload.upload?.url;
+}
+
+function resolveAttachmentId(payload: { attachmentId?: string; attachment?: { id: string } }) {
+  return payload.attachmentId || payload.attachment?.id;
+}
+
 export async function uploadVisitNoteAttachment(noteId: string, file: File) {
   const payload = {
     originalName: file.name.slice(0, 255),
@@ -29,7 +37,9 @@ export async function uploadVisitNoteAttachment(noteId: string, file: File) {
       payload,
     );
 
-    await uploadBinary(init.uploadUrl, file, init.requiredHeaders);
+    const uploadUrl = resolveUploadUrl(init);
+    if (!uploadUrl) throw new Error('UPLOAD_URL_MISSING');
+    await uploadBinary(uploadUrl, file, init.requiredHeaders);
 
     const { data: attached } = await http.post<NoteAttachment>(
       `/visit-notes/${noteId}/attachments/attach-media-v2`,
@@ -38,16 +48,20 @@ export async function uploadVisitNoteAttachment(noteId: string, file: File) {
       },
     );
 
-    const attachmentId = attached.id || init.attachmentId;
-    await http.post(`/visit-notes/${noteId}/attachments/${attachmentId}/complete`, {
-      sizeBytes: file.size,
-    });
+    const attachmentId = attached.id || resolveAttachmentId(init);
+    await http.post(`/visit-notes/${noteId}/attachments/${attachmentId}/complete`, {});
   } catch {
     const { data: fallback } = await http.post<PrepareUploadResponse>(
       `/visit-notes/${noteId}/attachments/prepare-upload`,
       payload,
     );
-    await uploadBinary(fallback.uploadUrl, file, fallback.requiredHeaders);
+    const uploadUrl = resolveUploadUrl(fallback);
+    if (!uploadUrl) throw new Error('UPLOAD_URL_MISSING');
+    await uploadBinary(uploadUrl, file, fallback.requiredHeaders);
+    const attachmentId = resolveAttachmentId(fallback);
+    if (attachmentId) {
+      await http.post(`/visit-notes/${noteId}/attachments/${attachmentId}/complete`, {});
+    }
   }
 }
 
@@ -79,7 +93,9 @@ export async function uploadVisitServiceNoteAttachment(noteId: string, file: Fil
       payload,
     );
 
-    await uploadBinary(init.uploadUrl, file, init.requiredHeaders);
+    const uploadUrl = resolveUploadUrl(init);
+    if (!uploadUrl) throw new Error('UPLOAD_URL_MISSING');
+    await uploadBinary(uploadUrl, file, init.requiredHeaders);
 
     const { data: attached } = await http.post<NoteAttachment>(
       `/visit-service-notes/${noteId}/attachments/attach-media-v2`,
@@ -88,16 +104,20 @@ export async function uploadVisitServiceNoteAttachment(noteId: string, file: Fil
       },
     );
 
-    const attachmentId = attached.id || init.attachmentId;
-    await http.post(`/visit-service-notes/${noteId}/attachments/${attachmentId}/complete`, {
-      sizeBytes: file.size,
-    });
+    const attachmentId = attached.id || resolveAttachmentId(init);
+    await http.post(`/visit-service-notes/${noteId}/attachments/${attachmentId}/complete`, {});
   } catch {
     const { data: fallback } = await http.post<PrepareUploadResponse>(
       `/visit-service-notes/${noteId}/attachments/prepare-upload`,
       payload,
     );
-    await uploadBinary(fallback.uploadUrl, file, fallback.requiredHeaders);
+    const uploadUrl = resolveUploadUrl(fallback);
+    if (!uploadUrl) throw new Error('UPLOAD_URL_MISSING');
+    await uploadBinary(uploadUrl, file, fallback.requiredHeaders);
+    const attachmentId = resolveAttachmentId(fallback);
+    if (attachmentId) {
+      await http.post(`/visit-service-notes/${noteId}/attachments/${attachmentId}/complete`, {});
+    }
   }
 }
 

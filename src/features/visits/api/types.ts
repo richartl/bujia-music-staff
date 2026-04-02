@@ -131,14 +131,20 @@ export type TrackingResponse = {
 };
 
 export type InitAttachmentUploadV2Response = {
-  attachmentId: string;
-  mediaId: string;
-  uploadUrl: string;
+  attachmentId?: string;
+  mediaId?: string;
+  uploadUrl?: string;
+  signedUrl?: string;
+  attachment?: { id: string };
+  upload?: { uploadUrl?: string; signedUrl?: string; url?: string };
   requiredHeaders?: Record<string, string>;
 };
 
 export type PrepareUploadResponse = {
-  uploadUrl: string;
+  uploadUrl?: string;
+  signedUrl?: string;
+  attachment?: { id: string };
+  upload?: { uploadUrl?: string; signedUrl?: string; url?: string };
   requiredHeaders?: Record<string, string>;
   attachmentId?: string;
 };
