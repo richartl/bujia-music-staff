@@ -5,9 +5,6 @@ import {
   CheckCircle2,
   ChevronRight,
   Loader2,
-  MessageSquare,
-  Mic,
-  Paperclip,
   Phone,
   PlusCircle,
   Search,
@@ -23,6 +20,7 @@ import { createIntake } from '../api/create-intake';
 import { getClientInstruments } from '../api/get-client-instruments';
 import { getIntakeLookups } from '../api/get-intake-lookups';
 import { CatalogSelectWithCustom } from '../components/CatalogSelectWithCustom';
+import { IntakeMediaUploader } from '../components/IntakeMediaUploader';
 import {
   createWorkshopBrand,
   createWorkshopColor,
@@ -197,6 +195,9 @@ export function IntakesPage() {
   const [showSuccessOverlay, setShowSuccessOverlay] = useState(false);
   const [affiliateCode, setAffiliateCode] = useState('');
   const [paymentLines, setPaymentLines] = useState<IntakePaymentLine[]>([]);
+  const [uploadedMediaIds, setUploadedMediaIds] = useState<string[]>([]);
+  const [hasBlockingMediaUploads, setHasBlockingMediaUploads] = useState(false);
+  const [mediaToast, setMediaToast] = useState('');
 
   const [submitMessage, setSubmitMessage] = useState('');
   const [submitError, setSubmitError] = useState('');
@@ -323,7 +324,7 @@ export function IntakesPage() {
     hasCase ||
     !!affiliateCode.trim() ||
     paymentLines.some((line) => Number(line.amount || 0) > 0);
-  const canSubmitIntake = canMoveToVisit && !!branchId && hasVisitDetails;
+  const canSubmitIntake = canMoveToVisit && !!branchId && hasVisitDetails && !hasBlockingMediaUploads;
   const filteredRegularServices = useMemo(() => {
     const query = serviceSearch.trim().toLowerCase();
     if (!query) return regularServices;
@@ -335,6 +336,12 @@ export function IntakesPage() {
     const timer = window.setTimeout(() => setServiceToast(''), 1200);
     return () => window.clearTimeout(timer);
   }, [serviceToast]);
+
+  useEffect(() => {
+    if (!mediaToast) return;
+    const timer = window.setTimeout(() => setMediaToast(''), 1800);
+    return () => window.clearTimeout(timer);
+  }, [mediaToast]);
 
   useEffect(() => {
     if (!showSuccessOverlay) return;
@@ -612,6 +619,7 @@ export function IntakesPage() {
           price: line.unitPrice,
           notes: line.notes?.trim() || undefined,
         })),
+        visitMediaIds: uploadedMediaIds.length ? uploadedMediaIds : undefined,
       };
 
       return createIntake(workshopId, payload);
@@ -640,6 +648,8 @@ export function IntakesPage() {
       setHasCase(false);
       setAffiliateCode('');
       setPaymentLines([]);
+      setUploadedMediaIds([]);
+      setHasBlockingMediaUploads(false);
       setExpandedServiceIds([]);
       setShowConfirmIntakeModal(false);
       setActiveStep('client');
@@ -1321,23 +1331,14 @@ export function IntakesPage() {
                 />
               </div>
 
-              <div className="rounded-xl bg-slate-50 p-3 text-sm text-slate-700">
-                <div className="font-medium text-slate-900">Media y notas (pendiente siguiente iteración)</div>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <span className="chip bg-white text-slate-700">
-                    <Paperclip className="mr-1 h-3 w-3" />
-                    Foto/Video/Doc
-                  </span>
-                  <span className="chip bg-white text-slate-700">
-                    <Mic className="mr-1 h-3 w-3" />
-                    Nota de voz
-                  </span>
-                  <span className="chip bg-white text-slate-700">
-                    <MessageSquare className="mr-1 h-3 w-3" />
-                    Notas
-                  </span>
-                </div>
-              </div>
+              {workshopId ? (
+                <IntakeMediaUploader
+                  workshopId={workshopId}
+                  onUploadedMediaIdsChange={setUploadedMediaIds}
+                  onBlockingUploadsChange={setHasBlockingMediaUploads}
+                  onFileErrorToast={setMediaToast}
+                />
+              ) : null}
             </div>
           )}
         </article>
@@ -1374,6 +1375,11 @@ export function IntakesPage() {
       {serviceToast ? (
         <div className="fixed right-3 top-4 z-40 rounded-xl bg-emerald-600 px-3 py-2 text-sm text-white shadow-lg">
           {serviceToast}
+        </div>
+      ) : null}
+      {mediaToast ? (
+        <div className="fixed right-3 top-16 z-40 rounded-xl bg-red-600 px-3 py-2 text-sm text-white shadow-lg">
+          {mediaToast}
         </div>
       ) : null}
 
