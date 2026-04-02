@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent } from 'react';
-import { Camera, FilePlus2, ImagePlus, Loader2, Mic, RefreshCw, Trash2, UploadCloud } from 'lucide-react';
+import { Camera, Clapperboard, FilePlus2, ImagePlus, Loader2, Mic, RefreshCw, Trash2, UploadCloud } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   useIntakeMediaUpload,
@@ -41,6 +41,7 @@ export function IntakeMediaUploader({
 }: IntakeMediaUploaderProps) {
   const [isDragActive, setIsDragActive] = useState(false);
   const photoInputRef = useRef<HTMLInputElement | null>(null);
+  const videoInputRef = useRef<HTMLInputElement | null>(null);
   const audioInputRef = useRef<HTMLInputElement | null>(null);
   const filesInputRef = useRef<HTMLInputElement | null>(null);
   const scope = useMemo(() => `workshop:${workshopId}/intake:new`, [workshopId]);
@@ -121,6 +122,12 @@ export function IntakeMediaUploader({
     audioInputRef.current?.click();
   }
 
+  async function onTakeVideo() {
+    const allowed = await requestDevicePermission('camera');
+    if (!allowed) return;
+    videoInputRef.current?.click();
+  }
+
   return (
     <section className="space-y-3 rounded-xl border border-slate-200 p-3">
       <div className="flex items-center justify-between gap-2">
@@ -151,11 +158,19 @@ export function IntakeMediaUploader({
         <p className="mt-2 text-sm text-slate-700">Arrastra archivos o toca para seleccionar</p>
       </label>
 
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         <input
           ref={photoInputRef}
           type="file"
           accept="image/*"
+          capture="environment"
+          className="hidden"
+          onChange={onInputChange}
+        />
+        <input
+          ref={videoInputRef}
+          type="file"
+          accept="video/*"
           capture="environment"
           className="hidden"
           onChange={onInputChange}
@@ -172,7 +187,7 @@ export function IntakeMediaUploader({
           ref={filesInputRef}
           type="file"
           multiple
-          accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.txt"
+          accept="image/*,video/*,audio/*"
           className="hidden"
           onChange={onInputChange}
         />
@@ -180,6 +195,10 @@ export function IntakeMediaUploader({
         <button type="button" className="btn-secondary h-10 justify-center gap-2" onClick={onTakePhoto}>
           <Camera className="h-4 w-4" />
           Tomar foto
+        </button>
+        <button type="button" className="btn-secondary h-10 justify-center gap-2" onClick={onTakeVideo}>
+          <Clapperboard className="h-4 w-4" />
+          Tomar video
         </button>
         <button type="button" className="btn-secondary h-10 justify-center gap-2" onClick={onRecordAudio}>
           <Mic className="h-4 w-4" />
@@ -191,7 +210,7 @@ export function IntakeMediaUploader({
           onClick={() => filesInputRef.current?.click()}
         >
           <FilePlus2 className="h-4 w-4" />
-          Agregar archivos
+          Agregar media
         </button>
       </div>
 
