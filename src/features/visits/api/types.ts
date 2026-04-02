@@ -6,6 +6,18 @@ export type VisitStatusCatalog = {
   isActive?: boolean;
 };
 
+export type VisitFilters = {
+  search: string;
+  statusId: string;
+  createdByUserId: string;
+  branchId: string;
+  clientId: string;
+  instrumentId: string;
+  isActive: '' | 'true' | 'false';
+  openedFrom: string;
+  openedTo: string;
+};
+
 export type VisitResponse = {
   id: string;
   workshopId: string;

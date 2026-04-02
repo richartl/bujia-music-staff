@@ -180,12 +180,44 @@ export function VisitDetailPage() {
   }, [statusesQuery.data, visit?.status?.name, visit?.statusId]);
 
   const resolvedTrackingUrl = useMemo(() => {
-    const publicUrl = trackingLinkQuery.data?.publicUrl;
-    if (!publicUrl) return '';
-    if (publicUrl.startsWith('http://') || publicUrl.startsWith('https://')) return publicUrl;
+    const payloadUrl = trackingLinkQuery.data?.publicUrl;
+    const token = trackingLinkQuery.data?.token || payloadUrl?.split('/').filter(Boolean).slice(-1)[0];
+    if (!token) return '';
     const base = typeof window !== 'undefined' ? window.location.origin : '';
-    return `${base}${publicUrl.startsWith('/') ? publicUrl : `/${publicUrl}`}`;
-  }, [trackingLinkQuery.data?.publicUrl]);
+    return `${base}/tracking/${token}`;
+  }, [trackingLinkQuery.data?.publicUrl, trackingLinkQuery.data?.token]);
+
+  const normalizedTrackingItems = useMemo(() => {
+    const internalTimeline = (Array.isArray(timelineQuery.data) ? timelineQuery.data : []).map((event) => ({
+      type: event.eventType,
+      title: event.title || event.description || event.eventType,
+      occurredAt: event.occurredAt || '',
+      attachments: [] as NoteAttachment[],
+    }));
+    const visitNotes = (notesQuery.data || []).map((note) => ({
+      type: note.isInternal ? 'NOTA_INTERNA' : 'NOTA_CLIENTE',
+      title: note.note,
+      occurredAt: note.createdAt || note.updatedAt || '',
+      attachments: noteAttachmentsQueries.data?.[note.id] || [],
+    }));
+    const serviceNotes = Object.values(serviceNotesQuery.data || {})
+      .flat()
+      .map((note) => ({
+        type: note.isInternal ? 'NOTA_SERVICIO_INTERNA' : 'NOTA_SERVICIO_CLIENTE',
+        title: note.note,
+        occurredAt: note.createdAt || note.updatedAt || '',
+        attachments: serviceAttachmentsQuery.data?.[note.id] || [],
+      }));
+
+    return [...internalTimeline, ...visitNotes, ...serviceNotes]
+      .sort((a, b) => new Date(b.occurredAt || 0).getTime() - new Date(a.occurredAt || 0).getTime());
+  }, [
+    noteAttachmentsQueries.data,
+    notesQuery.data,
+    serviceAttachmentsQuery.data,
+    serviceNotesQuery.data,
+    timelineQuery.data,
+  ]);
 
   if (!instrumentId) {
     return <section className="card p-4 text-sm text-amber-700">Falta `instrumentId` en la URL.</section>;
@@ -331,13 +363,28 @@ export function VisitDetailPage() {
 
       {tab === 'tracking' ? (
         <section className="card space-y-3 p-4">
-          <h3 className="text-sm font-semibold text-slate-800">Timeline interno</h3>
+          <h3 className="text-sm font-semibold text-slate-800">Timeline interno (histórico completo)</h3>
           {timelineQuery.isLoading ? <p className="text-sm text-slate-500">Cargando timeline…</p> : null}
-          {(timelineQuery.data || []).map((event) => (
-            <div key={`${event.eventType}-${event.occurredAt}-${event.title}`} className="rounded-lg border border-slate-200 p-2">
-              <p className="text-xs font-semibold text-slate-500">{event.eventType}</p>
-              <p className="text-sm text-slate-800">{event.title || event.description}</p>
+          {normalizedTrackingItems.map((event) => (
+            <div key={`${event.type}-${event.occurredAt}-${event.title}`} className="rounded-lg border border-slate-200 p-2">
+              <p className="text-xs font-semibold text-slate-500">{event.type}</p>
+              <p className="text-sm text-slate-800">{event.title}</p>
               <p className="text-xs text-slate-500">{event.occurredAt ? dateTime(event.occurredAt) : '-'}</p>
+              {(event.attachments || []).length ? (
+                <div className="mt-2 space-y-1">
+                  {(event.attachments || []).map((attachment) => (
+                    <a
+                      key={attachment.id}
+                      href={attachment.url || attachment.publicUrl || '#'}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="block truncate text-xs text-sky-700"
+                    >
+                      📎 {attachment.originalName || attachment.id}
+                    </a>
+                  ))}
+                </div>
+              ) : null}
             </div>
           ))}
 

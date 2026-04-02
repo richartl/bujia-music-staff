@@ -3,8 +3,11 @@ import { apiClient } from '@/lib/apiClient';
 import type { TrackingLinkResponse, TrackingResponse, VisitTimelineEvent } from './types';
 
 export async function getVisitTimeline(visitId: string) {
-  const { data } = await http.get<VisitTimelineEvent[]>(`/visits/${visitId}/timeline`);
-  return data;
+  const { data } = await http.get<VisitTimelineEvent[] | { timeline?: VisitTimelineEvent[] }>(
+    `/visits/${visitId}/timeline`,
+  );
+  if (Array.isArray(data)) return data;
+  return data.timeline || [];
 }
 
 export async function getVisitTrackingLink(visitId: string) {

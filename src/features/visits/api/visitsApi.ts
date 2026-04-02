@@ -1,5 +1,5 @@
 import { http } from '@/lib/http';
-import type { UpdateVisitPayload, VisitResponse, VisitStatusCatalog } from './types';
+import type { UpdateVisitPayload, VisitFilters, VisitResponse, VisitStatusCatalog } from './types';
 
 export async function getVisitsByInstrument(workshopId: string, instrumentId: string) {
   const { data } = await http.get<VisitResponse[]>(
@@ -10,6 +10,14 @@ export async function getVisitsByInstrument(workshopId: string, instrumentId: st
 
 export async function getWorkshopVisits(workshopId: string) {
   const { data } = await http.get<VisitResponse[]>(`/workshops/${workshopId}/visits`);
+  return data;
+}
+
+export async function getWorkshopVisitsWithFilters(workshopId: string, filters: VisitFilters) {
+  const params = Object.fromEntries(
+    Object.entries(filters).filter(([, value]) => value !== '' && value !== undefined && value !== null),
+  );
+  const { data } = await http.get<VisitResponse[]>(`/workshops/${workshopId}/visits`, { params });
   return data;
 }
 
