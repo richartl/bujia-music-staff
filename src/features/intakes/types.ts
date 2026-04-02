@@ -106,4 +106,5 @@ export type CreateIntakePayload = {
     price: number;
     notes?: string;
   }>;
+  visitMediaIds?: string[];
 };

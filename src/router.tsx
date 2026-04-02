@@ -8,10 +8,13 @@ import { VisitDetailPage } from './features/visits/pages/VisitDetailPage';
 import { CatalogsPage } from './features/catalogs/pages/CatalogsPage';
 import { SettingsPage } from './features/settings/pages/SettingsPage';
 import { ProtectedRoute } from './features/auth/components/ProtectedRoute';
+import { PublicTrackingPage } from './features/tracking/pages/PublicTrackingPage';
+import { RouteErrorFallback } from './components/RouteErrorFallback';
 
 export const router = createBrowserRouter([
-  { path: '/', element: <Navigate to="/app/intakes" replace /> },
-  { path: '/login', element: <LoginPage /> },
+  { path: '/', element: <Navigate to="/app/intakes" replace />, errorElement: <RouteErrorFallback /> },
+  { path: '/login', element: <LoginPage />, errorElement: <RouteErrorFallback /> },
+  { path: '/tracking/:token', element: <PublicTrackingPage />, errorElement: <RouteErrorFallback /> },
   {
     path: '/app',
     element: (
@@ -19,6 +22,7 @@ export const router = createBrowserRouter([
         <AppLayout />
       </ProtectedRoute>
     ),
+    errorElement: <RouteErrorFallback />,
     children: [
       { index: true, element: <Navigate to="/app/intakes" replace /> },
       { path: 'intakes', element: <IntakesPage /> },
