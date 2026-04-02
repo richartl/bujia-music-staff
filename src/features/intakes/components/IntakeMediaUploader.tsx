@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState, type ChangeEvent, type DragEvent } from 'react';
-import { ImagePlus, Loader2, RefreshCw, Trash2, UploadCloud } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent } from 'react';
+import { Camera, FilePlus2, ImagePlus, Loader2, Mic, RefreshCw, Trash2, UploadCloud } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   useIntakeMediaUpload,
@@ -40,6 +40,9 @@ export function IntakeMediaUploader({
   onFileErrorToast,
 }: IntakeMediaUploaderProps) {
   const [isDragActive, setIsDragActive] = useState(false);
+  const photoInputRef = useRef<HTMLInputElement | null>(null);
+  const audioInputRef = useRef<HTMLInputElement | null>(null);
+  const filesInputRef = useRef<HTMLInputElement | null>(null);
   const scope = useMemo(() => `workshop:${workshopId}/intake:new`, [workshopId]);
 
   const { items, addFiles, removeFile, retryFile, uploadedMediaIds, hasBlockingUploads } =
@@ -84,6 +87,40 @@ export function IntakeMediaUploader({
     addFiles(event.dataTransfer.files);
   }
 
+  async function requestDevicePermission(kind: 'camera' | 'microphone') {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      return true;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: kind === 'camera',
+        audio: kind === 'microphone',
+      });
+      stream.getTracks().forEach((track) => track.stop());
+      return true;
+    } catch {
+      onFileErrorToast(
+        kind === 'camera'
+          ? 'Sin permiso de cámara. Habilítalo para tomar fotos.'
+          : 'Sin permiso de micrófono. Habilítalo para grabar audio.',
+      );
+      return false;
+    }
+  }
+
+  async function onTakePhoto() {
+    const allowed = await requestDevicePermission('camera');
+    if (!allowed) return;
+    photoInputRef.current?.click();
+  }
+
+  async function onRecordAudio() {
+    const allowed = await requestDevicePermission('microphone');
+    if (!allowed) return;
+    audioInputRef.current?.click();
+  }
+
   return (
     <section className="space-y-3 rounded-xl border border-slate-200 p-3">
       <div className="flex items-center justify-between gap-2">
@@ -113,6 +150,50 @@ export function IntakeMediaUploader({
         <UploadCloud className="h-5 w-5 text-slate-500" />
         <p className="mt-2 text-sm text-slate-700">Arrastra archivos o toca para seleccionar</p>
       </label>
+
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+        <input
+          ref={photoInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+          onChange={onInputChange}
+        />
+        <input
+          ref={audioInputRef}
+          type="file"
+          accept="audio/*"
+          capture="user"
+          className="hidden"
+          onChange={onInputChange}
+        />
+        <input
+          ref={filesInputRef}
+          type="file"
+          multiple
+          accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.txt"
+          className="hidden"
+          onChange={onInputChange}
+        />
+
+        <button type="button" className="btn-secondary h-10 justify-center gap-2" onClick={onTakePhoto}>
+          <Camera className="h-4 w-4" />
+          Tomar foto
+        </button>
+        <button type="button" className="btn-secondary h-10 justify-center gap-2" onClick={onRecordAudio}>
+          <Mic className="h-4 w-4" />
+          Tomar audio
+        </button>
+        <button
+          type="button"
+          className="btn-secondary h-10 justify-center gap-2"
+          onClick={() => filesInputRef.current?.click()}
+        >
+          <FilePlus2 className="h-4 w-4" />
+          Agregar archivos
+        </button>
+      </div>
 
       {!items.length ? (
         <p className="text-sm text-slate-500">Aún no agregas archivos.</p>
