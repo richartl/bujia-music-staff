@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useParams } from 'react-router-dom';
-import { dateTime } from '@/lib/utils';
+import { currency, dateTime } from '@/lib/utils';
 import { getPublicTracking } from '@/features/visits/api/trackingApi';
 import type { NoteAttachment, TrackingResponse, VisitServiceNote, VisitTimelineEvent } from '@/features/visits/api/types';
 
@@ -41,6 +41,7 @@ export function PublicTrackingPage() {
   const currentStatus = data.status?.name || data.visit?.status?.name || '-';
   const statusColors = getStatusColors(data.status?.color || data.visit?.status?.color);
   const heroGradient = getSoftGradient((data.status?.color || data.visit?.status?.color) ?? undefined);
+  const totals = getFinancialSummary(data);
 
   return (
     <main className="mx-auto max-w-3xl space-y-4 p-3 pb-8">
@@ -62,6 +63,11 @@ export function PublicTrackingPage() {
                 </span>
               </p>
             </div>
+          </div>
+          <div className="mt-2 grid grid-cols-1 gap-2 text-sm sm:grid-cols-3">
+            <MoneyPill label="Total servicios" value={totals.servicesTotal} />
+            <MoneyPill label="Abonos" value={totals.paymentsTotal} />
+            <MoneyPill label="Total orden" value={totals.visitTotal} emphasized />
           </div>
         </div>
       </section>
@@ -169,6 +175,15 @@ function InfoPill({ label, value }: { label: string; value: string }) {
   );
 }
 
+function MoneyPill({ label, value, emphasized = false }: { label: string; value: number; emphasized?: boolean }) {
+  return (
+    <div className={`rounded-xl p-3 backdrop-blur-sm ${emphasized ? 'bg-slate-900 text-white' : 'bg-white/80'}`}>
+      <p className={`text-[11px] font-medium uppercase tracking-wide ${emphasized ? 'text-slate-200' : 'text-slate-500'}`}>{label}</p>
+      <p className={`mt-1 text-base font-bold ${emphasized ? 'text-white' : 'text-slate-900'}`}>{currency(value)}</p>
+    </div>
+  );
+}
+
 function getStatusColors(statusColor?: string | null) {
   if (!statusColor) return { container: 'border-slate-200 bg-white', badge: 'bg-slate-100 text-slate-700', customColor: null };
   return {
@@ -192,6 +207,40 @@ function getEventColors(eventType: string) {
 function getSoftGradient(color?: string | null) {
   if (!color) return 'linear-gradient(135deg, #E0F2FE 0%, #F8FAFC 100%)';
   return `linear-gradient(135deg, ${color}22 0%, #F8FAFC 100%)`;
+}
+
+function toNumberSafe(value: unknown) {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+}
+
+function getFinancialSummary(data: TrackingResponse) {
+  const servicesTotal = (data.services || []).reduce((acc, service) => {
+    const qty = toNumberSafe(service.quantity || 1) || 1;
+    const price = toNumberSafe(service.price);
+    return acc + qty * price;
+  }, 0);
+
+  const visitAsRecord = (data.visit || {}) as Record<string, unknown>;
+  const paymentsTotal =
+    toNumberSafe(visitAsRecord.totalPaid) ||
+    toNumberSafe(visitAsRecord.paidAmount) ||
+    toNumberSafe(visitAsRecord.deposit) ||
+    toNumberSafe(visitAsRecord.advance) ||
+    (Array.isArray(visitAsRecord.payments)
+      ? visitAsRecord.payments.reduce((sum, row) => {
+          const item = (row || {}) as Record<string, unknown>;
+          return sum + toNumberSafe(item.amount);
+        }, 0)
+      : 0);
+
+  const visitTotal = toNumberSafe(data.visit?.total) || servicesTotal;
+
+  return { servicesTotal, paymentsTotal, visitTotal };
 }
 
 function humanizeEventType(eventType: string) {
