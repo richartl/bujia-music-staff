@@ -8,10 +8,12 @@ import { VisitDetailPage } from './features/visits/pages/VisitDetailPage';
 import { CatalogsPage } from './features/catalogs/pages/CatalogsPage';
 import { SettingsPage } from './features/settings/pages/SettingsPage';
 import { ProtectedRoute } from './features/auth/components/ProtectedRoute';
+import { PublicTrackingPage } from './features/tracking/pages/PublicTrackingPage';
 
 export const router = createBrowserRouter([
   { path: '/', element: <Navigate to="/app/intakes" replace /> },
   { path: '/login', element: <LoginPage /> },
+  { path: '/tracking/:token', element: <PublicTrackingPage /> },
   {
     path: '/app',
     element: (
