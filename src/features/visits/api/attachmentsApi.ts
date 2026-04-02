@@ -17,10 +17,10 @@ async function uploadBinary(uploadUrl: string, file: File, headers?: Record<stri
 
 export async function uploadVisitNoteAttachment(noteId: string, file: File) {
   const payload = {
-    originalName: file.name,
     mediaKind: resolveMediaKind(file.type),
     mimeType: file.type || 'application/octet-stream',
     sizeBytes: file.size,
+    fileName: file.name,
   };
 
   try {
@@ -35,7 +35,6 @@ export async function uploadVisitNoteAttachment(noteId: string, file: File) {
       `/visit-notes/${noteId}/attachments/attach-media-v2`,
       {
         mediaId: init.mediaId,
-        originalName: file.name,
       },
     );
 
@@ -68,10 +67,10 @@ export async function deleteVisitNoteAttachment(noteId: string, attachmentId: st
 
 export async function uploadVisitServiceNoteAttachment(noteId: string, file: File) {
   const payload = {
-    originalName: file.name,
     mediaKind: resolveMediaKind(file.type),
     mimeType: file.type || 'application/octet-stream',
     sizeBytes: file.size,
+    fileName: file.name,
   };
 
   try {
@@ -86,7 +85,6 @@ export async function uploadVisitServiceNoteAttachment(noteId: string, file: Fil
       `/visit-service-notes/${noteId}/attachments/attach-media-v2`,
       {
         mediaId: init.mediaId,
-        originalName: file.name,
       },
     );
 

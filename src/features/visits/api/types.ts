@@ -86,11 +86,13 @@ export type NoteAttachment = {
 
 export type VisitService = {
   id: string;
+  workshopServiceId?: string;
   name?: string;
   status?: string;
   quantity?: number;
   price?: number;
   notes?: string;
+  isAdjust?: boolean;
 };
 
 export type VisitServiceNote = {

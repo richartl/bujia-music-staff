@@ -3,6 +3,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams, useParams } from 'react-router-dom';
 import { authStore } from '@/stores/auth-store';
 import { currency, dateTime } from '@/lib/utils';
+import { getIntakeLookups } from '@/features/intakes/api/get-intake-lookups';
+import type { WorkshopServiceLookup } from '@/features/intakes/types';
 import { 
   createVisitNote,
   getVisitNotes,
@@ -56,6 +58,15 @@ export function VisitDetailPage() {
   const workshopId = authStore((state) => state.workshopId);
   const [tab, setTab] = useState<TabKey>('summary');
   const [isRegenerateModalOpen, setIsRegenerateModalOpen] = useState(false);
+  const [isServiceModalOpen, setIsServiceModalOpen] = useState(false);
+  const [serviceSearch, setServiceSearch] = useState('');
+  const [showManualServiceForm, setShowManualServiceForm] = useState(false);
+  const [manualService, setManualService] = useState({ name: '', quantity: '1', price: '0', notes: '' });
+  const [isAdjustSwitchModalOpen, setIsAdjustSwitchModalOpen] = useState(false);
+  const [noteModalServiceId, setNoteModalServiceId] = useState<string | null>(null);
+  const [noteModalText, setNoteModalText] = useState('');
+  const [noteModalIsInternal, setNoteModalIsInternal] = useState(false);
+  const [noteModalFile, setNoteModalFile] = useState<File | null>(null);
   const queryClient = useQueryClient();
 
   const visitQuery = useQuery({
@@ -68,6 +79,13 @@ export function VisitDetailPage() {
     queryKey: ['visit-statuses', workshopId],
     queryFn: () => getWorkshopVisitStatuses(workshopId!),
     enabled: !!workshopId,
+  });
+
+  const lookupsQuery = useQuery({
+    queryKey: ['intake-lookups-services', workshopId],
+    queryFn: () => getIntakeLookups(workshopId!),
+    enabled: !!workshopId,
+    staleTime: 1000 * 60 * 10,
   });
 
   const notesQuery = useQuery({
@@ -119,6 +137,17 @@ export function VisitDetailPage() {
   const createNoteMutation = useMutation({
     mutationFn: (payload: { note: string; isInternal: boolean }) => createVisitNote(visitId, payload),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['visit-notes', visitId] }),
+  });
+
+  const createServiceMutation = useMutation({
+    mutationFn: (payload: Record<string, unknown>) => createVisitService(visitId, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['visit-services', visitId] });
+      setIsServiceModalOpen(false);
+      setShowManualServiceForm(false);
+      setManualService({ name: '', quantity: '1', price: '0', notes: '' });
+      setServiceSearch('');
+    },
   });
 
   const saveTrackingLinkMutation = useMutation({
@@ -218,6 +247,88 @@ export function VisitDetailPage() {
     serviceNotesQuery.data,
     timelineQuery.data,
   ]);
+
+  const serviceCatalog = useMemo<WorkshopServiceLookup[]>(
+    () => lookupsQuery.data?.services || [],
+    [lookupsQuery.data?.services],
+  );
+  const catalogAdjustServices = useMemo(
+    () => serviceCatalog.filter((service) => service.isAdjust),
+    [serviceCatalog],
+  );
+  const filteredCatalogServices = useMemo(() => {
+    const query = serviceSearch.trim().toLowerCase();
+    if (!query) return serviceCatalog;
+    return serviceCatalog.filter((service) => service.name.toLowerCase().includes(query));
+  }, [serviceCatalog, serviceSearch]);
+  const existingAdjustService = useMemo(
+    () => (servicesQuery.data || []).find((service) => service.isAdjust),
+    [servicesQuery.data],
+  );
+
+  async function addCatalogService(service: WorkshopServiceLookup) {
+    if (
+      service.isAdjust &&
+      existingAdjustService &&
+      existingAdjustService.workshopServiceId !== service.id
+    ) {
+      window.alert('Ya existe un servicio de ajuste. Usa el botón Modificar ajuste.');
+      return;
+    }
+    const confirmAdd = window.confirm(`¿Agregar servicio "${service.name}"?`);
+    if (!confirmAdd) return;
+    await createServiceMutation.mutateAsync({
+      workshopServiceId: service.id,
+      quantity: 1,
+      price: Number(service.basePrice || 0),
+      notes: '',
+    });
+  }
+
+  async function addManualService() {
+    const confirmAdd = window.confirm(`¿Agregar servicio manual "${manualService.name}"?`);
+    if (!confirmAdd) return;
+    await createServiceMutation.mutateAsync({
+      name: manualService.name,
+      quantity: Number(manualService.quantity || 1),
+      price: Number(manualService.price || 0),
+      notes: manualService.notes || undefined,
+    });
+  }
+
+  async function swapAdjustService(nextAdjustService: WorkshopServiceLookup) {
+    if (!existingAdjustService) return;
+    const confirmSwap = window.confirm(
+      `¿Cambiar ajuste a "${nextAdjustService.name}"? Esto reemplazará el ajuste actual.`,
+    );
+    if (!confirmSwap) return;
+    await patchVisitService(visitId, existingAdjustService.id, {
+      workshopServiceId: nextAdjustService.id,
+      quantity: existingAdjustService.quantity || 1,
+      price: Number(nextAdjustService.basePrice || existingAdjustService.price || 0),
+      notes: existingAdjustService.notes || undefined,
+      isAdjust: true,
+    });
+    await queryClient.invalidateQueries({ queryKey: ['visit-services', visitId] });
+    setIsAdjustSwitchModalOpen(false);
+  }
+
+  async function submitServiceNoteModal() {
+    if (!noteModalServiceId || !noteModalText.trim()) return;
+    const createdNote = await createVisitServiceNote(noteModalServiceId, {
+      note: noteModalText.trim(),
+      isInternal: noteModalIsInternal,
+    });
+    if (noteModalFile) {
+      await uploadVisitServiceNoteAttachment(createdNote.id, noteModalFile);
+    }
+    await queryClient.invalidateQueries({ queryKey: ['service-notes-batch'] });
+    await queryClient.invalidateQueries({ queryKey: ['service-note-attachments-batch'] });
+    setNoteModalServiceId(null);
+    setNoteModalText('');
+    setNoteModalIsInternal(false);
+    setNoteModalFile(null);
+  }
 
   if (!instrumentId) {
     return <section className="card p-4 text-sm text-amber-700">Falta `instrumentId` en la URL.</section>;
@@ -328,15 +439,37 @@ export function VisitDetailPage() {
 
       {tab === 'services' ? (
         <section className="card space-y-3 p-4">
-          <button type="button" className="btn-secondary h-10 w-full justify-center" onClick={() => createVisitService(visitId, { name: 'Servicio rápido', quantity: 1, price: 0 }).then(() => queryClient.invalidateQueries({ queryKey: ['visit-services', visitId] }))}>
-            Agregar servicio rápido
+          <button
+            type="button"
+            className="btn-primary h-10 w-full justify-center"
+            onClick={() => setIsServiceModalOpen(true)}
+          >
+            Agregar servicio
           </button>
           {(servicesQuery.data || []).map((service) => (
             <article key={service.id} className="rounded-xl border border-slate-200 p-3">
               <input className="input h-10" defaultValue={service.name || ''} onBlur={(e) => patchVisitService(visitId, service.id, { name: e.target.value }).then(() => queryClient.invalidateQueries({ queryKey: ['visit-services', visitId] }))} />
               <div className="mt-2 flex gap-2">
-                <button type="button" className="btn-secondary h-8 px-3" onClick={() => createVisitServiceNote(service.id, { note: 'Nueva nota de servicio', isInternal: false }).then(() => queryClient.invalidateQueries({ queryKey: ['service-notes-batch'] }))}>Agregar nota</button>
-                <button type="button" className="btn-secondary h-8 px-3" onClick={() => deleteVisitService(visitId, service.id).then(() => queryClient.invalidateQueries({ queryKey: ['visit-services', visitId] }))}>Eliminar servicio</button>
+                <button type="button" className="btn-secondary h-8 px-3" onClick={() => setNoteModalServiceId(service.id)}>Agregar nota</button>
+                {service.isAdjust ? (
+                  <button type="button" className="btn-secondary h-8 px-3" onClick={() => setIsAdjustSwitchModalOpen(true)}>Modificar ajuste</button>
+                ) : null}
+                <button
+                  type="button"
+                  className="btn-secondary h-8 px-3"
+                  onClick={() => {
+                    const reason = window.prompt('Motivo de eliminación del servicio (se guardará como nota interna):', '');
+                    if (reason && reason.trim()) {
+                      void createVisitServiceNote(service.id, { note: `Servicio eliminado: ${reason.trim()}`, isInternal: true });
+                    }
+                    if (!window.confirm('¿Seguro que deseas eliminar este servicio?')) return;
+                    void deleteVisitService(visitId, service.id).then(() =>
+                      queryClient.invalidateQueries({ queryKey: ['visit-services', visitId] }),
+                    );
+                  }}
+                >
+                  Eliminar servicio
+                </button>
               </div>
               <div className="mt-2 space-y-1">
                 {(serviceNotesQuery.data?.[service.id] || []).map((note) => (
@@ -401,6 +534,94 @@ export function VisitDetailPage() {
 
       {tab === 'attachments' ? (
         <section className="card p-4 text-sm text-slate-600">Gestiona adjuntos desde tabs de Notas y Servicios (mobile-first).</section>
+      ) : null}
+
+      {isServiceModalOpen ? (
+        <div className="fixed inset-0 z-50 flex items-end bg-black/40 p-3">
+          <div className="w-full rounded-2xl bg-white p-4">
+            <h4 className="text-sm font-semibold text-slate-900">Agregar servicio</h4>
+            <input
+              className="input mt-2 h-11"
+              placeholder="Buscar servicio de catálogo"
+              value={serviceSearch}
+              onChange={(event) => setServiceSearch(event.target.value)}
+            />
+            <div className="mt-2 max-h-56 space-y-2 overflow-y-auto">
+              {filteredCatalogServices.map((service) => (
+                <button
+                  key={service.id}
+                  type="button"
+                  className="w-full rounded-lg border border-slate-200 p-2 text-left text-sm"
+                  onClick={() => void addCatalogService(service)}
+                >
+                  <p className="font-medium text-slate-800">{service.name}</p>
+                  <p className="text-xs text-slate-500">{currency(Number(service.basePrice || 0))} {service.isAdjust ? '· Ajuste' : ''}</p>
+                </button>
+              ))}
+            </div>
+
+            <button type="button" className="btn-secondary mt-3 h-9 w-full justify-center" onClick={() => setShowManualServiceForm((v) => !v)}>
+              {showManualServiceForm ? 'Ocultar manual' : 'Agregar manual'}
+            </button>
+            {showManualServiceForm ? (
+              <div className="mt-2 space-y-2 rounded-lg border border-slate-200 p-2">
+                <input className="input h-10" placeholder="Nombre servicio" value={manualService.name} onChange={(e) => setManualService((c) => ({ ...c, name: e.target.value }))} />
+                <div className="grid grid-cols-2 gap-2">
+                  <input className="input h-10" inputMode="numeric" placeholder="Cantidad" value={manualService.quantity} onChange={(e) => setManualService((c) => ({ ...c, quantity: e.target.value }))} />
+                  <input className="input h-10" inputMode="decimal" placeholder="Precio" value={manualService.price} onChange={(e) => setManualService((c) => ({ ...c, price: e.target.value }))} />
+                </div>
+                <textarea className="input min-h-16" placeholder="Notas" value={manualService.notes} onChange={(e) => setManualService((c) => ({ ...c, notes: e.target.value }))} />
+                <button type="button" className="btn-primary h-10 w-full justify-center" onClick={() => void addManualService()} disabled={!manualService.name.trim()}>
+                  Confirmar manual
+                </button>
+              </div>
+            ) : null}
+
+            <button type="button" className="btn-secondary mt-3 h-10 w-full justify-center" onClick={() => setIsServiceModalOpen(false)}>
+              Cerrar
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {isAdjustSwitchModalOpen ? (
+        <div className="fixed inset-0 z-50 flex items-end bg-black/40 p-3">
+          <div className="w-full rounded-2xl bg-white p-4">
+            <h4 className="text-sm font-semibold text-slate-900">Modificar ajuste</h4>
+            <div className="mt-2 space-y-2">
+              {catalogAdjustServices.map((service) => (
+                <button key={service.id} type="button" className="w-full rounded-lg border border-slate-200 p-2 text-left" onClick={() => void swapAdjustService(service)}>
+                  {service.name}
+                </button>
+              ))}
+            </div>
+            <button type="button" className="btn-secondary mt-3 h-10 w-full justify-center" onClick={() => setIsAdjustSwitchModalOpen(false)}>
+              Cancelar
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {noteModalServiceId ? (
+        <div className="fixed inset-0 z-50 flex items-end bg-black/40 p-3">
+          <div className="w-full rounded-2xl bg-white p-4">
+            <h4 className="text-sm font-semibold text-slate-900">Nueva nota de servicio</h4>
+            <textarea className="input mt-2 min-h-20" placeholder="Descripción de la nota" value={noteModalText} onChange={(e) => setNoteModalText(e.target.value)} />
+            <label className="mt-2 flex items-center gap-2 text-sm text-slate-700">
+              <input type="checkbox" checked={noteModalIsInternal} onChange={(e) => setNoteModalIsInternal(e.target.checked)} />
+              Nota interna (desactiva para tracking cliente)
+            </label>
+            <label className="btn-secondary mt-2 h-10 w-full cursor-pointer justify-center">
+              Adjuntar foto/video/audio
+              <input type="file" className="hidden" accept="image/*,video/*,audio/*" onChange={(e) => setNoteModalFile(e.target.files?.[0] || null)} />
+            </label>
+            {noteModalFile ? <p className="mt-1 text-xs text-slate-500">{noteModalFile.name}</p> : null}
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <button type="button" className="btn-secondary h-10 justify-center" onClick={() => setNoteModalServiceId(null)}>Cancelar</button>
+              <button type="button" className="btn-primary h-10 justify-center" onClick={() => void submitServiceNoteModal()} disabled={!noteModalText.trim()}>Guardar</button>
+            </div>
+          </div>
+        </div>
       ) : null}
 
       {isRegenerateModalOpen ? (
