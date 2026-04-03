@@ -65,7 +65,7 @@ export function VisitDetailPage() {
   const [isAdjustSwitchModalOpen, setIsAdjustSwitchModalOpen] = useState(false);
   const [noteModalServiceId, setNoteModalServiceId] = useState<string | null>(null);
   const [noteModalText, setNoteModalText] = useState('');
-  const [noteModalIsInternal, setNoteModalIsInternal] = useState(false);
+  const [noteModalIsInternal, setNoteModalIsInternal] = useState(true);
   const [noteModalFile, setNoteModalFile] = useState<File | null>(null);
   const [confirmModal, setConfirmModal] = useState<{
     title: string;
@@ -402,7 +402,7 @@ export function VisitDetailPage() {
     await queryClient.invalidateQueries({ queryKey: ['service-note-attachments-batch'] });
     setNoteModalServiceId(null);
     setNoteModalText('');
-    setNoteModalIsInternal(false);
+    setNoteModalIsInternal(true);
     setNoteModalFile(null);
   }
 
@@ -628,7 +628,18 @@ export function VisitDetailPage() {
                 Notas: {(serviceNotesQuery.data?.[adjustService.id] || []).length} (doble click para detalle)
               </p>
               <div className="mt-2 flex gap-2">
-                <button type="button" className="btn-secondary h-8 px-3" onClick={() => setNoteModalServiceId(adjustService.id)}>Agregar nota</button>
+                <button
+                  type="button"
+                  className="btn-secondary h-8 px-3"
+                  onClick={() => {
+                    setNoteModalServiceId(adjustService.id);
+                    setNoteModalIsInternal(true);
+                    setNoteModalText('');
+                    setNoteModalFile(null);
+                  }}
+                >
+                  Agregar nota
+                </button>
                 <button type="button" className="btn-secondary h-8 px-3" onClick={() => setIsAdjustSwitchModalOpen(true)}>Modificar ajuste</button>
                 <button type="button" className="btn-secondary h-8 px-3" onClick={() => setDeleteServiceModal({ serviceId: adjustService.id, reason: '' })}>Eliminar</button>
               </div>
@@ -650,7 +661,18 @@ export function VisitDetailPage() {
                 <p className="mt-1 text-xs text-slate-600">Notas: {(serviceNotesQuery.data?.[service.id] || []).length} (doble click para detalle)</p>
               </div>
               <div className="mt-2 flex gap-2">
-                <button type="button" className="btn-secondary h-8 px-3" onClick={() => setNoteModalServiceId(service.id)}>Agregar nota</button>
+                <button
+                  type="button"
+                  className="btn-secondary h-8 px-3"
+                  onClick={() => {
+                    setNoteModalServiceId(service.id);
+                    setNoteModalIsInternal(true);
+                    setNoteModalText('');
+                    setNoteModalFile(null);
+                  }}
+                >
+                  Agregar nota
+                </button>
                 <button type="button" className="btn-secondary h-8 px-3" onClick={() => setIsServiceModalOpen(true)}>Modificar</button>
                 <button
                   type="button"
@@ -886,10 +908,10 @@ export function VisitDetailPage() {
             <textarea className="input mt-2 min-h-20" placeholder="Descripción de la nota" value={noteModalText} onChange={(e) => setNoteModalText(e.target.value)} />
             <button
               type="button"
-              className={`mt-2 flex h-10 w-full items-center justify-center rounded-xl text-sm ${noteModalIsInternal ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}
+              className={`mt-2 flex h-10 w-full items-center justify-center rounded-xl text-sm font-semibold ${noteModalIsInternal ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}
               onClick={() => setNoteModalIsInternal((value) => !value)}
             >
-              {noteModalIsInternal ? 'Interna (oculta en tracking)' : 'Pública (visible en tracking)'}
+              {noteModalIsInternal ? '🔒 Interna (oculta en tracking)' : '🌍 Pública (visible en tracking)'}
             </button>
             <MediaQuickAttach onSelect={(file) => setNoteModalFile(file)} />
             {noteModalFile ? <p className="mt-1 text-xs text-slate-500">{noteModalFile.name}</p> : null}
@@ -945,26 +967,46 @@ export function VisitDetailPage() {
       ) : null}
 
       {selectedServiceDetail ? (
-        <div className="fixed inset-0 z-50 flex items-end bg-black/40 p-3">
-          <div className="w-full rounded-2xl bg-white p-4">
-            <h4 className="text-sm font-semibold text-slate-900">{selectedServiceDetail.name || 'Detalle de servicio'}</h4>
+        <div className="fixed inset-0 z-50 bg-slate-950/50 p-0 sm:p-4">
+          <div className="h-full w-full overflow-y-auto bg-white p-4 sm:mx-auto sm:h-auto sm:max-h-[92vh] sm:max-w-3xl sm:rounded-2xl">
+            <h4 className="text-base font-semibold text-slate-900">{selectedServiceDetail.name || 'Detalle de servicio'}</h4>
             <p className="mt-1 text-xs text-slate-500">
               Cantidad: {selectedServiceDetail.quantity || 1} · Precio: {currency(Number(selectedServiceDetail.price || 0))}
             </p>
-            <div className="mt-3 max-h-72 space-y-2 overflow-y-auto">
+            <div className="mt-3 space-y-3">
               {(serviceNotesQuery.data?.[selectedServiceDetail.id] || []).map((note) => (
-                <div key={note.id} className="rounded-lg border border-slate-200 p-2">
+                <div key={note.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                   <div className="flex items-center justify-between gap-2">
-                    <p className="text-sm text-slate-800">{note.note}</p>
-                    <span className={`rounded-full px-2 py-0.5 text-xs ${note.isInternal ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${note.isInternal ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
                       {note.isInternal ? 'Interna' : 'Pública'}
                     </span>
+                    <button
+                      type="button"
+                      className={`rounded-full px-3 py-1 text-xs font-semibold ${note.isInternal ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}
+                      onClick={() =>
+                        runApi(async () => {
+                          await patchVisitServiceNote(selectedServiceDetail.id, note.id, { isInternal: !note.isInternal });
+                          await queryClient.invalidateQueries({ queryKey: ['service-notes-batch'] });
+                        })
+                      }
+                    >
+                      {note.isInternal ? 'Hacer pública' : 'Hacer interna'}
+                    </button>
                   </div>
-                  {(serviceAttachmentsQuery.data?.[note.id] || []).map((attachment) => (
-                    <div key={attachment.id} className="mt-1">
-                      <AttachmentPreview attachment={attachment} onOpen={setMediaPreview} />
+                  <div className="mt-2 rounded-lg border border-slate-200 bg-white p-2">
+                    <p className="text-sm text-slate-800">{note.note || 'Sin mensaje'}</p>
+                  </div>
+                  {(serviceAttachmentsQuery.data?.[note.id] || []).length ? (
+                    <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                      {(serviceAttachmentsQuery.data?.[note.id] || []).map((attachment) => (
+                        <div key={attachment.id} className="rounded-lg border border-slate-200 bg-white p-2">
+                          <AttachmentPreview attachment={attachment} onOpen={setMediaPreview} />
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  ) : (
+                    <p className="mt-2 text-xs text-slate-500">Sin adjuntos en esta nota.</p>
+                  )}
                 </div>
               ))}
             </div>
