@@ -10,9 +10,13 @@ const items = [
   { to: '/app/settings', label: 'Ajustes', icon: Settings },
 ];
 
-export function AppShellNav() {
+type AppShellNavProps = {
+  mobile?: boolean;
+};
+
+export function AppShellNav({ mobile = false }: AppShellNavProps) {
   return (
-    <nav className="grid grid-cols-5 gap-1 md:grid-cols-1 md:gap-2">
+    <nav className={cn('grid', mobile ? 'grid-cols-5 gap-1' : 'grid-cols-5 gap-1 md:grid-cols-1 md:gap-2')}>
       {items.map(({ to, label, icon: Icon }) => (
         <NavLink
           key={to}
@@ -20,14 +24,17 @@ export function AppShellNav() {
           end={to === '/app'}
           className={({ isActive }) =>
             cn(
-              'flex min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-[10px] font-medium transition md:flex-row md:justify-start md:gap-2 md:px-3 md:py-3 md:text-sm',
+              'flex min-w-0 items-center justify-center rounded-2xl font-medium transition active:scale-[0.99]',
+              mobile
+                ? 'flex-col gap-1 px-1 py-2 text-[10px]'
+                : 'flex-col gap-1 px-2 py-2 text-[10px] md:flex-row md:justify-start md:gap-2 md:px-3 md:py-3 md:text-sm',
               isActive
-                ? 'bg-amber-500 text-white'
+                ? 'bg-gradient-to-b from-amber-500 to-amber-600 text-white shadow-sm'
                 : 'text-slate-600 hover:bg-slate-100',
             )
           }
         >
-          <Icon className="h-4 w-4 shrink-0" />
+          <Icon className={cn('shrink-0', mobile ? 'h-4 w-4' : 'h-4 w-4')} />
           <span className="truncate leading-none">{label}</span>
         </NavLink>
       ))}

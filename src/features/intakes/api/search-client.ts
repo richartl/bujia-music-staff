@@ -1,3 +1,4 @@
+import type { AxiosRequestConfig } from 'axios';
 import { http } from '@/lib/http';
 
 export type ClientSearchItem = {
@@ -20,10 +21,15 @@ export type ClientSearchResponse = {
   total?: number;
 };
 
-export async function searchClientByPhone(workshopId: string, search: string) {
+export async function searchClientByPhone(
+  workshopId: string,
+  search: string,
+  config?: AxiosRequestConfig,
+) {
   const { data } = await http.get<ClientSearchResponse | ClientSearchItem[]>(
     `/workshops/${workshopId}/clients`,
     {
+      ...config,
       params: {
         search,
         page: 1,

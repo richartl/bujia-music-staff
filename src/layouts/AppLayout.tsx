@@ -1,9 +1,18 @@
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { authStore } from '@/stores/auth-store';
 import { AppShellNav } from '@/components/AppShellNav';
 import { WorkshopSwitcher } from '@/features/workshops/components/WorkshopSwitcher';
+import { BottomNav } from '@/components/navigation/BottomNav';
 import { LogOut, Settings2, X } from 'lucide-react';
+
+const ROUTE_COPY: Record<string, { title: string; subtitle: string }> = {
+  '/app/intakes': { title: 'Recepción', subtitle: 'Intake rápido para mostrador' },
+  '/app/visits': { title: 'Órdenes', subtitle: 'Seguimiento de instrumentos en taller' },
+  '/app/dashboard': { title: 'Resumen', subtitle: 'Estado operativo del día' },
+  '/app/catalogs': { title: 'Catálogos', subtitle: 'Servicios, marcas y configuraciones' },
+  '/app/settings': { title: 'Ajustes', subtitle: 'Usuarios, sesión y preferencias' },
+};
 
 export function AppLayout() {
   const navigate = useNavigate();
@@ -16,18 +25,16 @@ export function AppLayout() {
     setMobilePanelOpen(false);
   }, [location.pathname]);
 
+  const routeMeta = useMemo(() => {
+    const matched = Object.entries(ROUTE_COPY).find(([path]) => location.pathname.startsWith(path));
+    return matched?.[1] ?? { title: 'Staff Platform', subtitle: 'Operación rápida de taller' };
+  }, [location.pathname]);
+
   function handleLogout() {
     logout();
     navigate('/login');
   }
 
-  function toggleMobilePanel() {
-    setMobilePanelOpen((current) => !current);
-  }
-
-  function closeMobilePanel() {
-    setMobilePanelOpen(false);
-  }
   const userInitials = (user?.email || 'US')
     .split('@')[0]
     .split('.')
@@ -41,10 +48,8 @@ export function AppLayout() {
       <header className="border-b border-slate-200 bg-white md:sticky md:top-0 md:z-30 md:bg-white/95 md:backdrop-blur">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-3 py-3 sm:px-4 md:px-4">
           <div className="min-w-0">
-            <div className="truncate text-base font-bold sm:text-lg">Staff Platform</div>
-            <div className="truncate text-xs text-slate-500 sm:text-sm">
-              Operación rápida de taller
-            </div>
+            <div className="truncate text-base font-bold sm:text-lg">{routeMeta.title}</div>
+            <div className="truncate text-xs text-slate-500 sm:text-sm">{routeMeta.subtitle}</div>
           </div>
 
           <div className="hidden md:flex md:items-center md:gap-3">
@@ -65,7 +70,7 @@ export function AppLayout() {
           <button
             type="button"
             className="btn-secondary gap-2 md:hidden"
-            onClick={toggleMobilePanel}
+            onClick={() => setMobilePanelOpen((current) => !current)}
             aria-expanded={mobilePanelOpen}
             aria-controls="mobile-options-panel"
           >
@@ -76,10 +81,7 @@ export function AppLayout() {
       </header>
 
       {mobilePanelOpen ? (
-        <div
-          className="fixed inset-0 z-50 bg-black/40 md:hidden"
-          onClick={closeMobilePanel}
-        >
+        <div className="fixed inset-0 z-50 bg-black/40 md:hidden" onClick={() => setMobilePanelOpen(false)}>
           <div
             id="mobile-options-panel"
             className="absolute right-0 top-0 h-full w-[88%] max-w-sm bg-white p-4 shadow-2xl"
@@ -95,35 +97,23 @@ export function AppLayout() {
                   </span>
                 )}
                 <div className="min-w-0">
-                <div className="truncate font-semibold">{user?.email}</div>
-                <div className="text-xs uppercase tracking-wide text-slate-500">
-                  {user?.role}
-                </div>
+                  <div className="truncate font-semibold">{user?.email}</div>
+                  <div className="text-xs uppercase tracking-wide text-slate-500">{user?.role}</div>
                 </div>
               </div>
 
-              <button
-                type="button"
-                className="btn-secondary p-3"
-                onClick={closeMobilePanel}
-              >
+              <button type="button" className="btn-secondary p-3" onClick={() => setMobilePanelOpen(false)}>
                 <X className="h-4 w-4" />
               </button>
             </div>
 
             <div className="space-y-4">
               <div>
-                <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Taller activo
-                </div>
+                <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Taller activo</div>
                 <WorkshopSwitcher />
               </div>
 
-              <button
-                type="button"
-                className="btn-secondary w-full justify-center gap-2"
-                onClick={handleLogout}
-              >
+              <button type="button" className="btn-secondary w-full justify-center gap-2" onClick={handleLogout}>
                 <LogOut className="h-4 w-4" />
                 Salir
               </button>
@@ -157,11 +147,7 @@ export function AppLayout() {
         </main>
       </div>
 
-      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 px-2 py-2 backdrop-blur md:hidden">
-        <div className="mx-auto max-w-7xl">
-          <AppShellNav />
-        </div>
-      </div>
+      <BottomNav />
     </div>
   );
 }
