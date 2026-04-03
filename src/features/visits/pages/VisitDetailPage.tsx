@@ -974,7 +974,10 @@ export function VisitDetailPage() {
               Cantidad: {selectedServiceDetail.quantity || 1} · Precio: {currency(Number(selectedServiceDetail.price || 0))}
             </p>
             <div className="mt-3 space-y-3">
-              {(serviceNotesQuery.data?.[selectedServiceDetail.id] || []).map((note) => (
+              {(serviceNotesQuery.data?.[selectedServiceDetail.id] || [])
+                .slice()
+                .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
+                .map((note) => (
                 <div key={note.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                   <div className="flex items-center justify-between gap-2">
                     <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${note.isInternal ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
@@ -993,6 +996,9 @@ export function VisitDetailPage() {
                       {note.isInternal ? 'Hacer pública' : 'Hacer interna'}
                     </button>
                   </div>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {note.createdAt ? dateTime(note.createdAt) : 'Sin fecha'}
+                  </p>
                   <div className="mt-2 rounded-lg border border-slate-200 bg-white p-2">
                     <p className="text-sm text-slate-800">{note.note || 'Sin mensaje'}</p>
                   </div>
@@ -1000,7 +1006,7 @@ export function VisitDetailPage() {
                     <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
                       {(serviceAttachmentsQuery.data?.[note.id] || []).map((attachment) => (
                         <div key={attachment.id} className="rounded-lg border border-slate-200 bg-white p-2">
-                          <AttachmentPreview attachment={attachment} onOpen={setMediaPreview} />
+                          <AttachmentInlinePreview attachment={attachment} onOpen={setMediaPreview} />
                         </div>
                       ))}
                     </div>
@@ -1112,6 +1118,42 @@ function AttachmentPreview({ attachment, onOpen }: { attachment: NoteAttachment;
   }
   return (
     <button type="button" onClick={open} className="truncate text-sky-700">{attachment.originalName || attachment.id}</button>
+  );
+}
+
+function AttachmentInlinePreview({ attachment, onOpen }: { attachment: NoteAttachment; onOpen: (payload: { url: string; mimeType: string; name: string }) => void }) {
+  const url = attachment.url || attachment.publicUrl || '';
+  const mimeType = detectMimeType(attachment);
+  const label = attachment.originalName || attachment.id;
+  if (!url) return <p className="truncate text-xs text-slate-500">{label}</p>;
+  const open = () => onOpen({ url, mimeType, name: label });
+
+  if (mimeType.startsWith('image/')) {
+    return (
+      <button type="button" onClick={open} className="space-y-1 text-left">
+        <img src={url} alt={label} className="h-24 w-full rounded object-cover" />
+        <p className="truncate text-[11px] text-slate-600">{label}</p>
+      </button>
+    );
+  }
+  if (mimeType.startsWith('video/')) {
+    return (
+      <div className="space-y-1">
+        <video src={url} controls className="h-28 w-full rounded object-cover" />
+        <button type="button" onClick={open} className="text-xs text-sky-700">Abrir video</button>
+      </div>
+    );
+  }
+  if (mimeType.startsWith('audio/')) {
+    return (
+      <div className="space-y-1">
+        <audio src={url} controls className="w-full" />
+        <button type="button" onClick={open} className="text-xs text-sky-700">Abrir audio</button>
+      </div>
+    );
+  }
+  return (
+    <button type="button" onClick={open} className="truncate text-xs text-sky-700">{label}</button>
   );
 }
 
