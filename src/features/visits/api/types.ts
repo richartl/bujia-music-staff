@@ -69,7 +69,8 @@ export type VisitNote = {
   isInternal: boolean;
   createdAt?: string;
   updatedAt?: string;
-  author?: { id: string; name?: string; email?: string } | null;
+  author?: { id: string; name?: string; email?: string; profileImageUrl?: string | null } | null;
+  createdByUser?: { id?: string; name?: string; profileImageUrl?: string | null } | null;
 };
 
 export type NoteAttachment = {
@@ -109,7 +110,7 @@ export type VisitTimelineEvent = {
   description?: string;
   isPublic?: boolean;
   occurredAt?: string;
-  actor?: { id?: string; name?: string } | null;
+  actor?: { id?: string; name?: string; profileImageUrl?: string | null } | null;
   service?: {
     id?: string;
     name?: string;
@@ -133,7 +134,7 @@ export type TrackingResponse = {
     lastAccessedAt?: string | null;
     url?: string;
   };
-  workshop?: { id: string; name: string };
+  workshop?: { id: string; name: string; logoUrl?: string | null; profileImageUrl?: string | null };
   client?: { id?: string; name?: string; displayName?: string; code?: string };
   instrument?: {
     id?: string;

@@ -3,4 +3,6 @@ export type Workshop = {
   name: string;
   slug?: string;
   role?: string;
+  logoUrl?: string | null;
+  profileImageUrl?: string | null;
 };

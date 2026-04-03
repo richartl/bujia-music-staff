@@ -18,6 +18,7 @@ import {
   getVisitServiceNotes,
   getVisitServices,
   patchVisitService,
+  patchVisitServiceStatus,
   patchVisitServiceNote,
 } from '../api/visitServicesApi';
 import {
@@ -238,12 +239,16 @@ export function VisitDetailPage() {
       title: event.title || event.description || event.eventType,
       occurredAt: event.occurredAt || '',
       attachments: [] as NoteAttachment[],
+      metadata: event.metadata || {},
+      actor: event.actor || null,
     }));
     const visitNotes = (notesQuery.data || []).map((note) => ({
       type: note.isInternal ? 'NOTA_INTERNA' : 'NOTA_CLIENTE',
       title: note.note,
       occurredAt: note.createdAt || note.updatedAt || '',
       attachments: noteAttachmentsQueries.data?.[note.id] || [],
+      metadata: {},
+      actor: note.author || note.createdByUser || null,
     }));
     const serviceNotes = Object.values(serviceNotesQuery.data || {})
       .flat()
@@ -252,6 +257,8 @@ export function VisitDetailPage() {
         title: note.note,
         occurredAt: note.createdAt || note.updatedAt || '',
         attachments: serviceAttachmentsQuery.data?.[note.id] || [],
+        metadata: {},
+        actor: null,
       }));
 
     return [...internalTimeline, ...visitNotes, ...serviceNotes]
@@ -307,6 +314,15 @@ export function VisitDetailPage() {
     () => activeServices.filter((service) => !service.isAdjust),
     [activeServices],
   );
+  const serviceStatusOptions = useMemo(() => {
+    const map = new Map<string, { id: string; name: string }>();
+    (servicesQuery.data || []).forEach((service) => {
+      if (typeof service.status === 'object' && service.status?.id) {
+        map.set(service.status.id, { id: service.status.id, name: service.status.name || 'Estatus' });
+      }
+    });
+    return Array.from(map.values());
+  }, [servicesQuery.data]);
   const payments = useMemo(() => {
     const raw = (visit as unknown as { payments?: Array<{ amount?: number | string; paymentMethod?: { name?: string } | null; paidAt?: string; notes?: string }> } | undefined)?.payments || [];
     return raw.map((item) => ({
@@ -549,6 +565,14 @@ export function VisitDetailPage() {
           <QuickNoteForm onSubmit={(payload) => createNoteMutation.mutate(payload)} isPending={createNoteMutation.isPending} />
           {(notesQuery.data || []).map((note) => (
             <article key={note.id} className="rounded-xl border border-slate-200 p-3">
+              <div className="mb-2 flex items-center gap-2">
+                <AvatarImage
+                  imageUrl={note.author?.profileImageUrl || note.createdByUser?.profileImageUrl || null}
+                  fallback={note.author?.name || note.createdByUser?.name || 'U'}
+                  sizeClassName="h-7 w-7"
+                />
+                <p className="text-xs text-slate-500">{note.author?.name || note.createdByUser?.name || 'Usuario'}</p>
+              </div>
               <div className="flex items-start justify-between gap-2">
                 <p className="text-sm text-slate-800">{note.note}</p>
                 <span className={`chip ${note.isInternal ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
@@ -624,6 +648,35 @@ export function VisitDetailPage() {
               <p className="text-xs text-slate-600">
                 Cantidad: {adjustService.quantity || 1} · Precio: {currency(Number(adjustService.price || 0))}
               </p>
+              <div className="mt-1">
+                <select
+                  className="input h-8 text-xs"
+                  value={typeof adjustService.status === 'object' ? adjustService.status?.id || '' : ''}
+                  onChange={(event) =>
+                    runApi(async () => {
+                      const statusId = event.target.value;
+                      if (!statusId) return;
+                      try {
+                        await patchVisitServiceStatus(visitId, adjustService.id, statusId);
+                      } catch (error) {
+                        await patchVisitService(visitId, adjustService.id, { statusId });
+                        if (error && typeof error === 'object' && 'response' in error) {
+                          const maybe = error as { response?: { data?: { message?: string | string[] } } };
+                          const msg = maybe.response?.data?.message;
+                          if (msg) window.alert(Array.isArray(msg) ? msg.join(', ') : msg);
+                        }
+                      }
+                      await queryClient.invalidateQueries({ queryKey: ['visit-services', visitId] });
+                      await queryClient.invalidateQueries({ queryKey: ['visit-timeline', visitId] });
+                    })
+                  }
+                >
+                  <option value="">Estatus</option>
+                  {serviceStatusOptions.map((status) => (
+                    <option key={status.id} value={status.id}>{status.name}</option>
+                  ))}
+                </select>
+              </div>
               <p className="mt-1 text-xs text-indigo-700">
                 Notas: {(serviceNotesQuery.data?.[adjustService.id] || []).length} (doble click para detalle)
               </p>
@@ -658,6 +711,35 @@ export function VisitDetailPage() {
                 <p className="text-xs text-slate-500">
                   Cantidad: {service.quantity || 1} · Precio: {currency(Number(service.price || 0))}
                 </p>
+                <div className="mt-1">
+                  <select
+                    className="input h-8 text-xs"
+                    value={typeof service.status === 'object' ? service.status?.id || '' : ''}
+                    onChange={(event) =>
+                      runApi(async () => {
+                        const statusId = event.target.value;
+                        if (!statusId) return;
+                        try {
+                          await patchVisitServiceStatus(visitId, service.id, statusId);
+                        } catch (error) {
+                          await patchVisitService(visitId, service.id, { statusId });
+                          if (error && typeof error === 'object' && 'response' in error) {
+                            const maybe = error as { response?: { data?: { message?: string | string[] } } };
+                            const msg = maybe.response?.data?.message;
+                            if (msg) window.alert(Array.isArray(msg) ? msg.join(', ') : msg);
+                          }
+                        }
+                        await queryClient.invalidateQueries({ queryKey: ['visit-services', visitId] });
+                        await queryClient.invalidateQueries({ queryKey: ['visit-timeline', visitId] });
+                      })
+                    }
+                  >
+                    <option value="">Estatus</option>
+                    {serviceStatusOptions.map((status) => (
+                      <option key={status.id} value={status.id}>{status.name}</option>
+                    ))}
+                  </select>
+                </div>
                 <p className="mt-1 text-xs text-slate-600">Notas: {(serviceNotesQuery.data?.[service.id] || []).length} (doble click para detalle)</p>
               </div>
               <div className="mt-2 flex gap-2">
@@ -726,6 +808,9 @@ export function VisitDetailPage() {
               <article
                 key={`${event.type}-${event.occurredAt}-${event.title}`}
                 className={`rounded-xl border p-3 ${
+                  event.type.includes('PAYMENT')
+                    ? 'border-fuchsia-300 bg-gradient-to-r from-fuchsia-50 to-purple-50'
+                    : 
                   event.type.includes('INTERNA')
                     ? 'border-amber-300 bg-gradient-to-r from-amber-50 to-yellow-50'
                     : event.type.includes('SERVICIO')
@@ -733,9 +818,29 @@ export function VisitDetailPage() {
                       : 'border-emerald-300 bg-gradient-to-r from-emerald-50 to-lime-50'
                 }`}
               >
+                <div className="mb-1 flex items-center justify-between gap-2">
+                  {event.actor?.name ? (
+                    <div className="flex items-center gap-2">
+                      <AvatarImage
+                        imageUrl={event.actor.profileImageUrl || null}
+                        fallback={event.actor.name}
+                        sizeClassName="h-7 w-7"
+                      />
+                      <p className="text-xs text-slate-600">{event.actor.name}</p>
+                    </div>
+                  ) : <span />}
+                </div>
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">{event.type}</p>
-                <p className="mt-1 text-sm font-medium text-slate-900">{event.title}</p>
+                <p className="mt-1 text-sm font-medium text-slate-900">{event.type === 'PAYMENT_ADDED' ? 'Abono registrado' : event.title}</p>
                 <p className="text-xs text-slate-500">{event.occurredAt ? dateTime(event.occurredAt) : '-'}</p>
+                {event.type === 'PAYMENT_ADDED' ? (
+                  <div className="mt-2 rounded-lg border border-fuchsia-200 bg-white/80 p-2 text-xs text-slate-700">
+                    <p>Monto: {currency(Number((event.metadata as Record<string, unknown>)?.amount || 0))}</p>
+                    <p>Método: {String((event.metadata as Record<string, unknown>)?.method || 'No especificado')}</p>
+                    <p>Pagado: {(event.metadata as Record<string, unknown>)?.paidAt ? dateTime(String((event.metadata as Record<string, unknown>).paidAt)) : 'Sin fecha'}</p>
+                    {(event.metadata as Record<string, unknown>)?.notes ? <p>Notas: {String((event.metadata as Record<string, unknown>).notes)}</p> : null}
+                  </div>
+                ) : null}
                 {(event.attachments || []).length ? (
                   <div className="mt-2 space-y-1">
                     {(event.attachments || []).map((attachment) => (
@@ -1089,6 +1194,23 @@ function QuickNoteForm({ onSubmit, isPending }: { onSubmit: (payload: { note: st
 
 function Spinner() {
   return <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />;
+}
+
+function AvatarImage({ imageUrl, fallback, sizeClassName = 'h-8 w-8' }: { imageUrl?: string | null; fallback: string; sizeClassName?: string }) {
+  const initials = fallback
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join('');
+  if (imageUrl) {
+    return <img src={imageUrl} alt={fallback} className={`${sizeClassName} rounded-full object-cover`} />;
+  }
+  return (
+    <span className={`${sizeClassName} inline-flex items-center justify-center rounded-full bg-slate-200 text-xs font-semibold text-slate-700`}>
+      {initials || 'US'}
+    </span>
+  );
 }
 
 function detectMimeType(attachment: NoteAttachment) {

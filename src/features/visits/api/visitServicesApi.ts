@@ -16,6 +16,11 @@ export async function patchVisitService(visitId: string, serviceId: string, payl
   return data;
 }
 
+export async function patchVisitServiceStatus(visitId: string, serviceId: string, statusId: string) {
+  const { data } = await http.patch<VisitService>(`/visits/${visitId}/services/${serviceId}/status`, { statusId });
+  return data;
+}
+
 export async function deleteVisitService(visitId: string, serviceId: string) {
   await http.delete(`/visits/${visitId}/services/${serviceId}`);
 }
