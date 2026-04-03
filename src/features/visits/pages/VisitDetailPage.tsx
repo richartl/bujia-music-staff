@@ -4,6 +4,7 @@ import { useSearchParams, useParams } from 'react-router-dom';
 import { authStore } from '@/stores/auth-store';
 import { currency, dateTime } from '@/lib/utils';
 import { getIntakeLookups } from '@/features/intakes/api/get-intake-lookups';
+import { filesApi } from '@/features/intakes/api/filesApi';
 import type { WorkshopServiceLookup } from '@/features/intakes/types';
 import { 
   createVisitNote,
@@ -61,6 +62,9 @@ export function VisitDetailPage() {
   const [isServiceModalOpen, setIsServiceModalOpen] = useState(false);
   const [serviceSearch, setServiceSearch] = useState('');
   const [catalogServiceNote, setCatalogServiceNote] = useState('');
+  const [initialServiceNote, setInitialServiceNote] = useState('');
+  const [initialServiceNoteIsInternal, setInitialServiceNoteIsInternal] = useState(false);
+  const [initialServiceNoteFiles, setInitialServiceNoteFiles] = useState<File[]>([]);
   const [showManualServiceForm, setShowManualServiceForm] = useState(false);
   const [manualService, setManualService] = useState({ name: '', quantity: '1', price: '0', notes: '' });
   const [isAdjustSwitchModalOpen, setIsAdjustSwitchModalOpen] = useState(false);
@@ -159,11 +163,17 @@ export function VisitDetailPage() {
     mutationFn: (payload: Record<string, unknown>) => createVisitService(visitId, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['visit-services', visitId] });
+      queryClient.invalidateQueries({ queryKey: ['service-notes-batch'] });
+      queryClient.invalidateQueries({ queryKey: ['service-note-attachments-batch'] });
+      queryClient.invalidateQueries({ queryKey: ['visit-timeline', visitId] });
       setIsServiceModalOpen(false);
       setShowManualServiceForm(false);
       setManualService({ name: '', quantity: '1', price: '0', notes: '' });
       setServiceSearch('');
       setCatalogServiceNote('');
+      setInitialServiceNote('');
+      setInitialServiceNoteIsInternal(false);
+      setInitialServiceNoteFiles([]);
     },
   });
 
@@ -346,11 +356,18 @@ export function VisitDetailPage() {
       title: 'Confirmar servicio',
       message: `¿Agregar servicio "${service.name}"?`,
       action: async () => {
-        await createServiceMutation.mutateAsync({
-          workshopServiceId: service.id,
-          quantity: 1,
-          price: Number(service.basePrice || 0),
-          notes: catalogServiceNote.trim() || undefined,
+        await runApi(async () => {
+          const initialNoteMediaIds = await uploadInitialNoteMediaIds();
+          await createServiceMutation.mutateAsync({
+            workshopServiceId: service.id,
+            serviceCatalogId: service.id,
+            quantity: 1,
+            price: Number(service.basePrice || 0),
+            notes: catalogServiceNote.trim() || undefined,
+            initialNote: initialServiceNote.trim() || undefined,
+            initialNoteIsInternal: initialServiceNoteIsInternal,
+            initialNoteMediaIds: initialNoteMediaIds.length ? initialNoteMediaIds : undefined,
+          });
         });
       },
     });
@@ -361,11 +378,18 @@ export function VisitDetailPage() {
       title: 'Confirmar servicio manual',
       message: `¿Agregar servicio manual "${manualService.name}"?`,
       action: async () => {
-        await createServiceMutation.mutateAsync({
-          name: manualService.name,
-          quantity: Number(manualService.quantity || 1),
-          price: Number(manualService.price || 0),
-          notes: manualService.notes || undefined,
+        await runApi(async () => {
+          const initialNoteMediaIds = await uploadInitialNoteMediaIds();
+          await createServiceMutation.mutateAsync({
+            name: manualService.name,
+            description: manualService.notes || undefined,
+            quantity: Number(manualService.quantity || 1),
+            price: Number(manualService.price || 0),
+            notes: manualService.notes || undefined,
+            initialNote: initialServiceNote.trim() || undefined,
+            initialNoteIsInternal: initialServiceNoteIsInternal,
+            initialNoteMediaIds: initialNoteMediaIds.length ? initialNoteMediaIds : undefined,
+          });
         });
       },
     });
@@ -438,6 +462,25 @@ export function VisitDetailPage() {
     } finally {
       setUploadingCount((value) => Math.max(0, value - 1));
     }
+  }
+
+  async function uploadInitialNoteMediaIds() {
+    if (!initialServiceNoteFiles.length) return [] as string[];
+    const scope = `visit:${visitId}/service-initial-note`;
+    const mediaIds: string[] = [];
+    for (const file of initialServiceNoteFiles) {
+      const init = await filesApi.initUpload(file, scope);
+      await filesApi.putBinaryToSignedUrl(init.uploadUrl, file, init.requiredHeaders);
+      await filesApi.completeUpload(init.mediaId, {
+        sizeBytes: file.size,
+        metadata: {
+          originalName: file.name,
+          mimeType: file.type || 'application/octet-stream',
+        },
+      });
+      mediaIds.push(init.mediaId);
+    }
+    return mediaIds;
   }
 
   if (!instrumentId) {
@@ -956,6 +999,40 @@ export function VisitDetailPage() {
               value={catalogServiceNote}
               onChange={(event) => setCatalogServiceNote(event.target.value)}
             />
+            <textarea
+              className="input mt-2 min-h-16"
+              placeholder="Nota inicial del servicio (opcional)"
+              value={initialServiceNote}
+              onChange={(event) => setInitialServiceNote(event.target.value)}
+            />
+            <button
+              type="button"
+              className={`mt-2 flex h-9 w-full items-center justify-center rounded-xl text-xs font-semibold ${initialServiceNoteIsInternal ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}
+              onClick={() => setInitialServiceNoteIsInternal((value) => !value)}
+            >
+              {initialServiceNoteIsInternal ? '🔒 Nota inicial interna' : '🌍 Nota inicial pública'}
+            </button>
+            <label className="btn-secondary mt-2 h-9 w-full cursor-pointer justify-center text-xs">
+              Adjuntar archivos a nota inicial
+              <input
+                type="file"
+                multiple
+                className="hidden"
+                accept="image/*,video/*,audio/*,.pdf,.doc,.docx"
+                onChange={(event) => {
+                  const files = Array.from(event.target.files || []);
+                  setInitialServiceNoteFiles(files);
+                  event.target.value = '';
+                }}
+              />
+            </label>
+            {initialServiceNoteFiles.length ? (
+              <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 p-2">
+                {initialServiceNoteFiles.map((file) => (
+                  <p key={`${file.name}-${file.size}`} className="truncate text-xs text-slate-600">{file.name}</p>
+                ))}
+              </div>
+            ) : null}
 
             <button type="button" className="btn-secondary mt-3 h-9 w-full justify-center" onClick={() => setShowManualServiceForm((v) => !v)}>
               {showManualServiceForm ? 'Ocultar manual' : 'Agregar manual'}
@@ -979,6 +1056,9 @@ export function VisitDetailPage() {
               className="btn-secondary mt-3 h-10 w-full justify-center"
               onClick={() => {
                 setCatalogServiceNote('');
+                setInitialServiceNote('');
+                setInitialServiceNoteIsInternal(false);
+                setInitialServiceNoteFiles([]);
                 setIsServiceModalOpen(false);
               }}
             >
@@ -1060,8 +1140,21 @@ export function VisitDetailPage() {
                 type="button"
                 className="btn-primary h-10 justify-center"
                 onClick={async () => {
-                  await confirmModal.action();
-                  setConfirmModal(null);
+                  try {
+                    await confirmModal.action();
+                    setConfirmModal(null);
+                  } catch (error) {
+                    const fallback = getErrorMessage(error);
+                    if (error && typeof error === 'object' && 'response' in error) {
+                      const maybe = error as { response?: { data?: { message?: string | string[] } } };
+                      const message = maybe.response?.data?.message;
+                      if (message) {
+                        window.alert(Array.isArray(message) ? message.join(', ') : message);
+                        return;
+                      }
+                    }
+                    window.alert(fallback);
+                  }
                 }}
               >
                 Confirmar
