@@ -1,14 +1,8 @@
 import { render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { UserAvatar } from '../src/components/avatars/UserAvatar';
 import { WorkshopAvatar } from '../src/components/avatars/WorkshopAvatar';
 import { UserAvatarUploader } from '../src/features/settings/components/UserAvatarUploader';
-
-vi.mock('../src/config/env', () => ({
-  env: {
-    enableProfileImageEditing: false,
-  },
-}));
 
 describe('avatar components', () => {
   it('UserAvatar usa iniciales cuando no hay imagen', () => {
@@ -29,8 +23,9 @@ describe('avatar components', () => {
     expect(image.src).toContain('profile.jpg');
   });
 
-  it('UserAvatarUploader oculta acciones si feature flag está apagado', () => {
-    render(<UserAvatarUploader email="staff@bujia.com" canEdit profileImageUrl={null} />);
-    expect(screen.getByText(/Edición de foto disponible/)).toBeTruthy();
+  it('UserAvatarUploader muestra acciones cuando hay permisos', () => {
+    render(<UserAvatarUploader userId="u1" email="staff@bujia.com" canEdit profileImageUrl={null} />);
+    expect(screen.getByText('Subir imagen')).toBeTruthy();
+    expect(screen.getByText('Guardar cambios')).toBeTruthy();
   });
 });

@@ -19,6 +19,7 @@ export function SettingsPage() {
       </div>
 
       <UserAvatarUploader
+        userId={user?.id}
         name={user?.email}
         email={user?.email}
         profileImageUrl={profileImageUrl}
@@ -26,6 +27,7 @@ export function SettingsPage() {
       />
 
       <WorkshopAvatarUploader
+        workshopId={activeWorkshop?.id}
         name={activeWorkshop?.name}
         profileImageUrl={activeWorkshop?.profileImageUrl}
         logoUrl={activeWorkshop?.logoUrl}

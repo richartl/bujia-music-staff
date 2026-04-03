@@ -1,8 +1,20 @@
 import { useMemo } from 'react';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { authStore } from '@/stores/auth-store';
-import { env } from '@/config/env';
+import type { Workshop } from '@/types/workshop';
 import { getUserWorkshop, getUserWorkshops } from '@/features/settings/api/user-workshops';
+import {
+  updateUserProfileImage,
+  updateWorkshopProfileImage,
+  type ProfileImageUpdateResponse,
+} from '@/features/settings/api/profile-images';
+
+function patchWorkshopCollection(workshops: Workshop[] | undefined, workshopId: string, profileImageUrl: string | null) {
+  if (!Array.isArray(workshops)) return workshops;
+  return workshops.map((workshop) =>
+    workshop.id === workshopId ? { ...workshop, profileImageUrl } : workshop,
+  );
+}
 
 export function useCurrentUserProfileImage() {
   const user = authStore((state) => state.user);
@@ -43,23 +55,44 @@ export function useWorkshopBranding() {
 }
 
 export function useUpdateUserProfileImage() {
+  const queryClient = useQueryClient();
+
   return useMutation({
-    mutationFn: async (_payload: { mediaId: string | null }) => {
-      if (!env.enableProfileImageEditing) {
-        throw new Error('Edición de imagen deshabilitada por feature flag.');
+    mutationFn: async ({ userId, mediaId }: { userId: string; mediaId: string | null }) =>
+      updateUserProfileImage(userId, mediaId),
+    onSuccess: (response: ProfileImageUpdateResponse) => {
+      const state = authStore.getState();
+      if (state.user?.id === response.id) {
+        const nextUser = { ...state.user, profileImageUrl: response.profileImageUrl };
+        localStorage.setItem('staff-user', JSON.stringify(nextUser));
+        authStore.setState({ user: nextUser });
       }
-      throw new Error('Backend de actualización de imagen de usuario no disponible todavía.');
+      queryClient.invalidateQueries({ queryKey: ['workshops'] });
+      queryClient.invalidateQueries({ queryKey: ['workshop-branding'] });
     },
   });
 }
 
 export function useUpdateWorkshopProfileImage() {
+  const queryClient = useQueryClient();
+  const user = authStore((state) => state.user);
+
   return useMutation({
-    mutationFn: async (_payload: { workshopId: string; mediaId: string | null }) => {
-      if (!env.enableProfileImageEditing) {
-        throw new Error('Edición de imagen deshabilitada por feature flag.');
-      }
-      throw new Error('Backend de actualización de imagen de taller no disponible todavía.');
+    mutationFn: async ({ workshopId, mediaId }: { workshopId: string; mediaId: string | null }) =>
+      updateWorkshopProfileImage(workshopId, mediaId),
+    onSuccess: (response, variables) => {
+      queryClient.setQueriesData({ queryKey: ['workshops', user?.id] }, (current: Workshop[] | undefined) =>
+        patchWorkshopCollection(current, variables.workshopId, response.profileImageUrl),
+      );
+
+      queryClient.setQueryData(['workshop-branding', user?.id, variables.workshopId], (current: Workshop | undefined) =>
+        current ? { ...current, profileImageUrl: response.profileImageUrl } : current,
+      );
+
+      queryClient.invalidateQueries({ queryKey: ['workshops', user?.id] });
+      queryClient.invalidateQueries({ queryKey: ['workshop-branding', user?.id, variables.workshopId] });
+      queryClient.invalidateQueries({ queryKey: ['public-tracking'] });
+      queryClient.invalidateQueries({ queryKey: ['visit-tracking'] });
     },
   });
 }
