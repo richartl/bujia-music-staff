@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useIsFetching, useIsMutating, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams, useParams } from 'react-router-dom';
 import { authStore } from '@/stores/auth-store';
 import { currency, dateTime } from '@/lib/utils';
@@ -79,7 +79,10 @@ export function VisitDetailPage() {
   const [isCancelVisitModalOpen, setIsCancelVisitModalOpen] = useState(false);
   const [paymentModalIndex, setPaymentModalIndex] = useState<number | null>(null);
   const [uploadingCount, setUploadingCount] = useState(0);
+  const [apiPendingCount, setApiPendingCount] = useState(0);
   const queryClient = useQueryClient();
+  const activeQueries = useIsFetching();
+  const activeMutations = useIsMutating();
 
   const visitQuery = useQuery({
     queryKey: ['visit-detail', workshopId, instrumentId, visitId],
@@ -403,10 +406,19 @@ export function VisitDetailPage() {
     setNoteModalFile(null);
   }
 
+  async function runApi(task: () => Promise<void>) {
+    setApiPendingCount((value) => value + 1);
+    try {
+      await task();
+    } finally {
+      setApiPendingCount((value) => Math.max(0, value - 1));
+    }
+  }
+
   async function withUploading(task: () => Promise<void>) {
     setUploadingCount((value) => value + 1);
     try {
-      await task();
+      await runApi(task);
     } finally {
       setUploadingCount((value) => Math.max(0, value - 1));
     }
@@ -426,6 +438,9 @@ export function VisitDetailPage() {
 
   const isBusy =
     uploadingCount > 0 ||
+    apiPendingCount > 0 ||
+    activeQueries > 0 ||
+    activeMutations > 0 ||
     createNoteMutation.isPending ||
     createServiceMutation.isPending ||
     updateVisitMutation.isPending ||
@@ -437,9 +452,11 @@ export function VisitDetailPage() {
   return (
     <div className="space-y-3">
       {isBusy ? (
-        <div className="fixed right-3 top-3 z-50 flex items-center gap-2 rounded-full bg-slate-900 px-3 py-2 text-xs text-white shadow-lg">
-          <Spinner />
-          Procesando…
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/25 backdrop-blur-[1px]">
+          <div className="flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-lg">
+            <Spinner />
+            Cargando...
+          </div>
         </div>
       ) : null}
       <section className="card p-4">
@@ -540,7 +557,16 @@ export function VisitDetailPage() {
               </div>
               <p className="mt-1 text-xs text-slate-500">{note.createdAt ? dateTime(note.createdAt) : 'Sin fecha'}</p>
               <div className="mt-2 flex gap-2">
-                <button type="button" className="btn-secondary h-9 px-3" onClick={() => updateVisitNote(visitId, note.id, { isInternal: !note.isInternal }).then(() => queryClient.invalidateQueries({ queryKey: ['visit-notes', visitId] }))}>
+                <button
+                  type="button"
+                  className="btn-secondary h-9 px-3"
+                  onClick={() =>
+                    runApi(async () => {
+                      await updateVisitNote(visitId, note.id, { isInternal: !note.isInternal });
+                      await queryClient.invalidateQueries({ queryKey: ['visit-notes', visitId] });
+                    })
+                  }
+                >
                   Cambiar visibilidad
                 </button>
                 <MediaQuickAttach
@@ -556,7 +582,16 @@ export function VisitDetailPage() {
                 {(noteAttachmentsQueries.data?.[note.id] || []).map((attachment) => (
                   <div key={attachment.id} className="flex items-center justify-between rounded-lg bg-slate-50 px-2 py-1 text-xs">
                     <AttachmentPreview attachment={attachment} onOpen={setMediaPreview} />
-                    <button type="button" className="text-red-600" onClick={() => deleteVisitNoteAttachment(note.id, attachment.id).then(() => queryClient.invalidateQueries({ queryKey: ['visit-note-attachments'] }))}>
+                    <button
+                      type="button"
+                      className="text-red-600"
+                      onClick={() =>
+                        runApi(async () => {
+                          await deleteVisitNoteAttachment(note.id, attachment.id);
+                          await queryClient.invalidateQueries({ queryKey: ['visit-note-attachments'] });
+                        })
+                      }
+                    >
                       Eliminar
                     </button>
                   </div>
@@ -577,12 +612,12 @@ export function VisitDetailPage() {
             Agregar servicio
           </button>
           {adjustService ? (
-            <article className="rounded-xl border border-indigo-300 bg-indigo-50 p-3">
+            <article className="rounded-xl border border-indigo-300 bg-indigo-50 p-3" onDoubleClick={() => setServiceDetailModalId(adjustService.id)}>
               <p className="text-xs font-semibold uppercase text-indigo-700">Servicio de ajuste</p>
               <button
                 type="button"
                 className="mt-1 text-left text-sm font-semibold text-slate-900 underline-offset-2 hover:underline"
-                onDoubleClick={() => setServiceDetailModalId(adjustService.id)}
+                onClick={() => setServiceDetailModalId(adjustService.id)}
               >
                 {adjustService.name || 'Servicio ajuste'}
               </button>
@@ -600,12 +635,12 @@ export function VisitDetailPage() {
             </article>
           ) : null}
           {regularServices.map((service) => (
-            <article key={service.id} className="rounded-xl border border-slate-200 p-3">
+            <article key={service.id} className="rounded-xl border border-slate-200 p-3" onDoubleClick={() => setServiceDetailModalId(service.id)}>
               <div className="rounded-lg bg-slate-50 p-2">
                 <button
                   type="button"
                   className="text-left text-sm font-semibold text-slate-900 underline-offset-2 hover:underline"
-                  onDoubleClick={() => setServiceDetailModalId(service.id)}
+                  onClick={() => setServiceDetailModalId(service.id)}
                 >
                   {service.name || 'Servicio'}
                 </button>
