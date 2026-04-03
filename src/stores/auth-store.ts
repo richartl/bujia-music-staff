@@ -4,6 +4,7 @@ type User = {
   id: string;
   email: string;
   role: string;
+  profileImageUrl?: string | null;
 };
 
 type AuthState = {

@@ -34,23 +34,36 @@ export function WorkshopSwitcher() {
       <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-500">
         Taller activo
       </label>
-
-      <select
-        className="input"
-        value={workshopId || ''}
-        onChange={(e) => setWorkshopId(e.target.value)}
-        disabled={isLoading || !user?.id || !data?.length}
-      >
-        <option value="">
-          {isLoading ? 'Cargando talleres...' : 'Selecciona taller'}
-        </option>
-
-        {(data || []).map((workshop) => (
-          <option key={workshop.id} value={workshop.id}>
-            {workshop.name}
-          </option>
-        ))}
-      </select>
+      <div className="max-h-56 space-y-2 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2">
+        {isLoading ? <p className="px-2 py-1 text-xs text-slate-500">Cargando talleres...</p> : null}
+        {(data || []).map((workshop) => {
+          const image = workshop.profileImageUrl || workshop.logoUrl || '';
+          const initials = workshop.name
+            .split(' ')
+            .filter(Boolean)
+            .slice(0, 2)
+            .map((part) => part[0]?.toUpperCase())
+            .join('');
+          return (
+            <button
+              key={workshop.id}
+              type="button"
+              className={`flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm ${
+                workshopId === workshop.id ? 'bg-amber-50 text-amber-800' : 'hover:bg-slate-50'
+              }`}
+              onClick={() => setWorkshopId(workshop.id)}
+              disabled={!user?.id}
+            >
+              {image ? (
+                <img src={image} alt={workshop.name} className="h-8 w-8 rounded-full object-cover" />
+              ) : (
+                <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-slate-200 text-xs font-semibold text-slate-700">{initials || 'TL'}</span>
+              )}
+              <span className="truncate">{workshop.name}</span>
+            </button>
+          );
+        })}
+      </div>
 
       {isError ? (
         <p className="mt-2 text-xs text-red-600">

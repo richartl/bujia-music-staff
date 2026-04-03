@@ -6,6 +6,29 @@ export type VisitStatusCatalog = {
   isActive?: boolean;
 };
 
+export type ServiceStatusCatalog = {
+  id: string;
+  workshopId: string;
+  code: string;
+  name: string;
+  description?: string | null;
+  color?: string | null;
+  sortOrder?: number;
+  isActive?: boolean;
+  isTerminal?: boolean;
+};
+
+
+export type VisitPayment = {
+  id?: string;
+  paymentMethodId?: string;
+  paymentMethod?: { id?: string; name?: string } | null;
+  method?: string;
+  amount?: number | string;
+  notes?: string;
+  paidAt?: string;
+};
+
 export type VisitFilters = {
   search: string;
   statusId: string;
@@ -46,6 +69,8 @@ export type VisitResponse = {
   branch?: { id: string; name: string } | null;
   client?: { id: string; fullName?: string; firstName?: string; lastName?: string; phone?: string } | null;
   instrument?: { id: string; name?: string; model?: string; colorName?: string } | null;
+  payments?: VisitPayment[];
+  visitMediaIds?: string[];
 };
 
 export type UpdateVisitPayload = Partial<{
@@ -61,6 +86,14 @@ export type UpdateVisitPayload = Partial<{
   statusId: string;
   desiredTuningId: string;
   stringGaugeId: string;
+  payments: Array<{
+    paymentMethodId?: string;
+    method?: string;
+    amount: number;
+    notes?: string;
+    paidAt?: string;
+  }>;
+  visitMediaIds: string[];
 }>;
 
 export type VisitNote = {
@@ -69,7 +102,8 @@ export type VisitNote = {
   isInternal: boolean;
   createdAt?: string;
   updatedAt?: string;
-  author?: { id: string; name?: string; email?: string } | null;
+  author?: { id: string; name?: string; email?: string; profileImageUrl?: string | null } | null;
+  createdByUser?: { id?: string; name?: string; profileImageUrl?: string | null } | null;
 };
 
 export type NoteAttachment = {
@@ -88,7 +122,7 @@ export type VisitService = {
   id: string;
   workshopServiceId?: string;
   name?: string;
-  status?: string | { id?: string; name?: string };
+  status?: string | { id?: string; code?: string; name?: string; color?: string };
   quantity?: number;
   price?: number;
   notes?: string;
@@ -109,6 +143,19 @@ export type VisitTimelineEvent = {
   description?: string;
   isPublic?: boolean;
   occurredAt?: string;
+  actor?: { id?: string; name?: string; profileImageUrl?: string | null } | null;
+  service?: {
+    id?: string;
+    name?: string;
+    status?: { id?: string; code?: string; name?: string; color?: string } | null;
+  } | null;
+  note?: {
+    id?: string;
+    note?: string;
+    isInternal?: boolean;
+    scope?: string;
+  } | null;
+  attachment?: NoteAttachment | null;
   metadata?: Record<string, unknown>;
 };
 
@@ -119,13 +166,32 @@ export type TrackingLinkResponse = {
 };
 
 export type TrackingResponse = {
-  workshop?: { id: string; name: string };
-  client?: { id: string; name?: string };
-  instrument?: { id: string; name?: string };
+  tracking?: {
+    token?: string;
+    isActive?: boolean;
+    expiresAt?: string | null;
+    lastAccessedAt?: string | null;
+    url?: string;
+  };
+  workshop?: { id: string; name: string; logoUrl?: string | null; profileImageUrl?: string | null };
+  client?: { id?: string; name?: string; displayName?: string; code?: string };
+  instrument?: {
+    id?: string;
+    name?: string;
+    nickname?: string | null;
+    model?: string | null;
+    serialNumber?: string | null;
+    brand?: { name?: string } | null;
+    instrumentType?: { name?: string } | null;
+  };
   branch?: { id: string; name?: string };
-  status?: { id?: string; name?: string; color?: string };
+  status?: { id?: string; code?: string; name?: string; color?: string };
   visit?: VisitResponse;
-  services?: Array<VisitService & { serviceNotes?: Array<VisitServiceNote & { attachments?: NoteAttachment[] }> }>;
+  services?: Array<VisitService & {
+    status?: string | { id?: string; code?: string; name?: string; color?: string };
+    serviceNotes?: Array<VisitServiceNote & { attachments?: NoteAttachment[] }>;
+    notes?: Array<VisitServiceNote & { attachments?: NoteAttachment[] }>;
+  }>;
   trackingLinks?: TrackingLinkResponse[];
   timeline?: VisitTimelineEvent[];
 };

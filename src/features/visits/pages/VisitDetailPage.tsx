@@ -1,9 +1,17 @@
 import { useMemo, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useIsFetching, useIsMutating, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams, useParams } from 'react-router-dom';
 import { authStore } from '@/stores/auth-store';
 import { currency, dateTime } from '@/lib/utils';
 import { getIntakeLookups } from '@/features/intakes/api/get-intake-lookups';
+import { filesApi } from '@/features/intakes/api/filesApi';
+import type { LookupOption } from '@/features/intakes/types';
+import { useServiceStatuses } from '@/features/visits/hooks/useServiceStatuses';
+import { useUpdateVisitServiceStatus } from '@/features/visits/hooks/useUpdateVisitServiceStatus';
+import { VisitServiceStatusChip } from '@/features/visits/components/VisitServiceStatusChip';
+import { VisitServiceStatusSheet } from '@/features/visits/components/VisitServiceStatusSheet';
+import { AddPaymentSheet } from '@/features/visits/components/AddPaymentSheet';
+import { buildVisitPaymentPayload, parseEvidenceMarkerFromNotes, type IntakePaymentForm } from '@/features/visits/utils/paymentEvidence';
 import type { WorkshopServiceLookup } from '@/features/intakes/types';
 import { 
   createVisitNote,
@@ -30,16 +38,15 @@ import {
 } from '../api/attachmentsApi';
 import { getVisitTimeline, getVisitTrackingLink, regenerateVisitTrackingLink } from '../api/trackingApi';
 import { getVisitDetail, getWorkshopVisitStatuses, patchVisit } from '../api/visitsApi';
-import type { NoteAttachment, UpdateVisitPayload, VisitNote } from '../api/types';
+import type { NoteAttachment, UpdateVisitPayload, VisitNote, VisitPayment } from '../api/types';
 
-type TabKey = 'summary' | 'services' | 'notes' | 'tracking' | 'attachments';
+type TabKey = 'summary' | 'services' | 'finance' | 'tracking';
 
 const TABS: Array<{ key: TabKey; label: string }> = [
   { key: 'summary', label: 'Resumen' },
   { key: 'services', label: 'Servicios' },
-  { key: 'notes', label: 'Notas' },
+  { key: 'finance', label: 'Finanzas' },
   { key: 'tracking', label: 'Tracking' },
-  { key: 'attachments', label: 'Adjuntos' },
 ];
 
 function getErrorMessage(error: unknown) {
@@ -60,12 +67,16 @@ export function VisitDetailPage() {
   const [isRegenerateModalOpen, setIsRegenerateModalOpen] = useState(false);
   const [isServiceModalOpen, setIsServiceModalOpen] = useState(false);
   const [serviceSearch, setServiceSearch] = useState('');
+  const [catalogServiceNote, setCatalogServiceNote] = useState('');
+  const [initialServiceNote, setInitialServiceNote] = useState('');
+  const [initialServiceNoteIsInternal, setInitialServiceNoteIsInternal] = useState(false);
+  const [initialServiceNoteFiles, setInitialServiceNoteFiles] = useState<File[]>([]);
   const [showManualServiceForm, setShowManualServiceForm] = useState(false);
   const [manualService, setManualService] = useState({ name: '', quantity: '1', price: '0', notes: '' });
   const [isAdjustSwitchModalOpen, setIsAdjustSwitchModalOpen] = useState(false);
   const [noteModalServiceId, setNoteModalServiceId] = useState<string | null>(null);
   const [noteModalText, setNoteModalText] = useState('');
-  const [noteModalIsInternal, setNoteModalIsInternal] = useState(false);
+  const [noteModalIsInternal, setNoteModalIsInternal] = useState(true);
   const [noteModalFile, setNoteModalFile] = useState<File | null>(null);
   const [confirmModal, setConfirmModal] = useState<{
     title: string;
@@ -75,7 +86,16 @@ export function VisitDetailPage() {
   const [deleteServiceModal, setDeleteServiceModal] = useState<{ serviceId: string; reason: string } | null>(null);
   const [serviceDetailModalId, setServiceDetailModalId] = useState<string | null>(null);
   const [mediaPreview, setMediaPreview] = useState<{ url: string; mimeType: string; name: string } | null>(null);
+  const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
+  const [isCancelVisitModalOpen, setIsCancelVisitModalOpen] = useState(false);
+  const [isAddPaymentSheetOpen, setIsAddPaymentSheetOpen] = useState(false);
+  const [paymentModalIndex, setPaymentModalIndex] = useState<number | null>(null);
+  const [statusSheetServiceId, setStatusSheetServiceId] = useState<string | null>(null);
+  const [uploadingCount, setUploadingCount] = useState(0);
+  const [apiPendingCount, setApiPendingCount] = useState(0);
   const queryClient = useQueryClient();
+  const activeQueries = useIsFetching();
+  const activeMutations = useIsMutating();
 
   const visitQuery = useQuery({
     queryKey: ['visit-detail', workshopId, instrumentId, visitId],
@@ -121,6 +141,8 @@ export function VisitDetailPage() {
   });
 
   const [editPayload, setEditPayload] = useState<UpdateVisitPayload>({});
+  const serviceStatusesQuery = useServiceStatuses(workshopId);
+  const updateServiceStatusMutation = useUpdateVisitServiceStatus();
   const updateVisitMutation = useMutation({
     mutationFn: async () => {
       if (!workshopId) throw new Error('No hay workshop activo');
@@ -141,6 +163,16 @@ export function VisitDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['visit-detail', workshopId, instrumentId, visitId] });
     },
   });
+  const addPaymentMutation = useMutation({
+    mutationFn: (payload: Pick<UpdateVisitPayload, 'payments' | 'visitMediaIds'>) => {
+      if (!workshopId) throw new Error('No hay workshop activo');
+      return patchVisit(workshopId, instrumentId, visitId, payload);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['visit-detail', workshopId, instrumentId, visitId] });
+      queryClient.invalidateQueries({ queryKey: ['visit-timeline', visitId] });
+    },
+  });
 
   const createNoteMutation = useMutation({
     mutationFn: (payload: { note: string; isInternal: boolean }) => createVisitNote(visitId, payload),
@@ -151,10 +183,17 @@ export function VisitDetailPage() {
     mutationFn: (payload: Record<string, unknown>) => createVisitService(visitId, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['visit-services', visitId] });
+      queryClient.invalidateQueries({ queryKey: ['service-notes-batch'] });
+      queryClient.invalidateQueries({ queryKey: ['service-note-attachments-batch'] });
+      queryClient.invalidateQueries({ queryKey: ['visit-timeline', visitId] });
       setIsServiceModalOpen(false);
       setShowManualServiceForm(false);
       setManualService({ name: '', quantity: '1', price: '0', notes: '' });
       setServiceSearch('');
+      setCatalogServiceNote('');
+      setInitialServiceNote('');
+      setInitialServiceNoteIsInternal(false);
+      setInitialServiceNoteFiles([]);
     },
   });
 
@@ -230,12 +269,16 @@ export function VisitDetailPage() {
       title: event.title || event.description || event.eventType,
       occurredAt: event.occurredAt || '',
       attachments: [] as NoteAttachment[],
+      metadata: event.metadata || {},
+      actor: event.actor || null,
     }));
     const visitNotes = (notesQuery.data || []).map((note) => ({
       type: note.isInternal ? 'NOTA_INTERNA' : 'NOTA_CLIENTE',
       title: note.note,
       occurredAt: note.createdAt || note.updatedAt || '',
       attachments: noteAttachmentsQueries.data?.[note.id] || [],
+      metadata: {},
+      actor: note.author || note.createdByUser || null,
     }));
     const serviceNotes = Object.values(serviceNotesQuery.data || {})
       .flat()
@@ -244,6 +287,8 @@ export function VisitDetailPage() {
         title: note.note,
         occurredAt: note.createdAt || note.updatedAt || '',
         attachments: serviceAttachmentsQuery.data?.[note.id] || [],
+        metadata: {},
+        actor: null,
       }));
 
     return [...internalTimeline, ...visitNotes, ...serviceNotes]
@@ -291,6 +336,67 @@ export function VisitDetailPage() {
     () => activeServices.find((service) => service.id === serviceDetailModalId) || null,
     [activeServices, serviceDetailModalId],
   );
+  const selectedServiceForStatus = useMemo(
+    () => activeServices.find((service) => service.id === statusSheetServiceId) || null,
+    [activeServices, statusSheetServiceId],
+  );
+  const adjustService = useMemo(
+    () => activeServices.find((service) => service.isAdjust) || null,
+    [activeServices],
+  );
+  const regularServices = useMemo(
+    () => activeServices.filter((service) => !service.isAdjust),
+    [activeServices],
+  );
+  const serviceStatusOptions = useMemo(
+    () => serviceStatusesQuery.data || [],
+    [serviceStatusesQuery.data],
+  );
+  const paymentMethods = useMemo<LookupOption[]>(
+    () => lookupsQuery.data?.paymentMethods || [],
+    [lookupsQuery.data?.paymentMethods],
+  );
+  const payments = useMemo(() => {
+    const raw = (visit?.payments || []) as VisitPayment[];
+    return raw.map((item) => {
+      const parsed = parseEvidenceMarkerFromNotes(item.notes);
+      return {
+        amount: Number(item.amount || 0),
+        paymentMethod: item.paymentMethod?.name || item.method || 'Método',
+        paidAt: item.paidAt || '',
+        notes: parsed.cleanNotes,
+        evidenceMediaIds: parsed.evidenceMediaIds,
+      };
+    });
+  }, [visit?.payments]);
+  const paymentEvidenceIds = useMemo(
+    () => Array.from(new Set(payments.flatMap((payment) => payment.evidenceMediaIds || []))),
+    [payments],
+  );
+  const paymentEvidenceQuery = useQuery({
+    queryKey: ['visit-payment-evidence', paymentEvidenceIds.join(',')],
+    queryFn: async () => {
+      const entries = await Promise.all(
+        paymentEvidenceIds.map(async (mediaId) => {
+          const download = await filesApi.getDownloadUrl(mediaId);
+          return [
+            mediaId,
+            {
+              id: mediaId,
+              mediaId,
+              url: download.url,
+              publicUrl: download.url,
+              originalName: `Evidencia ${mediaId.slice(0, 6)}`,
+              mimeType: '',
+            } satisfies NoteAttachment,
+          ] as const;
+        }),
+      );
+      return Object.fromEntries(entries) as Record<string, NoteAttachment>;
+    },
+    enabled: paymentEvidenceIds.length > 0,
+    staleTime: 1000 * 60 * 10,
+  });
 
   async function addCatalogService(service: WorkshopServiceLookup) {
     if (
@@ -305,12 +411,18 @@ export function VisitDetailPage() {
       title: 'Confirmar servicio',
       message: `¿Agregar servicio "${service.name}"?`,
       action: async () => {
-        await createServiceMutation.mutateAsync({
-          workshopServiceId: service.id,
-          quantity: 1,
-          price: Number(service.basePrice || 0),
-          notes: '',
-          isAdjust: !!service.isAdjust,
+        await runApi(async () => {
+          const initialNoteMediaIds = await uploadInitialNoteMediaIds();
+          await createServiceMutation.mutateAsync({
+            workshopServiceId: service.id,
+            serviceCatalogId: service.id,
+            quantity: 1,
+            price: Number(service.basePrice || 0),
+            notes: catalogServiceNote.trim() || undefined,
+            initialNote: initialServiceNote.trim() || undefined,
+            initialNoteIsInternal: initialServiceNoteIsInternal,
+            initialNoteMediaIds: initialNoteMediaIds.length ? initialNoteMediaIds : undefined,
+          });
         });
       },
     });
@@ -321,11 +433,18 @@ export function VisitDetailPage() {
       title: 'Confirmar servicio manual',
       message: `¿Agregar servicio manual "${manualService.name}"?`,
       action: async () => {
-        await createServiceMutation.mutateAsync({
-          name: manualService.name,
-          quantity: Number(manualService.quantity || 1),
-          price: Number(manualService.price || 0),
-          notes: manualService.notes || undefined,
+        await runApi(async () => {
+          const initialNoteMediaIds = await uploadInitialNoteMediaIds();
+          await createServiceMutation.mutateAsync({
+            name: manualService.name,
+            description: manualService.notes || undefined,
+            quantity: Number(manualService.quantity || 1),
+            price: Number(manualService.price || 0),
+            notes: manualService.notes || undefined,
+            initialNote: initialServiceNote.trim() || undefined,
+            initialNoteIsInternal: initialServiceNoteIsInternal,
+            initialNoteMediaIds: initialNoteMediaIds.length ? initialNoteMediaIds : undefined,
+          });
         });
       },
     });
@@ -342,7 +461,6 @@ export function VisitDetailPage() {
           quantity: existingAdjustService.quantity || 1,
           price: Number(nextAdjustService.basePrice || existingAdjustService.price || 0),
           notes: existingAdjustService.notes || undefined,
-          isAdjust: true,
         });
         await queryClient.invalidateQueries({ queryKey: ['visit-services', visitId] });
         setIsAdjustSwitchModalOpen(false);
@@ -371,14 +489,76 @@ export function VisitDetailPage() {
       isInternal: noteModalIsInternal,
     });
     if (noteModalFile) {
-      await uploadVisitServiceNoteAttachment(createdNote.id, noteModalFile);
+      await withUploading(async () => {
+        await uploadVisitServiceNoteAttachment(createdNote.id, noteModalFile);
+      });
     }
     await queryClient.invalidateQueries({ queryKey: ['service-notes-batch'] });
     await queryClient.invalidateQueries({ queryKey: ['service-note-attachments-batch'] });
     setNoteModalServiceId(null);
     setNoteModalText('');
-    setNoteModalIsInternal(false);
+    setNoteModalIsInternal(true);
     setNoteModalFile(null);
+  }
+
+  async function runApi(task: () => Promise<void>) {
+    setApiPendingCount((value) => value + 1);
+    try {
+      await task();
+    } finally {
+      setApiPendingCount((value) => Math.max(0, value - 1));
+    }
+  }
+
+  async function withUploading(task: () => Promise<void>) {
+    setUploadingCount((value) => value + 1);
+    try {
+      await runApi(task);
+    } finally {
+      setUploadingCount((value) => Math.max(0, value - 1));
+    }
+  }
+
+  async function uploadInitialNoteMediaIds() {
+    if (!initialServiceNoteFiles.length) return [] as string[];
+    const scope = `visit:${visitId}/service-initial-note`;
+    const mediaIds: string[] = [];
+    for (const file of initialServiceNoteFiles) {
+      const init = await filesApi.initUpload(file, scope);
+      await filesApi.putBinaryToSignedUrl(init.uploadUrl, file, init.requiredHeaders);
+      await filesApi.completeUpload(init.mediaId, {
+        sizeBytes: file.size,
+        metadata: {
+          originalName: file.name,
+          mimeType: file.type || 'application/octet-stream',
+        },
+      });
+      mediaIds.push(init.mediaId);
+    }
+    return mediaIds;
+  }
+
+  async function submitPayment(form: IntakePaymentForm, evidenceMediaIds: string[]) {
+    const payload = buildVisitPaymentPayload({
+      form,
+      evidenceMediaIds,
+      existingVisitMediaIds: visit?.visitMediaIds || [],
+    });
+    await runApi(async () => {
+      await addPaymentMutation.mutateAsync(payload);
+    }).catch((error) => {
+      const fallback = getErrorMessage(error);
+      if (error && typeof error === 'object' && 'response' in error) {
+        const maybe = error as { response?: { data?: { message?: string | string[] } } };
+        const message = maybe.response?.data?.message;
+        if (message) {
+          window.alert(Array.isArray(message) ? message.join(', ') : message);
+          throw error;
+        }
+      }
+      window.alert(fallback);
+      throw error;
+    });
   }
 
   if (!instrumentId) {
@@ -393,12 +573,44 @@ export function VisitDetailPage() {
     return <section className="card p-4 text-sm text-red-700">{getErrorMessage(visitQuery.error)}</section>;
   }
 
+  const isBusy =
+    uploadingCount > 0 ||
+    apiPendingCount > 0 ||
+    activeQueries > 0 ||
+    activeMutations > 0 ||
+    createNoteMutation.isPending ||
+    createServiceMutation.isPending ||
+    updateVisitMutation.isPending ||
+    saveTrackingLinkMutation.isPending ||
+    notesQuery.isFetching ||
+    servicesQuery.isFetching ||
+    timelineQuery.isFetching ||
+    serviceStatusesQuery.isFetching;
+
   return (
     <div className="space-y-3">
+      {isBusy ? (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/25 backdrop-blur-[1px]">
+          <div className="flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-lg">
+            <Spinner />
+            Cargando...
+          </div>
+        </div>
+      ) : null}
       <section className="card p-4">
         <p className="text-xs font-semibold text-slate-500">{visit.folio}</p>
         <h1 className="mt-1 text-lg font-semibold text-slate-900">{visit.instrument?.name || 'Detalle de visita'}</h1>
-        <p className="text-sm text-slate-500">{visit.client?.fullName || 'Cliente'} · {currentStatus}</p>
+        <p className="text-sm text-slate-500">
+          {visit.client?.fullName || 'Cliente'} · {visit.client?.phone || 'Sin teléfono'} · {currentStatus}
+        </p>
+        <div className="mt-2 flex gap-2">
+          <button type="button" className="btn-secondary h-8 px-3 text-xs" onClick={() => setIsStatusModalOpen(true)}>
+            Cambiar estado
+          </button>
+          <button type="button" className="h-8 rounded-lg border border-rose-200 bg-rose-50 px-3 text-xs font-semibold text-rose-700" onClick={() => setIsCancelVisitModalOpen(true)}>
+            Cancelar visita
+          </button>
+        </div>
         <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 p-2">
           <p className="text-[11px] font-semibold uppercase text-slate-500">Tracking público</p>
           <p className="mt-1 break-all text-xs text-sky-700">{resolvedTrackingUrl || 'No disponible'}</p>
@@ -421,7 +633,7 @@ export function VisitDetailPage() {
       </section>
 
       <section className="card p-2">
-        <div className="grid grid-cols-5 gap-1">
+        <div className="grid grid-cols-4 gap-1">
           {TABS.map((item) => (
             <button
               key={item.key}
@@ -437,25 +649,52 @@ export function VisitDetailPage() {
 
       {tab === 'summary' ? (
         <section className="card space-y-2 p-4">
-          <textarea className="input min-h-20" placeholder="Intake notes" defaultValue={visit.intakeNotes || ''} onChange={(e) => setEditPayload((current) => ({ ...current, intakeNotes: e.target.value }))} />
-          <textarea className="input min-h-20" placeholder="Diagnosis" defaultValue={visit.diagnosis || ''} onChange={(e) => setEditPayload((current) => ({ ...current, diagnosis: e.target.value }))} />
-          <textarea className="input min-h-20" placeholder="Notas internas" defaultValue={visit.internalNotes || ''} onChange={(e) => setEditPayload((current) => ({ ...current, internalNotes: e.target.value }))} />
-          <select className="input h-11" defaultValue={visit.statusId || ''} onChange={(e) => setEditPayload((current) => ({ ...current, statusId: e.target.value }))}>
-            <option value="">Estatus</option>
-            {(statusesQuery.data || []).map((status) => <option key={status.id} value={status.id}>{status.name}</option>)}
-          </select>
-          <button type="button" className="btn-primary h-11 w-full justify-center" onClick={() => updateVisitMutation.mutate()} disabled={updateVisitMutation.isPending}>
-            Guardar cambios
-          </button>
-          {updateVisitMutation.isError ? <p className="text-sm text-red-700">{getErrorMessage(updateVisitMutation.error)}</p> : null}
-        </section>
-      ) : null}
-
-      {tab === 'notes' ? (
-        <section className="card space-y-3 p-4">
+          <h3 className="text-sm font-semibold text-slate-800">Resumen de visita (solo lectura)</h3>
+          <div className="grid grid-cols-2 gap-2 text-sm">
+            <p className="text-slate-500">Afinación deseada</p>
+            <p className="text-right text-slate-800">{((visit as unknown as Record<string, unknown>).desiredTuning as { name?: string } | undefined)?.name || '-'}</p>
+            <p className="text-slate-500">Calibre de cuerdas</p>
+            <p className="text-right text-slate-800">{((visit as unknown as Record<string, unknown>).stringGauge as { name?: string } | undefined)?.name || '-'}</p>
+            <p className="text-slate-500">Trae funda</p>
+            <p className="text-right text-slate-800">{visit.hasCase ? 'Sí' : 'No'}</p>
+            <p className="text-slate-500">Trae strap</p>
+            <p className="text-right text-slate-800">{visit.hasStrap ? 'Sí' : 'No'}</p>
+            <p className="text-slate-500">Cambio de cuerdas</p>
+            <p className="text-right text-slate-800">{visit.wantsStringChange ? 'Sí' : 'No'}</p>
+            <p className="text-slate-500">Registró</p>
+            <p className="text-right text-slate-800">{((visit as unknown as Record<string, unknown>).createdByUser as { name?: string } | undefined)?.name || '-'}</p>
+          </div>
+          <div className="rounded-lg border border-slate-200 p-2">
+            <p className="text-xs font-semibold uppercase text-slate-500">Resumen del instrumento</p>
+            <p className="mt-1 text-sm text-slate-700">
+              {visit.instrument?.name || '-'} {visit.instrument?.model ? `· ${visit.instrument.model}` : ''}
+              {visit.instrument?.colorName ? `· ${visit.instrument.colorName}` : ''}
+            </p>
+          </div>
+          <div className="rounded-lg border border-slate-200 p-2">
+            <p className="text-xs font-semibold uppercase text-slate-500">Adjuntos de registro</p>
+            {(noteAttachmentsQueries.data?.[((notesQuery.data || [])[0] || { id: '' }).id] || []).length ? (
+              (noteAttachmentsQueries.data?.[((notesQuery.data || [])[0] || { id: '' }).id] || []).map((attachment) => (
+                <div key={attachment.id} className="mt-1">
+                  <AttachmentPreview attachment={attachment} onOpen={setMediaPreview} />
+                </div>
+              ))
+            ) : (
+              <p className="mt-1 text-xs text-slate-500">Sin adjuntos de registro.</p>
+            )}
+          </div>
+          <h3 className="pt-2 text-sm font-semibold text-slate-800">Notas generales de la visita</h3>
           <QuickNoteForm onSubmit={(payload) => createNoteMutation.mutate(payload)} isPending={createNoteMutation.isPending} />
           {(notesQuery.data || []).map((note) => (
             <article key={note.id} className="rounded-xl border border-slate-200 p-3">
+              <div className="mb-2 flex items-center gap-2">
+                <AvatarImage
+                  imageUrl={note.author?.profileImageUrl || note.createdByUser?.profileImageUrl || null}
+                  fallback={note.author?.name || note.createdByUser?.name || 'U'}
+                  sizeClassName="h-7 w-7"
+                />
+                <p className="text-xs text-slate-500">{note.author?.name || note.createdByUser?.name || 'Usuario'}</p>
+              </div>
               <div className="flex items-start justify-between gap-2">
                 <p className="text-sm text-slate-800">{note.note}</p>
                 <span className={`chip ${note.isInternal ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
@@ -463,19 +702,42 @@ export function VisitDetailPage() {
                 </span>
               </div>
               <p className="mt-1 text-xs text-slate-500">{note.createdAt ? dateTime(note.createdAt) : 'Sin fecha'}</p>
-
               <div className="mt-2 flex gap-2">
-                <button type="button" className="btn-secondary h-9 px-3" onClick={() => updateVisitNote(visitId, note.id, { isInternal: !note.isInternal }).then(() => queryClient.invalidateQueries({ queryKey: ['visit-notes', visitId] }))}>
+                <button
+                  type="button"
+                  className="btn-secondary h-9 px-3"
+                  onClick={() =>
+                    runApi(async () => {
+                      await updateVisitNote(visitId, note.id, { isInternal: !note.isInternal });
+                      await queryClient.invalidateQueries({ queryKey: ['visit-notes', visitId] });
+                    })
+                  }
+                >
                   Cambiar visibilidad
                 </button>
-                <MediaQuickAttach onSelect={(file) => uploadVisitNoteAttachment(note.id, file).then(() => queryClient.invalidateQueries({ queryKey: ['visit-note-attachments'] }))} />
+                <MediaQuickAttach
+                  onSelect={(file) =>
+                    withUploading(async () => {
+                      await uploadVisitNoteAttachment(note.id, file);
+                      await queryClient.invalidateQueries({ queryKey: ['visit-note-attachments'] });
+                    })
+                  }
+                />
               </div>
-
               <div className="mt-2 space-y-1">
                 {(noteAttachmentsQueries.data?.[note.id] || []).map((attachment) => (
                   <div key={attachment.id} className="flex items-center justify-between rounded-lg bg-slate-50 px-2 py-1 text-xs">
                     <AttachmentPreview attachment={attachment} onOpen={setMediaPreview} />
-                    <button type="button" className="text-red-600" onClick={() => deleteVisitNoteAttachment(note.id, attachment.id).then(() => queryClient.invalidateQueries({ queryKey: ['visit-note-attachments'] }))}>
+                    <button
+                      type="button"
+                      className="text-red-600"
+                      onClick={() =>
+                        runApi(async () => {
+                          await deleteVisitNoteAttachment(note.id, attachment.id);
+                          await queryClient.invalidateQueries({ queryKey: ['visit-note-attachments'] });
+                        })
+                      }
+                    >
                       Eliminar
                     </button>
                   </div>
@@ -495,27 +757,87 @@ export function VisitDetailPage() {
           >
             Agregar servicio
           </button>
-          {activeServices.map((service) => (
-            <article key={service.id} className="rounded-xl border border-slate-200 p-3">
+          {adjustService ? (
+            <article className="rounded-xl border border-indigo-300 bg-indigo-50 p-3" onDoubleClick={() => setServiceDetailModalId(adjustService.id)}>
+              <p className="text-xs font-semibold uppercase text-indigo-700">Servicio de ajuste</p>
+              <button
+                type="button"
+                className="mt-1 text-left text-sm font-semibold text-slate-900 underline-offset-2 hover:underline"
+                onClick={() => setServiceDetailModalId(adjustService.id)}
+              >
+                {adjustService.name || 'Servicio ajuste'}
+              </button>
+              <p className="text-xs text-slate-600">
+                Cantidad: {adjustService.quantity || 1} · Precio: {currency(Number(adjustService.price || 0))}
+              </p>
+              <div className="mt-1">
+                <VisitServiceStatusChip
+                  label={typeof adjustService.status === 'object' ? adjustService.status?.name || 'Sin estatus' : 'Sin estatus'}
+                  color={typeof adjustService.status === 'object' ? adjustService.status?.color : undefined}
+                  disabled={!serviceStatusOptions.length}
+                  loading={updateServiceStatusMutation.isPending && statusSheetServiceId === adjustService.id}
+                  onClick={() => setStatusSheetServiceId(adjustService.id)}
+                />
+              </div>
+              <p className="mt-1 text-xs text-indigo-700">
+                Notas: {(serviceNotesQuery.data?.[adjustService.id] || []).length} (doble click para detalle)
+              </p>
+              <div className="mt-2 flex gap-2">
+                <button
+                  type="button"
+                  className="btn-secondary h-8 px-3"
+                  onClick={() => {
+                    setNoteModalServiceId(adjustService.id);
+                    setNoteModalIsInternal(true);
+                    setNoteModalText('');
+                    setNoteModalFile(null);
+                  }}
+                >
+                  Agregar nota
+                </button>
+                <button type="button" className="btn-secondary h-8 px-3" onClick={() => setIsAdjustSwitchModalOpen(true)}>Modificar ajuste</button>
+                <button type="button" className="btn-secondary h-8 px-3" onClick={() => setDeleteServiceModal({ serviceId: adjustService.id, reason: '' })}>Eliminar</button>
+              </div>
+            </article>
+          ) : null}
+          {regularServices.map((service) => (
+            <article key={service.id} className="rounded-xl border border-slate-200 p-3" onDoubleClick={() => setServiceDetailModalId(service.id)}>
               <div className="rounded-lg bg-slate-50 p-2">
                 <button
                   type="button"
                   className="text-left text-sm font-semibold text-slate-900 underline-offset-2 hover:underline"
-                  onDoubleClick={() => setServiceDetailModalId(service.id)}
+                  onClick={() => setServiceDetailModalId(service.id)}
                 >
                   {service.name || 'Servicio'}
                 </button>
                 <p className="text-xs text-slate-500">
                   Cantidad: {service.quantity || 1} · Precio: {currency(Number(service.price || 0))}
-                  {service.isAdjust ? ' · Ajuste' : ''}
                 </p>
+                <div className="mt-1">
+                  <VisitServiceStatusChip
+                    label={typeof service.status === 'object' ? service.status?.name || 'Sin estatus' : 'Sin estatus'}
+                    color={typeof service.status === 'object' ? service.status?.color : undefined}
+                    disabled={!serviceStatusOptions.length}
+                    loading={updateServiceStatusMutation.isPending && statusSheetServiceId === service.id}
+                    onClick={() => setStatusSheetServiceId(service.id)}
+                  />
+                </div>
+                <p className="mt-1 text-xs text-slate-600">Notas: {(serviceNotesQuery.data?.[service.id] || []).length} (doble click para detalle)</p>
               </div>
               <div className="mt-2 flex gap-2">
-                <button type="button" className="btn-secondary h-8 px-3" onClick={() => setNoteModalServiceId(service.id)}>Agregar nota</button>
+                <button
+                  type="button"
+                  className="btn-secondary h-8 px-3"
+                  onClick={() => {
+                    setNoteModalServiceId(service.id);
+                    setNoteModalIsInternal(true);
+                    setNoteModalText('');
+                    setNoteModalFile(null);
+                  }}
+                >
+                  Agregar nota
+                </button>
                 <button type="button" className="btn-secondary h-8 px-3" onClick={() => setIsServiceModalOpen(true)}>Modificar</button>
-                {service.isAdjust ? (
-                  <button type="button" className="btn-secondary h-8 px-3" onClick={() => setIsAdjustSwitchModalOpen(true)}>Modificar ajuste</button>
-                ) : null}
                 <button
                   type="button"
                   className="btn-secondary h-8 px-3"
@@ -524,82 +846,275 @@ export function VisitDetailPage() {
                   Eliminar servicio
                 </button>
               </div>
-              <div className="mt-2 space-y-1">
-                {(serviceNotesQuery.data?.[service.id] || []).map((note) => (
-                  <div key={note.id} className="rounded-lg bg-slate-50 p-2 text-sm">
-                    <p>{note.note}</p>
-                    <div className="mt-1 flex gap-2">
-                      <button
-                        type="button"
-                        className={`rounded-full px-2 py-1 text-xs ${note.isInternal ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}
-                        onClick={() =>
-                          patchVisitServiceNote(service.id, note.id, { isInternal: !note.isInternal }).then(() =>
-                            queryClient.invalidateQueries({ queryKey: ['service-notes-batch'] }),
-                          )
-                        }
-                      >
-                        {note.isInternal ? 'Interna' : 'Pública'}
-                      </button>
-                      <button type="button" className="text-xs text-red-600" onClick={() => deleteVisitServiceNote(service.id, note.id).then(() => queryClient.invalidateQueries({ queryKey: ['service-notes-batch'] }))}>Eliminar</button>
-                      <MediaQuickAttach onSelect={(file) => uploadVisitServiceNoteAttachment(note.id, file).then(() => queryClient.invalidateQueries({ queryKey: ['service-note-attachments-batch'] }))} />
-                    </div>
-                    {(serviceAttachmentsQuery.data?.[note.id] || []).map((attachment) => (
-                      <div key={attachment.id} className="mt-1 flex items-center justify-between text-xs">
-                        <AttachmentPreview attachment={attachment} onOpen={setMediaPreview} />
-                        <button type="button" className="text-red-600" onClick={() => deleteVisitServiceNoteAttachment(note.id, attachment.id).then(() => queryClient.invalidateQueries({ queryKey: ['service-note-attachments-batch'] }))}>Eliminar</button>
-                      </div>
-                    ))}
-                  </div>
-                ))}
-              </div>
             </article>
           ))}
         </section>
       ) : null}
 
+      {tab === 'finance' ? (
+        <section className="card space-y-3 p-4">
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <p className="text-xs font-semibold uppercase text-slate-500">Resumen</p>
+            <p className="mt-1 text-sm text-slate-700">Total visita: {currency(Number(visit.total || 0))}</p>
+            <p className="text-sm text-slate-700">Subtotal: {currency(Number(visit.subtotal || 0))} · Descuento: {currency(Number(visit.discount || 0))}</p>
+          </div>
+          <button type="button" className="btn-primary h-11 w-full justify-center" onClick={() => setIsAddPaymentSheetOpen(true)}>
+            Agregar abono
+          </button>
+          {!payments.length ? (
+            <p className="text-sm text-slate-500">Aún no hay abonos registrados.</p>
+          ) : (
+            payments.map((payment, index) => (
+              <button key={`${payment.paidAt}-${index}`} type="button" className="w-full rounded-lg border border-slate-200 p-3 text-left" onDoubleClick={() => setPaymentModalIndex(index)}>
+                <p className="text-sm font-semibold text-slate-900">{currency(payment.amount)} · {payment.paymentMethod}</p>
+                <p className="text-xs text-slate-500">{payment.paidAt ? dateTime(payment.paidAt) : 'Sin fecha'}</p>
+                {payment.notes ? <p className="mt-1 text-xs text-slate-600">{payment.notes}</p> : null}
+                {payment.evidenceMediaIds.length ? (
+                  <div className="mt-2">
+                    <p className="text-[11px] font-semibold uppercase text-slate-500">Evidencia del abono</p>
+                    <div className="mt-1 flex gap-2 overflow-x-auto">
+                      {payment.evidenceMediaIds.map((mediaId) => {
+                        const attachment = paymentEvidenceQuery.data?.[mediaId];
+                        if (!attachment) {
+                          return <span key={mediaId} className="rounded bg-slate-100 px-2 py-1 text-[11px] text-slate-500">Cargando…</span>;
+                        }
+                        return (
+                          <div key={mediaId} className="rounded border border-slate-200 bg-white p-1">
+                            <AttachmentPreview attachment={attachment} onOpen={setMediaPreview} />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null}
+              </button>
+            ))
+          )}
+        </section>
+      ) : null}
+
       {tab === 'tracking' ? (
         <section className="card space-y-3 p-4">
-          <h3 className="text-sm font-semibold text-slate-800">Timeline interno (histórico completo)</h3>
-          {timelineQuery.isLoading ? <p className="text-sm text-slate-500">Cargando timeline…</p> : null}
-          {normalizedTrackingItems.map((event) => (
-            <div
-              key={`${event.type}-${event.occurredAt}-${event.title}`}
-              className={`rounded-lg border p-2 ${
-                event.type.includes('INTERNA')
-                  ? 'border-amber-200 bg-amber-50/40'
-                  : event.type.includes('SERVICIO')
-                    ? 'border-sky-200 bg-sky-50/40'
-                    : 'border-emerald-200 bg-emerald-50/40'
-              }`}
-            >
-              <p className="text-xs font-semibold text-slate-500">{event.type}</p>
-              <p className="text-sm text-slate-800">{event.title}</p>
-              <p className="text-xs text-slate-500">{event.occurredAt ? dateTime(event.occurredAt) : '-'}</p>
-              {(event.attachments || []).length ? (
-                <div className="mt-2 space-y-1">
-                  {(event.attachments || []).map((attachment) => (
-                    <div key={attachment.id} className="rounded bg-slate-50 p-1">
-                      <AttachmentPreview attachment={attachment} onOpen={setMediaPreview} />
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-          ))}
-
-          <div className="rounded-lg border border-slate-200 p-3">
-            <h4 className="text-sm font-semibold text-slate-800">Link público</h4>
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <h3 className="text-sm font-semibold text-slate-800">Tracking interno</h3>
             <p className="mt-1 break-all text-xs text-sky-700">{resolvedTrackingUrl || 'No disponible'}</p>
             <div className="mt-2 flex gap-2">
               <button type="button" className="btn-secondary h-9 px-3" onClick={() => navigator.clipboard.writeText(resolvedTrackingUrl)} disabled={!resolvedTrackingUrl}>Copiar</button>
               <button type="button" className="btn-primary h-9 px-3" onClick={() => setIsRegenerateModalOpen(true)}>Regenerar</button>
             </div>
           </div>
+          <div className="space-y-2">
+            {normalizedTrackingItems.map((event) => (
+              <article
+                key={`${event.type}-${event.occurredAt}-${event.title}`}
+                className={`rounded-xl border p-3 ${
+                  event.type.includes('PAYMENT')
+                    ? 'border-fuchsia-300 bg-gradient-to-r from-fuchsia-50 to-purple-50'
+                    : 
+                  event.type.includes('INTERNA')
+                    ? 'border-amber-300 bg-gradient-to-r from-amber-50 to-yellow-50'
+                    : event.type.includes('SERVICIO')
+                      ? 'border-blue-300 bg-gradient-to-r from-blue-50 to-indigo-50'
+                      : 'border-emerald-300 bg-gradient-to-r from-emerald-50 to-lime-50'
+                }`}
+              >
+                <div className="mb-1 flex items-center justify-between gap-2">
+                  {event.actor?.name ? (
+                    <div className="flex items-center gap-2">
+                      <AvatarImage
+                        imageUrl={event.actor.profileImageUrl || null}
+                        fallback={event.actor.name}
+                        sizeClassName="h-7 w-7"
+                      />
+                      <p className="text-xs text-slate-600">{event.actor.name}</p>
+                    </div>
+                  ) : <span />}
+                </div>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">{event.type}</p>
+                <p className="mt-1 text-sm font-medium text-slate-900">{event.type === 'PAYMENT_ADDED' ? 'Abono registrado' : event.title}</p>
+                <p className="text-xs text-slate-500">{event.occurredAt ? dateTime(event.occurredAt) : '-'}</p>
+                {event.type === 'PAYMENT_ADDED' ? (
+                  <div className="mt-2 rounded-lg border border-fuchsia-200 bg-white/80 p-2 text-xs text-slate-700">
+                    {(() => {
+                      const parsedNotes = parseEvidenceMarkerFromNotes(String((event.metadata as Record<string, unknown>)?.notes || ''));
+                      return (
+                        <>
+                    <p>Monto: {currency(Number((event.metadata as Record<string, unknown>)?.amount || 0))}</p>
+                    <p>Método: {String((event.metadata as Record<string, unknown>)?.method || 'No especificado')}</p>
+                    <p>Pagado: {(event.metadata as Record<string, unknown>)?.paidAt ? dateTime(String((event.metadata as Record<string, unknown>).paidAt)) : 'Sin fecha'}</p>
+                    {parsedNotes.cleanNotes ? <p>Notas: {parsedNotes.cleanNotes}</p> : null}
+                    {parsedNotes.evidenceMediaIds.length ? (
+                      <div className="mt-2">
+                        <p className="text-[11px] font-semibold uppercase text-slate-500">Evidencia del abono</p>
+                        <div className="mt-1 flex gap-2 overflow-x-auto">
+                          {parsedNotes.evidenceMediaIds.map((mediaId) => {
+                            const attachment = paymentEvidenceQuery.data?.[mediaId];
+                            if (!attachment) return <span key={mediaId} className="rounded bg-slate-100 px-2 py-1 text-[11px] text-slate-500">Cargando…</span>;
+                            return (
+                              <div key={mediaId} className="rounded border border-slate-200 bg-white p-1">
+                                <AttachmentPreview attachment={attachment} onOpen={setMediaPreview} />
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : null}
+                        </>
+                      );
+                    })()}
+                  </div>
+                ) : null}
+                {(event.attachments || []).length ? (
+                  <div className="mt-2 space-y-1">
+                    {(event.attachments || []).map((attachment) => (
+                      <div key={attachment.id} className="rounded bg-white/70 p-1">
+                        <AttachmentPreview attachment={attachment} onOpen={setMediaPreview} />
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </article>
+            ))}
+          </div>
         </section>
       ) : null}
 
-      {tab === 'attachments' ? (
-        <section className="card p-4 text-sm text-slate-600">Gestiona adjuntos desde tabs de Notas y Servicios (mobile-first).</section>
+      <VisitServiceStatusSheet
+        open={!!statusSheetServiceId}
+        title={selectedServiceForStatus?.name ? `Cambiar estatus · ${selectedServiceForStatus.name}` : 'Cambiar estatus'}
+        statuses={serviceStatusOptions}
+        currentStatusId={typeof selectedServiceForStatus?.status === 'object' ? selectedServiceForStatus.status?.id : undefined}
+        loading={updateServiceStatusMutation.isPending}
+        onClose={() => setStatusSheetServiceId(null)}
+        onSelect={(status) => {
+          if (!selectedServiceForStatus) return;
+          const applyStatus = () =>
+            runApi(async () => {
+              await updateServiceStatusMutation.mutateAsync({
+                visitId,
+                serviceId: selectedServiceForStatus.id,
+                statusId: status.id,
+              });
+              setStatusSheetServiceId(null);
+            }).catch((error) => {
+              const fallback = getErrorMessage(error);
+              if (error && typeof error === 'object' && 'response' in error) {
+                const maybe = error as { response?: { data?: { message?: string | string[] } } };
+                const msg = maybe.response?.data?.message;
+                if (msg) window.alert(Array.isArray(msg) ? msg.join(', ') : msg);
+                else window.alert(fallback);
+              } else {
+                window.alert(fallback);
+              }
+            });
+
+          if (status.isTerminal) {
+            setConfirmModal({
+              title: 'Confirmar estatus terminal',
+              message: `¿Cambiar a "${status.name}"?`,
+              action: applyStatus,
+            });
+            return;
+          }
+          void applyStatus();
+        }}
+      />
+
+      {isStatusModalOpen ? (
+        <div className="fixed inset-0 z-50 flex items-end bg-black/40 p-3">
+          <div className="w-full rounded-2xl bg-white p-4">
+            <h4 className="text-sm font-semibold text-slate-900">Cambiar estado de la visita</h4>
+            <div className="mt-2 space-y-2">
+              {(statusesQuery.data || []).map((status) => (
+                <button
+                  key={status.id}
+                  type="button"
+                  className="w-full rounded-lg border border-slate-200 p-2 text-left"
+                  onClick={() => {
+                    setEditPayload((current) => ({ ...current, statusId: status.id }));
+                    updateVisitMutation.mutate();
+                    setIsStatusModalOpen(false);
+                  }}
+                >
+                  {status.name}
+                </button>
+              ))}
+            </div>
+            <button type="button" className="btn-secondary mt-3 h-10 w-full justify-center" onClick={() => setIsStatusModalOpen(false)}>
+              Cerrar
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {isCancelVisitModalOpen ? (
+        <div className="fixed inset-0 z-50 flex items-end bg-black/40 p-3">
+          <div className="w-full rounded-2xl bg-white p-4">
+            <h4 className="text-sm font-semibold text-rose-700">Cancelar visita</h4>
+            <p className="mt-1 text-sm text-slate-600">Esta acción cambiará el estatus de la visita a cancelado.</p>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <button type="button" className="btn-secondary h-10 justify-center" onClick={() => setIsCancelVisitModalOpen(false)}>No</button>
+              <button
+                type="button"
+                className="h-10 rounded-xl bg-rose-600 px-3 text-sm font-semibold text-white"
+                onClick={() => {
+                  const cancelled = (statusesQuery.data || []).find((status) =>
+                    (status.slug || '').toLowerCase().includes('cancel') || status.name.toLowerCase().includes('cancel'),
+                  );
+                  if (cancelled) {
+                    setEditPayload((current) => ({ ...current, statusId: cancelled.id }));
+                    updateVisitMutation.mutate();
+                  }
+                  setIsCancelVisitModalOpen(false);
+                }}
+              >
+                Sí, cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {isAddPaymentSheetOpen ? (
+        <AddPaymentSheet
+          open={isAddPaymentSheetOpen}
+          visitId={visitId}
+          paymentMethods={paymentMethods}
+          isSaving={addPaymentMutation.isPending}
+          onClose={() => setIsAddPaymentSheetOpen(false)}
+          onSubmit={submitPayment}
+        />
+      ) : null}
+
+      {paymentModalIndex !== null ? (
+        <div className="fixed inset-0 z-50 flex items-end bg-black/40 p-3">
+          <div className="w-full rounded-2xl bg-white p-4">
+            <h4 className="text-sm font-semibold text-slate-900">Detalle de abono</h4>
+            <p className="mt-1 text-sm text-slate-700">{currency(payments[paymentModalIndex]?.amount || 0)}</p>
+            <p className="text-xs text-slate-500">{payments[paymentModalIndex]?.paymentMethod}</p>
+            <p className="text-xs text-slate-500">{payments[paymentModalIndex]?.paidAt ? dateTime(payments[paymentModalIndex].paidAt) : 'Sin fecha'}</p>
+            {payments[paymentModalIndex]?.notes ? (
+              <p className="mt-2 rounded-lg bg-slate-50 p-2 text-xs text-slate-700">{payments[paymentModalIndex]?.notes}</p>
+            ) : null}
+            {(payments[paymentModalIndex]?.evidenceMediaIds || []).length ? (
+              <div className="mt-2">
+                <p className="text-xs font-semibold text-slate-700">Evidencia del abono</p>
+                <div className="mt-1 grid grid-cols-3 gap-2">
+                  {(payments[paymentModalIndex]?.evidenceMediaIds || []).map((mediaId) => {
+                    const attachment = paymentEvidenceQuery.data?.[mediaId];
+                    if (!attachment) return <span key={mediaId} className="rounded bg-slate-100 px-2 py-1 text-[11px] text-slate-500">...</span>;
+                    return (
+                      <div key={mediaId} className="rounded border border-slate-200 p-1">
+                        <AttachmentInlinePreview attachment={attachment} onOpen={setMediaPreview} />
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
+            <button type="button" className="btn-secondary mt-3 h-10 w-full justify-center" onClick={() => setPaymentModalIndex(null)}>Cerrar</button>
+          </div>
+        </div>
       ) : null}
 
       {isServiceModalOpen ? (
@@ -625,6 +1140,46 @@ export function VisitDetailPage() {
                 </button>
               ))}
             </div>
+            <textarea
+              className="input mt-2 min-h-16"
+              placeholder="Nota para el servicio (opcional)"
+              value={catalogServiceNote}
+              onChange={(event) => setCatalogServiceNote(event.target.value)}
+            />
+            <textarea
+              className="input mt-2 min-h-16"
+              placeholder="Nota inicial del servicio (opcional)"
+              value={initialServiceNote}
+              onChange={(event) => setInitialServiceNote(event.target.value)}
+            />
+            <button
+              type="button"
+              className={`mt-2 flex h-9 w-full items-center justify-center rounded-xl text-xs font-semibold ${initialServiceNoteIsInternal ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}
+              onClick={() => setInitialServiceNoteIsInternal((value) => !value)}
+            >
+              {initialServiceNoteIsInternal ? '🔒 Nota inicial interna' : '🌍 Nota inicial pública'}
+            </button>
+            <label className="btn-secondary mt-2 h-9 w-full cursor-pointer justify-center text-xs">
+              Adjuntar archivos a nota inicial
+              <input
+                type="file"
+                multiple
+                className="hidden"
+                accept="image/*,video/*,audio/*,.pdf,.doc,.docx"
+                onChange={(event) => {
+                  const files = Array.from(event.target.files || []);
+                  setInitialServiceNoteFiles(files);
+                  event.target.value = '';
+                }}
+              />
+            </label>
+            {initialServiceNoteFiles.length ? (
+              <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 p-2">
+                {initialServiceNoteFiles.map((file) => (
+                  <p key={`${file.name}-${file.size}`} className="truncate text-xs text-slate-600">{file.name}</p>
+                ))}
+              </div>
+            ) : null}
 
             <button type="button" className="btn-secondary mt-3 h-9 w-full justify-center" onClick={() => setShowManualServiceForm((v) => !v)}>
               {showManualServiceForm ? 'Ocultar manual' : 'Agregar manual'}
@@ -643,7 +1198,17 @@ export function VisitDetailPage() {
               </div>
             ) : null}
 
-            <button type="button" className="btn-secondary mt-3 h-10 w-full justify-center" onClick={() => setIsServiceModalOpen(false)}>
+            <button
+              type="button"
+              className="btn-secondary mt-3 h-10 w-full justify-center"
+              onClick={() => {
+                setCatalogServiceNote('');
+                setInitialServiceNote('');
+                setInitialServiceNoteIsInternal(false);
+                setInitialServiceNoteFiles([]);
+                setIsServiceModalOpen(false);
+              }}
+            >
               Cerrar
             </button>
           </div>
@@ -675,10 +1240,10 @@ export function VisitDetailPage() {
             <textarea className="input mt-2 min-h-20" placeholder="Descripción de la nota" value={noteModalText} onChange={(e) => setNoteModalText(e.target.value)} />
             <button
               type="button"
-              className={`mt-2 flex h-10 w-full items-center justify-center rounded-xl text-sm ${noteModalIsInternal ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}
+              className={`mt-2 flex h-10 w-full items-center justify-center rounded-xl text-sm font-semibold ${noteModalIsInternal ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}
               onClick={() => setNoteModalIsInternal((value) => !value)}
             >
-              {noteModalIsInternal ? 'Interna (oculta en tracking)' : 'Pública (visible en tracking)'}
+              {noteModalIsInternal ? '🔒 Interna (oculta en tracking)' : '🌍 Pública (visible en tracking)'}
             </button>
             <MediaQuickAttach onSelect={(file) => setNoteModalFile(file)} />
             {noteModalFile ? <p className="mt-1 text-xs text-slate-500">{noteModalFile.name}</p> : null}
@@ -722,8 +1287,21 @@ export function VisitDetailPage() {
                 type="button"
                 className="btn-primary h-10 justify-center"
                 onClick={async () => {
-                  await confirmModal.action();
-                  setConfirmModal(null);
+                  try {
+                    await confirmModal.action();
+                    setConfirmModal(null);
+                  } catch (error) {
+                    const fallback = getErrorMessage(error);
+                    if (error && typeof error === 'object' && 'response' in error) {
+                      const maybe = error as { response?: { data?: { message?: string | string[] } } };
+                      const message = maybe.response?.data?.message;
+                      if (message) {
+                        window.alert(Array.isArray(message) ? message.join(', ') : message);
+                        return;
+                      }
+                    }
+                    window.alert(fallback);
+                  }
                 }}
               >
                 Confirmar
@@ -734,26 +1312,52 @@ export function VisitDetailPage() {
       ) : null}
 
       {selectedServiceDetail ? (
-        <div className="fixed inset-0 z-50 flex items-end bg-black/40 p-3">
-          <div className="w-full rounded-2xl bg-white p-4">
-            <h4 className="text-sm font-semibold text-slate-900">{selectedServiceDetail.name || 'Detalle de servicio'}</h4>
+        <div className="fixed inset-0 z-50 bg-slate-950/50 p-0 sm:p-4">
+          <div className="h-full w-full overflow-y-auto bg-white p-4 sm:mx-auto sm:h-auto sm:max-h-[92vh] sm:max-w-3xl sm:rounded-2xl">
+            <h4 className="text-base font-semibold text-slate-900">{selectedServiceDetail.name || 'Detalle de servicio'}</h4>
             <p className="mt-1 text-xs text-slate-500">
               Cantidad: {selectedServiceDetail.quantity || 1} · Precio: {currency(Number(selectedServiceDetail.price || 0))}
             </p>
-            <div className="mt-3 max-h-72 space-y-2 overflow-y-auto">
-              {(serviceNotesQuery.data?.[selectedServiceDetail.id] || []).map((note) => (
-                <div key={note.id} className="rounded-lg border border-slate-200 p-2">
+            <div className="mt-3 space-y-3">
+              {(serviceNotesQuery.data?.[selectedServiceDetail.id] || [])
+                .slice()
+                .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
+                .map((note) => (
+                <div key={note.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                   <div className="flex items-center justify-between gap-2">
-                    <p className="text-sm text-slate-800">{note.note}</p>
-                    <span className={`rounded-full px-2 py-0.5 text-xs ${note.isInternal ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${note.isInternal ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
                       {note.isInternal ? 'Interna' : 'Pública'}
                     </span>
+                    <button
+                      type="button"
+                      className={`rounded-full px-3 py-1 text-xs font-semibold ${note.isInternal ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}
+                      onClick={() =>
+                        runApi(async () => {
+                          await patchVisitServiceNote(selectedServiceDetail.id, note.id, { isInternal: !note.isInternal });
+                          await queryClient.invalidateQueries({ queryKey: ['service-notes-batch'] });
+                        })
+                      }
+                    >
+                      {note.isInternal ? 'Hacer pública' : 'Hacer interna'}
+                    </button>
                   </div>
-                  {(serviceAttachmentsQuery.data?.[note.id] || []).map((attachment) => (
-                    <div key={attachment.id} className="mt-1">
-                      <AttachmentPreview attachment={attachment} onOpen={setMediaPreview} />
+                  <p className="mt-1 text-xs text-slate-500">
+                    {note.createdAt ? dateTime(note.createdAt) : 'Sin fecha'}
+                  </p>
+                  <div className="mt-2 rounded-lg border border-slate-200 bg-white p-2">
+                    <p className="text-sm text-slate-800">{note.note || 'Sin mensaje'}</p>
+                  </div>
+                  {(serviceAttachmentsQuery.data?.[note.id] || []).length ? (
+                    <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                      {(serviceAttachmentsQuery.data?.[note.id] || []).map((attachment) => (
+                        <div key={attachment.id} className="rounded-lg border border-slate-200 bg-white p-2">
+                          <AttachmentInlinePreview attachment={attachment} onOpen={setMediaPreview} />
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  ) : (
+                    <p className="mt-2 text-xs text-slate-500">Sin adjuntos en esta nota.</p>
+                  )}
                 </div>
               ))}
             </div>
@@ -828,6 +1432,27 @@ function QuickNoteForm({ onSubmit, isPending }: { onSubmit: (payload: { note: st
   );
 }
 
+function Spinner() {
+  return <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />;
+}
+
+function AvatarImage({ imageUrl, fallback, sizeClassName = 'h-8 w-8' }: { imageUrl?: string | null; fallback: string; sizeClassName?: string }) {
+  const initials = fallback
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join('');
+  if (imageUrl) {
+    return <img src={imageUrl} alt={fallback} className={`${sizeClassName} rounded-full object-cover`} />;
+  }
+  return (
+    <span className={`${sizeClassName} inline-flex items-center justify-center rounded-full bg-slate-200 text-xs font-semibold text-slate-700`}>
+      {initials || 'US'}
+    </span>
+  );
+}
+
 function detectMimeType(attachment: NoteAttachment) {
   if (attachment.mimeType) return attachment.mimeType;
   const name = (attachment.originalName || '').toLowerCase();
@@ -855,6 +1480,42 @@ function AttachmentPreview({ attachment, onOpen }: { attachment: NoteAttachment;
   }
   return (
     <button type="button" onClick={open} className="truncate text-sky-700">{attachment.originalName || attachment.id}</button>
+  );
+}
+
+function AttachmentInlinePreview({ attachment, onOpen }: { attachment: NoteAttachment; onOpen: (payload: { url: string; mimeType: string; name: string }) => void }) {
+  const url = attachment.url || attachment.publicUrl || '';
+  const mimeType = detectMimeType(attachment);
+  const label = attachment.originalName || attachment.id;
+  if (!url) return <p className="truncate text-xs text-slate-500">{label}</p>;
+  const open = () => onOpen({ url, mimeType, name: label });
+
+  if (mimeType.startsWith('image/')) {
+    return (
+      <button type="button" onClick={open} className="space-y-1 text-left">
+        <img src={url} alt={label} className="h-24 w-full rounded object-cover" />
+        <p className="truncate text-[11px] text-slate-600">{label}</p>
+      </button>
+    );
+  }
+  if (mimeType.startsWith('video/')) {
+    return (
+      <div className="space-y-1">
+        <video src={url} controls className="h-28 w-full rounded object-cover" />
+        <button type="button" onClick={open} className="text-xs text-sky-700">Abrir video</button>
+      </div>
+    );
+  }
+  if (mimeType.startsWith('audio/')) {
+    return (
+      <div className="space-y-1">
+        <audio src={url} controls className="w-full" />
+        <button type="button" onClick={open} className="text-xs text-sky-700">Abrir audio</button>
+      </div>
+    );
+  }
+  return (
+    <button type="button" onClick={open} className="truncate text-xs text-sky-700">{label}</button>
   );
 }
 
