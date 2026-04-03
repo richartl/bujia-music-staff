@@ -6,6 +6,8 @@ import { getPublicTracking } from '@/features/visits/api/trackingApi';
 import { getTimelineEventIcon, getTimelineEventTone } from '@/features/visits/utils/timelineEventIcon';
 import { PaymentAttachmentGallery } from '@/features/visits/components/PaymentAttachmentGallery';
 import { getTimelinePaymentAttachments } from '@/features/visits/utils/paymentAttachments';
+import { WorkshopAvatar } from '@/components/avatars/WorkshopAvatar';
+import { UserAvatar } from '@/components/avatars/UserAvatar';
 import type { NoteAttachment, TrackingResponse, VisitServiceNote, VisitTimelineEvent } from '@/features/visits/api/types';
 
 export function PublicTrackingPage() {
@@ -60,7 +62,15 @@ export function PublicTrackingPage() {
       <section className="overflow-hidden rounded-2xl border border-slate-200 shadow-sm">
         <div className="p-4" style={{ background: heroGradient }}>
           <h1 className="text-lg font-bold text-slate-900">Tracking de tu instrumento</h1>
-          <p className="mt-1 text-sm text-slate-700">{data.workshop?.name} · {data.branch?.name || 'Sucursal'}</p>
+          <div className="mt-1 flex items-center gap-2 text-sm text-slate-700">
+            <WorkshopAvatar
+              name={data.workshop?.name}
+              profileImageUrl={data.workshop?.profileImageUrl}
+              logoUrl={data.workshop?.logoUrl}
+              size="sm"
+            />
+            <span className="truncate">{data.workshop?.name} · {data.branch?.name || 'Sucursal'}</span>
+          </div>
           <div className="mt-3 grid grid-cols-1 gap-2 text-sm sm:grid-cols-3">
             <InfoPill label="Cliente" value={clientName} />
             <InfoPill label="Instrumento" value={instrumentName} />
@@ -164,7 +174,10 @@ export function PublicTrackingPage() {
                         <p className="mt-1 text-xs text-slate-700">Servicio: {event.service.name}</p>
                       ) : null}
                       {event.actor?.name ? (
-                        <p className="text-xs text-slate-500">Actualizado por: {event.actor.name}</p>
+                        <div className="mt-1 flex items-center gap-2">
+                          <UserAvatar name={event.actor.name} profileImageUrl={event.actor.profileImageUrl} size="sm" />
+                          <p className="text-xs text-slate-500">Actualizado por: {event.actor.name}</p>
+                        </div>
                       ) : null}
                       <div className="mt-2 space-y-2">
                         {extractTimelineAttachments(event).map((attachment) => (

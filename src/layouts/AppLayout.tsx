@@ -4,6 +4,7 @@ import { authStore } from '@/stores/auth-store';
 import { AppShellNav } from '@/components/AppShellNav';
 import { WorkshopSwitcher } from '@/features/workshops/components/WorkshopSwitcher';
 import { BottomNav } from '@/components/navigation/BottomNav';
+import { UserAvatar } from '@/components/avatars/UserAvatar';
 import { LogOut, Settings2, X } from 'lucide-react';
 
 const ROUTE_COPY: Record<string, { title: string; subtitle: string }> = {
@@ -35,14 +36,6 @@ export function AppLayout() {
     navigate('/login');
   }
 
-  const userInitials = (user?.email || 'US')
-    .split('@')[0]
-    .split('.')
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase())
-    .join('');
-
   return (
     <div className="min-h-screen bg-slate-50 pb-24 md:pb-0">
       <header className="border-b border-slate-200 bg-white md:sticky md:top-0 md:z-30 md:bg-white/95 md:backdrop-blur">
@@ -54,13 +47,7 @@ export function AppLayout() {
 
           <div className="hidden md:flex md:items-center md:gap-3">
             <WorkshopSwitcher />
-            {user?.profileImageUrl ? (
-              <img src={user.profileImageUrl} alt={user.email} className="h-9 w-9 rounded-full object-cover" />
-            ) : (
-              <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-slate-200 text-xs font-semibold text-slate-700">
-                {userInitials || 'US'}
-              </span>
-            )}
+            <UserAvatar email={user?.email} profileImageUrl={user?.profileImageUrl} size="sm" />
             <button type="button" className="btn-secondary gap-2" onClick={handleLogout}>
               <LogOut className="h-4 w-4" />
               Salir
@@ -89,13 +76,7 @@ export function AppLayout() {
           >
             <div className="mb-4 flex items-start justify-between gap-3">
               <div className="flex min-w-0 items-center gap-2">
-                {user?.profileImageUrl ? (
-                  <img src={user.profileImageUrl} alt={user.email} className="h-9 w-9 rounded-full object-cover" />
-                ) : (
-                  <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-slate-200 text-xs font-semibold text-slate-700">
-                    {userInitials || 'US'}
-                  </span>
-                )}
+                <UserAvatar email={user?.email} profileImageUrl={user?.profileImageUrl} size="sm" />
                 <div className="min-w-0">
                   <div className="truncate font-semibold">{user?.email}</div>
                   <div className="text-xs uppercase tracking-wide text-slate-500">{user?.role}</div>
@@ -126,13 +107,7 @@ export function AppLayout() {
         <aside className="hidden md:block md:sticky md:top-24 md:h-fit">
           <div className="card p-3">
             <div className="mb-4 flex items-center gap-2 px-2">
-              {user?.profileImageUrl ? (
-                <img src={user.profileImageUrl} alt={user.email} className="h-10 w-10 rounded-full object-cover" />
-              ) : (
-                <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-slate-200 text-xs font-semibold text-slate-700">
-                  {userInitials || 'US'}
-                </span>
-              )}
+              <UserAvatar email={user?.email} profileImageUrl={user?.profileImageUrl} size="md" />
               <div className="min-w-0">
                 <div className="truncate text-sm font-semibold">{user?.email}</div>
                 <div className="text-xs uppercase tracking-wide text-slate-500">{user?.role}</div>
