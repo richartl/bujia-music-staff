@@ -116,6 +116,12 @@ export type VisitTimelineEvent = {
     name?: string;
     status?: { id?: string; code?: string; name?: string; color?: string } | null;
   } | null;
+  note?: {
+    id?: string;
+    note?: string;
+    isInternal?: boolean;
+    scope?: string;
+  } | null;
   attachment?: NoteAttachment | null;
   metadata?: Record<string, unknown>;
 };

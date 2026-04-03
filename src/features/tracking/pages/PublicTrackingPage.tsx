@@ -8,6 +8,7 @@ import type { NoteAttachment, TrackingResponse, VisitServiceNote, VisitTimelineE
 export function PublicTrackingPage() {
   const { token = '' } = useParams();
   const [preview, setPreview] = useState<{ url: string; mimeType: string; name: string } | null>(null);
+  const [selectedNoteEvent, setSelectedNoteEvent] = useState<VisitTimelineEvent | null>(null);
 
   const trackingQuery = useQuery({
     queryKey: ['public-tracking', token],
@@ -25,7 +26,7 @@ export function PublicTrackingPage() {
 
   const data = trackingQuery.data;
   const timeline = (data.timeline || [])
-    .filter((event) => event.isPublic !== false)
+    .filter((event) => shouldDisplayInPublicTimeline(event))
     .sort((a, b) => new Date(b.occurredAt || 0).getTime() - new Date(a.occurredAt || 0).getTime());
   const clientName =
     data.client?.displayName ||
@@ -87,6 +88,16 @@ export function PublicTrackingPage() {
                 <p className="text-[11px] font-medium text-slate-600">{event.occurredAt ? dateTime(event.occurredAt) : '-'}</p>
               </div>
               <p className="mt-2 text-sm font-medium text-slate-900">{event.title || event.description || 'Actualización'}</p>
+              {extractEventNoteContent(event) ? (
+                <button
+                  type="button"
+                  className="mt-1 w-full rounded-lg border border-white/60 bg-white/70 p-2 text-left text-xs text-slate-700"
+                  onDoubleClick={() => setSelectedNoteEvent(event)}
+                >
+                  <p className="line-clamp-2">{extractEventNoteContent(event)}</p>
+                  <p className="mt-1 text-[11px] text-slate-500">Doble click para ver detalle</p>
+                </button>
+              ) : null}
               {event.service?.name ? (
                 <p className="mt-1 text-xs text-slate-700">Servicio: {event.service.name}</p>
               ) : null}
@@ -150,6 +161,20 @@ export function PublicTrackingPage() {
               )}
             </div>
             <button type="button" className="btn-secondary mt-3 h-10 w-full justify-center" onClick={() => setPreview(null)}>Cerrar</button>
+          </div>
+        </div>
+      ) : null}
+      {selectedNoteEvent ? (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-3">
+          <div className="w-full max-w-xl rounded-2xl bg-white p-4">
+            <h3 className="text-sm font-semibold text-slate-900">Detalle de nota</h3>
+            <p className="mt-1 text-xs text-slate-500">{selectedNoteEvent.occurredAt ? dateTime(selectedNoteEvent.occurredAt) : '-'}</p>
+            <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <p className="whitespace-pre-wrap text-sm text-slate-800">{extractEventNoteContent(selectedNoteEvent) || 'Sin contenido de nota.'}</p>
+            </div>
+            <button type="button" className="btn-primary mt-4 h-11 w-full justify-center text-base" onClick={() => setSelectedNoteEvent(null)}>
+              Cerrar
+            </button>
           </div>
         </div>
       ) : null}
@@ -220,6 +245,7 @@ function toNumberSafe(value: unknown) {
 
 function getFinancialSummary(data: TrackingResponse) {
   const servicesTotal = (data.services || []).reduce((acc, service) => {
+    if (isServiceCancelled(service.status)) return acc;
     const qty = toNumberSafe(service.quantity || 1) || 1;
     const price = toNumberSafe(service.price);
     return acc + qty * price;
@@ -241,6 +267,44 @@ function getFinancialSummary(data: TrackingResponse) {
   const visitTotal = toNumberSafe(data.visit?.total) || servicesTotal;
 
   return { servicesTotal, paymentsTotal, visitTotal };
+}
+
+function isServiceCancelled(status: TrackingService['status']) {
+  const raw =
+    typeof status === 'string'
+      ? status
+      : typeof status === 'object' && status
+        ? `${status.code || ''} ${status.name || ''}`
+        : '';
+  const normalized = raw.toUpperCase();
+  return normalized.includes('CANCEL');
+}
+
+function shouldDisplayInPublicTimeline(event: VisitTimelineEvent) {
+  if (event.isPublic === false) return false;
+  const normalizedType = (event.eventType || '').toUpperCase();
+  if (normalizedType.includes('NOTE')) {
+    const metadata = event.metadata || {};
+    const fromMetadata =
+      (metadata as Record<string, unknown>).isInternal ??
+      ((metadata as Record<string, unknown>).current && typeof (metadata as Record<string, unknown>).current === 'object'
+        ? ((metadata as Record<string, unknown>).current as Record<string, unknown>).isInternal
+        : undefined);
+    const fromNote = event.note?.isInternal;
+    if (fromMetadata === true || fromNote === true) return false;
+  }
+  return true;
+}
+
+function extractEventNoteContent(event: VisitTimelineEvent) {
+  const metadata = event.metadata || {};
+  const current =
+    (metadata as Record<string, unknown>).current &&
+    typeof (metadata as Record<string, unknown>).current === 'object'
+      ? ((metadata as Record<string, unknown>).current as Record<string, unknown>).note
+      : undefined;
+  const directMetaNote = (metadata as Record<string, unknown>).note;
+  return event.note?.note || (typeof current === 'string' ? current : '') || (typeof directMetaNote === 'string' ? directMetaNote : '') || event.description || '';
 }
 
 function humanizeEventType(eventType: string) {
