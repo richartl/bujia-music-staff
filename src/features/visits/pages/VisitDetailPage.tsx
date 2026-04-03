@@ -12,6 +12,7 @@ import { VisitServiceStatusChip } from '@/features/visits/components/VisitServic
 import { VisitServiceStatusSheet } from '@/features/visits/components/VisitServiceStatusSheet';
 import { VisitPaymentsSection } from '@/features/visits/components/VisitPaymentsSection';
 import { parseEvidenceMarkerFromNotes } from '@/features/visits/utils/paymentEvidence';
+import { getTimelineEventIcon, getTimelineEventTone } from '@/features/visits/utils/timelineEventIcon';
 import type { WorkshopServiceLookup } from '@/features/intakes/types';
 import { 
   createVisitNote,
@@ -38,7 +39,7 @@ import {
 } from '../api/attachmentsApi';
 import { getVisitTimeline, getVisitTrackingLink, regenerateVisitTrackingLink } from '../api/trackingApi';
 import { getVisitDetail, getWorkshopVisitStatuses, patchVisit } from '../api/visitsApi';
-import type { NoteAttachment, UpdateVisitPayload, VisitNote, VisitPayment } from '../api/types';
+import type { NoteAttachment, UpdateVisitPayload, VisitNote } from '../api/types';
 
 type TabKey = 'summary' | 'services' | 'finance' | 'tracking';
 
@@ -254,6 +255,7 @@ export function VisitDetailPage() {
     const internalTimeline = (Array.isArray(timelineQuery.data) ? timelineQuery.data : []).map((event) => ({
       type: event.eventType,
       title: event.title || event.description || event.eventType,
+      description: event.description || '',
       occurredAt: event.occurredAt || '',
       attachments: [] as NoteAttachment[],
       metadata: event.metadata || {},
@@ -262,6 +264,7 @@ export function VisitDetailPage() {
     const visitNotes = (notesQuery.data || []).map((note) => ({
       type: note.isInternal ? 'NOTA_INTERNA' : 'NOTA_CLIENTE',
       title: note.note,
+      description: '',
       occurredAt: note.createdAt || note.updatedAt || '',
       attachments: noteAttachmentsQueries.data?.[note.id] || [],
       metadata: {},
@@ -272,6 +275,7 @@ export function VisitDetailPage() {
       .map((note) => ({
         type: note.isInternal ? 'NOTA_SERVICIO_INTERNA' : 'NOTA_SERVICIO_CLIENTE',
         title: note.note,
+        description: '',
         occurredAt: note.createdAt || note.updatedAt || '',
         attachments: serviceAttachmentsQuery.data?.[note.id] || [],
         metadata: {},
@@ -343,48 +347,6 @@ export function VisitDetailPage() {
     () => lookupsQuery.data?.paymentMethods || [],
     [lookupsQuery.data?.paymentMethods],
   );
-  const payments = useMemo(() => {
-    const raw = (visit?.payments || []) as VisitPayment[];
-    return raw.map((item) => {
-      const parsed = parseEvidenceMarkerFromNotes(item.notes);
-      return {
-        amount: Number(item.amount || 0),
-        paymentMethod: item.paymentMethod?.name || item.method || 'Método',
-        paidAt: item.paidAt || '',
-        notes: parsed.cleanNotes,
-        evidenceMediaIds: parsed.evidenceMediaIds,
-      };
-    });
-  }, [visit?.payments]);
-  const paymentEvidenceIds = useMemo(
-    () => Array.from(new Set(payments.flatMap((payment) => payment.evidenceMediaIds || []))),
-    [payments],
-  );
-  const paymentEvidenceQuery = useQuery({
-    queryKey: ['visit-payment-evidence', paymentEvidenceIds.join(',')],
-    queryFn: async () => {
-      const entries = await Promise.all(
-        paymentEvidenceIds.map(async (mediaId) => {
-          const download = await filesApi.getDownloadUrl(mediaId);
-          return [
-            mediaId,
-            {
-              id: mediaId,
-              mediaId,
-              url: download.url,
-              publicUrl: download.url,
-              originalName: `Evidencia ${mediaId.slice(0, 6)}`,
-              mimeType: '',
-            } satisfies NoteAttachment,
-          ] as const;
-        }),
-      );
-      return Object.fromEntries(entries) as Record<string, NoteAttachment>;
-    },
-    enabled: paymentEvidenceIds.length > 0,
-    staleTime: 1000 * 60 * 10,
-  });
-
   async function addCatalogService(service: WorkshopServiceLookup) {
     if (
       service.isAdjust &&
@@ -833,79 +795,84 @@ export function VisitDetailPage() {
               <button type="button" className="btn-primary h-9 px-3" onClick={() => setIsRegenerateModalOpen(true)}>Regenerar</button>
             </div>
           </div>
-          <div className="space-y-2">
-            {normalizedTrackingItems.map((event) => (
-              <article
-                key={`${event.type}-${event.occurredAt}-${event.title}`}
-                className={`rounded-xl border p-3 ${
-                  event.type.includes('PAYMENT')
-                    ? 'border-fuchsia-300 bg-gradient-to-r from-fuchsia-50 to-purple-50'
-                    : 
-                  event.type.includes('INTERNA')
-                    ? 'border-amber-300 bg-gradient-to-r from-amber-50 to-yellow-50'
-                    : event.type.includes('SERVICIO')
-                      ? 'border-blue-300 bg-gradient-to-r from-blue-50 to-indigo-50'
-                      : 'border-emerald-300 bg-gradient-to-r from-emerald-50 to-lime-50'
-                }`}
-              >
-                <div className="mb-1 flex items-center justify-between gap-2">
-                  {event.actor?.name ? (
-                    <div className="flex items-center gap-2">
-                      <AvatarImage
-                        imageUrl={event.actor.profileImageUrl || null}
-                        fallback={event.actor.name}
-                        sizeClassName="h-7 w-7"
-                      />
-                      <p className="text-xs text-slate-600">{event.actor.name}</p>
-                    </div>
-                  ) : <span />}
-                </div>
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">{event.type}</p>
-                <p className="mt-1 text-sm font-medium text-slate-900">{event.type === 'PAYMENT_ADDED' ? 'Abono registrado' : event.title}</p>
-                <p className="text-xs text-slate-500">{event.occurredAt ? dateTime(event.occurredAt) : '-'}</p>
-                {event.type === 'PAYMENT_ADDED' ? (
-                  <div className="mt-2 rounded-lg border border-fuchsia-200 bg-white/80 p-2 text-xs text-slate-700">
-                    {(() => {
-                      const parsedNotes = parseEvidenceMarkerFromNotes(String((event.metadata as Record<string, unknown>)?.notes || ''));
-                      return (
-                        <>
-                    <p>Monto: {currency(Number((event.metadata as Record<string, unknown>)?.amount || 0))}</p>
-                    <p>Método: {String((event.metadata as Record<string, unknown>)?.method || 'No especificado')}</p>
-                    <p>Pagado: {(event.metadata as Record<string, unknown>)?.paidAt ? dateTime(String((event.metadata as Record<string, unknown>).paidAt)) : 'Sin fecha'}</p>
-                    {parsedNotes.cleanNotes ? <p>Notas: {parsedNotes.cleanNotes}</p> : null}
-                    {parsedNotes.evidenceMediaIds.length ? (
-                      <div className="mt-2">
-                        <p className="text-[11px] font-semibold uppercase text-slate-500">Evidencia del abono</p>
-                        <div className="mt-1 flex gap-2 overflow-x-auto">
-                          {parsedNotes.evidenceMediaIds.map((mediaId) => {
-                            const attachment = paymentEvidenceQuery.data?.[mediaId];
-                            if (!attachment) return <span key={mediaId} className="rounded bg-slate-100 px-2 py-1 text-[11px] text-slate-500">Cargando…</span>;
-                            return (
-                              <div key={mediaId} className="rounded border border-slate-200 bg-white p-1">
+          {timelineQuery.isLoading ? (
+            <div className="space-y-2">
+              {[0, 1, 2].map((item) => (
+                <div key={item} className="h-24 animate-pulse rounded-xl bg-slate-100" />
+              ))}
+            </div>
+          ) : !normalizedTrackingItems.length ? (
+            <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-center text-sm text-slate-600">
+              Aún no hay eventos en el timeline.
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {normalizedTrackingItems.map((event) => {
+                const isPaymentEvent = event.type.includes('PAYMENT');
+                const paymentMetadata = event.metadata as Record<string, unknown>;
+                const parsedNotes = parseEvidenceMarkerFromNotes(String(paymentMetadata?.notes || ''));
+                return (
+                  <article
+                    key={`${event.type}-${event.occurredAt}-${event.title}`}
+                    className={`rounded-xl border p-3 ${getTimelineEventTone(event.type)}`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/80 bg-white/70 text-lg">
+                        {getTimelineEventIcon(event.type)}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="mb-1 flex items-center justify-between gap-2">
+                          {event.actor?.name ? (
+                            <div className="flex items-center gap-2">
+                              <AvatarImage
+                                imageUrl={event.actor.profileImageUrl || null}
+                                fallback={event.actor.name}
+                                sizeClassName="h-7 w-7"
+                              />
+                              <p className="text-xs text-slate-600">{event.actor.name}</p>
+                            </div>
+                          ) : <span />}
+                        </div>
+                        <p className="text-sm font-semibold text-slate-900">{event.type === 'PAYMENT_ADDED' ? 'Se registró un abono' : event.title}</p>
+                        {event.description ? <p className="mt-0.5 text-xs text-slate-600">{event.description}</p> : null}
+                        <p className="mt-1 text-xs text-slate-500">{event.occurredAt ? dateTime(event.occurredAt) : '-'}</p>
+
+                        {isPaymentEvent ? (
+                          <div className="mt-2 rounded-lg border border-emerald-200 bg-white/90 p-2 text-xs text-slate-700">
+                            <p className="text-sm font-semibold text-emerald-800">
+                              {currency(Number(paymentMetadata?.amount || 0))}
+                              <span className="ml-2 text-xs font-medium text-slate-600">
+                                • {String(paymentMetadata?.method || 'Método no especificado')}
+                              </span>
+                            </p>
+                            <p className="mt-0.5 text-xs text-slate-500">
+                              {paymentMetadata?.paidAt ? dateTime(String(paymentMetadata.paidAt)) : 'Sin fecha de pago'}
+                            </p>
+                            {parsedNotes.cleanNotes ? <p className="mt-1">{parsedNotes.cleanNotes}</p> : null}
+                            {parsedNotes.evidenceMediaIds.length ? (
+                              <div className="mt-1 flex items-center gap-1 text-xs text-slate-600">
+                                <span>📎</span>
+                                <span>{parsedNotes.evidenceMediaIds.length} evidencia(s)</span>
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : null}
+                        {(event.attachments || []).length ? (
+                          <div className="mt-2 space-y-1">
+                            {(event.attachments || []).map((attachment) => (
+                              <div key={attachment.id} className="rounded bg-white/70 p-1">
                                 <AttachmentPreview attachment={attachment} onOpen={setMediaPreview} />
                               </div>
-                            );
-                          })}
-                        </div>
+                            ))}
+                          </div>
+                        ) : null}
                       </div>
-                    ) : null}
-                        </>
-                      );
-                    })()}
-                  </div>
-                ) : null}
-                {(event.attachments || []).length ? (
-                  <div className="mt-2 space-y-1">
-                    {(event.attachments || []).map((attachment) => (
-                      <div key={attachment.id} className="rounded bg-white/70 p-1">
-                        <AttachmentPreview attachment={attachment} onOpen={setMediaPreview} />
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-              </article>
-            ))}
-          </div>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          )}
         </section>
       ) : null}
 
