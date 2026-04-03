@@ -18,6 +18,17 @@ export type ServiceStatusCatalog = {
   isTerminal?: boolean;
 };
 
+
+export type VisitPayment = {
+  id?: string;
+  paymentMethodId?: string;
+  paymentMethod?: { id?: string; name?: string } | null;
+  method?: string;
+  amount?: number | string;
+  notes?: string;
+  paidAt?: string;
+};
+
 export type VisitFilters = {
   search: string;
   statusId: string;
@@ -58,6 +69,8 @@ export type VisitResponse = {
   branch?: { id: string; name: string } | null;
   client?: { id: string; fullName?: string; firstName?: string; lastName?: string; phone?: string } | null;
   instrument?: { id: string; name?: string; model?: string; colorName?: string } | null;
+  payments?: VisitPayment[];
+  visitMediaIds?: string[];
 };
 
 export type UpdateVisitPayload = Partial<{
@@ -73,6 +86,14 @@ export type UpdateVisitPayload = Partial<{
   statusId: string;
   desiredTuningId: string;
   stringGaugeId: string;
+  payments: Array<{
+    paymentMethodId?: string;
+    method?: string;
+    amount: number;
+    notes?: string;
+    paidAt?: string;
+  }>;
+  visitMediaIds: string[];
 }>;
 
 export type VisitNote = {
