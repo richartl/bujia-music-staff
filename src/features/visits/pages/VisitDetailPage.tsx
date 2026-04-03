@@ -13,6 +13,8 @@ import { VisitServiceStatusSheet } from '@/features/visits/components/VisitServi
 import { VisitPaymentsSection } from '@/features/visits/components/VisitPaymentsSection';
 import { parseEvidenceMarkerFromNotes } from '@/features/visits/utils/paymentEvidence';
 import { getTimelineEventIcon, getTimelineEventTone } from '@/features/visits/utils/timelineEventIcon';
+import { PaymentAttachmentGallery } from '@/features/visits/components/PaymentAttachmentGallery';
+import { getTimelinePaymentAttachments } from '@/features/visits/utils/paymentAttachments';
 import type { WorkshopServiceLookup } from '@/features/intakes/types';
 import { 
   createVisitNote,
@@ -259,6 +261,7 @@ export function VisitDetailPage() {
       occurredAt: event.occurredAt || '',
       attachments: [] as NoteAttachment[],
       metadata: event.metadata || {},
+      payment: event.payment || null,
       actor: event.actor || null,
     }));
     const visitNotes = (notesQuery.data || []).map((note) => ({
@@ -268,6 +271,7 @@ export function VisitDetailPage() {
       occurredAt: note.createdAt || note.updatedAt || '',
       attachments: noteAttachmentsQueries.data?.[note.id] || [],
       metadata: {},
+      payment: null,
       actor: note.author || note.createdByUser || null,
     }));
     const serviceNotes = Object.values(serviceNotesQuery.data || {})
@@ -279,6 +283,7 @@ export function VisitDetailPage() {
         occurredAt: note.createdAt || note.updatedAt || '',
         attachments: serviceAttachmentsQuery.data?.[note.id] || [],
         metadata: {},
+        payment: null,
         actor: null,
       }));
 
@@ -811,6 +816,10 @@ export function VisitDetailPage() {
                 const isPaymentEvent = event.type.includes('PAYMENT');
                 const paymentMetadata = event.metadata as Record<string, unknown>;
                 const parsedNotes = parseEvidenceMarkerFromNotes(String(paymentMetadata?.notes || ''));
+                const paymentAttachments = getTimelinePaymentAttachments({
+                  ...event,
+                  payment: event.payment || (paymentMetadata?.payment as { attachments?: NoteAttachment[]; mediaIds?: string[] } | null) || null,
+                });
                 return (
                   <article
                     key={`${event.type}-${event.occurredAt}-${event.title}`}
@@ -849,10 +858,20 @@ export function VisitDetailPage() {
                               {paymentMetadata?.paidAt ? dateTime(String(paymentMetadata.paidAt)) : 'Sin fecha de pago'}
                             </p>
                             {parsedNotes.cleanNotes ? <p className="mt-1">{parsedNotes.cleanNotes}</p> : null}
-                            {parsedNotes.evidenceMediaIds.length ? (
-                              <div className="mt-1 flex items-center gap-1 text-xs text-slate-600">
-                                <span>📎</span>
-                                <span>{parsedNotes.evidenceMediaIds.length} evidencia(s)</span>
+                            {paymentAttachments.length ? (
+                              <div className="mt-2">
+                                <PaymentAttachmentGallery
+                                  attachments={paymentAttachments}
+                                  compact
+                                  onOpen={(item) => {
+                                    if (!item.publicUrl) return;
+                                    setMediaPreview({
+                                      url: item.publicUrl,
+                                      mimeType: item.mimeType || '',
+                                      name: item.originalName,
+                                    });
+                                  }}
+                                />
                               </div>
                             ) : null}
                           </div>

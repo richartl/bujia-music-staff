@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   createVisitPayment,
   deleteVisitPayment,
+  getVisitPayment,
   getVisitPayments,
   updateVisitPayment,
   type CreateVisitPaymentRequest,
@@ -25,6 +26,14 @@ export function useCreateVisitPayment(visitId: string) {
       queryClient.invalidateQueries({ queryKey: ['visit-payments', visitId] });
       queryClient.invalidateQueries({ queryKey: ['visit-timeline', visitId] });
     },
+  });
+}
+
+export function useVisitPayment(visitId: string, paymentId: string) {
+  return useQuery({
+    queryKey: ['visit-payment', visitId, paymentId],
+    queryFn: () => getVisitPayment(visitId, paymentId),
+    enabled: !!visitId && !!paymentId,
   });
 }
 

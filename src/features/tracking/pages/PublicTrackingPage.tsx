@@ -4,6 +4,8 @@ import { useParams } from 'react-router-dom';
 import { currency, dateTime } from '@/lib/utils';
 import { getPublicTracking } from '@/features/visits/api/trackingApi';
 import { getTimelineEventIcon, getTimelineEventTone } from '@/features/visits/utils/timelineEventIcon';
+import { PaymentAttachmentGallery } from '@/features/visits/components/PaymentAttachmentGallery';
+import { getTimelinePaymentAttachments } from '@/features/visits/utils/paymentAttachments';
 import type { NoteAttachment, TrackingResponse, VisitServiceNote, VisitTimelineEvent } from '@/features/visits/api/types';
 
 export function PublicTrackingPage() {
@@ -93,13 +95,15 @@ export function PublicTrackingPage() {
             {timeline.map((event) => {
               const eventType = event.eventType || '';
               const paymentData =
-                ((event.metadata as Record<string, unknown>)?.payment as Record<string, unknown> | undefined) ||
+                ((event.payment as Record<string, unknown> | undefined) ||
+                (event.metadata as Record<string, unknown>)?.payment as Record<string, unknown> | undefined) ||
                 {};
               const paymentAmount = toNumberSafe((paymentData as Record<string, unknown>)?.amount);
               const paymentMethod = String((paymentData as Record<string, unknown>)?.method || (event.metadata as Record<string, unknown>)?.method || '');
               const paymentMediaIds = Array.isArray((paymentData as Record<string, unknown>)?.mediaIds)
                 ? ((paymentData as Record<string, unknown>).mediaIds as string[])
                 : [];
+              const paymentAttachments = getTimelinePaymentAttachments(event);
               const isPaymentEvent = eventType.toUpperCase().includes('PAYMENT');
 
               return (
@@ -126,6 +130,22 @@ export function PublicTrackingPage() {
                               <span>📎</span>
                               <span>{paymentMediaIds.length} evidencia(s)</span>
                             </p>
+                          ) : null}
+                          {paymentAttachments.length ? (
+                            <div className="mt-2">
+                              <PaymentAttachmentGallery
+                                attachments={paymentAttachments}
+                                compact
+                                onOpen={(attachment) => {
+                                  if (!attachment.publicUrl) return;
+                                  setPreview({
+                                    url: attachment.publicUrl,
+                                    mimeType: attachment.mimeType || '',
+                                    name: attachment.originalName,
+                                  });
+                                }}
+                              />
+                            </div>
                           ) : null}
                         </div>
                       ) : null}

@@ -26,3 +26,14 @@ export async function getPublicTracking(token: string) {
   });
   return data;
 }
+
+export async function getVisitTracking(input: { visitId?: string; token?: string }) {
+  if (input.token) {
+    return getPublicTracking(input.token);
+  }
+  if (input.visitId) {
+    const timeline = await getVisitTimeline(input.visitId);
+    return { timeline } as TrackingResponse;
+  }
+  return { timeline: [] } as TrackingResponse;
+}

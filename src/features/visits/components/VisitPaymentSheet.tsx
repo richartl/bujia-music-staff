@@ -3,6 +3,8 @@ import { Loader2, RefreshCw, Trash2, X } from 'lucide-react';
 import { useIntakeMediaUpload } from '@/features/intakes/hooks/useIntakeMediaUpload';
 import type { LookupOption } from '@/features/intakes/types';
 import type { VisitPayment } from '@/features/visits/api/visitPaymentsApi';
+import { PaymentAttachmentGallery } from '@/features/visits/components/PaymentAttachmentGallery';
+import { normalizePaymentAttachments } from '@/features/visits/utils/paymentAttachments';
 import {
   getFriendlyPaymentError,
   normalizePaymentPayload,
@@ -47,6 +49,10 @@ export function VisitPaymentSheet({
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   const isEditMode = !!editingPayment;
+  const normalizedExistingAttachments = useMemo(
+    () => (editingPayment ? normalizePaymentAttachments(editingPayment) : []),
+    [editingPayment],
+  );
 
   const {
     items,
@@ -189,19 +195,21 @@ export function VisitPaymentSheet({
 
           {!!keptExistingMediaIds.length ? (
             <div className="mt-2 space-y-2">
+              <PaymentAttachmentGallery
+                attachments={normalizedExistingAttachments.filter((item) =>
+                  item.mediaId ? keptExistingMediaIds.includes(item.mediaId) : false,
+                )}
+              />
               {keptExistingMediaIds.map((mediaId) => (
-                <div key={mediaId} className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5">
-                  <p className="truncate text-xs text-slate-700">Evidencia actual · {mediaId.slice(0, 8)}</p>
-                  <button
-                    type="button"
-                    className="rounded p-1 text-slate-500"
-                    onClick={() =>
-                      setKeptExistingMediaIds((current) => current.filter((item) => item !== mediaId))
-                    }
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
+                <button
+                  key={mediaId}
+                  type="button"
+                  className="btn-secondary h-8 w-full justify-center gap-1 text-xs"
+                  onClick={() => setKeptExistingMediaIds((current) => current.filter((item) => item !== mediaId))}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Quitar evidencia {mediaId.slice(0, 8)}
+                </button>
               ))}
             </div>
           ) : (

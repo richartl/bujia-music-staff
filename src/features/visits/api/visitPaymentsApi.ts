@@ -5,6 +5,10 @@ export type VisitPaymentAttachment = {
   mediaId: string;
   sortOrder?: number;
   createdAt?: string;
+  publicUrl?: string | null;
+  mimeType?: string | null;
+  originalName?: string | null;
+  status?: string | null;
 };
 
 export type VisitPayment = {
@@ -43,7 +47,16 @@ function normalizePayment(payment: VisitPayment): VisitPayment {
   return {
     ...payment,
     amount: Number(payment.amount || 0),
-    attachments: Array.isArray(payment.attachments) ? payment.attachments : [],
+    attachments: Array.isArray(payment.attachments)
+      ? payment.attachments.map((item) => ({
+          ...item,
+          mediaId: item.mediaId || '',
+          publicUrl: item.publicUrl || null,
+          mimeType: item.mimeType || null,
+          originalName: item.originalName || null,
+          status: item.status || null,
+        }))
+      : [],
   };
 }
 

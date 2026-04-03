@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   useCreateVisitPayment,
   useDeleteVisitPayment,
+  useVisitPayment,
   useUpdateVisitPayment,
   useVisitPayments,
 } from '../src/features/visits/hooks/useVisitPayments';
@@ -34,6 +35,29 @@ describe('useVisitPayments hooks', () => {
 
     await waitFor(() => {
       expect(result.current.data?.visitTotal).toBe(1000);
+    });
+  });
+
+  it('consulta un payment puntual', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    vi.mocked(paymentsApi.getVisitPayment).mockResolvedValue({
+      id: 'payment-10',
+      visitId: 'visit-1',
+      workshopId: 'w1',
+      amount: 500,
+      paymentMethodId: null,
+      method: 'Efectivo',
+      notes: null,
+      paidAt: new Date().toISOString(),
+      attachments: [],
+    });
+
+    const { result } = renderHook(() => useVisitPayment('visit-1', 'payment-10'), {
+      wrapper: createWrapper(client),
+    });
+
+    await waitFor(() => {
+      expect(result.current.data?.id).toBe('payment-10');
     });
   });
 

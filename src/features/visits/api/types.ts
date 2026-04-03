@@ -156,6 +156,15 @@ export type VisitTimelineEvent = {
     scope?: string;
   } | null;
   attachment?: NoteAttachment | null;
+  payment?: {
+    id?: string;
+    amount?: number | string;
+    method?: string | null;
+    notes?: string | null;
+    paidAt?: string | null;
+    mediaIds?: string[];
+    attachments?: NoteAttachment[];
+  } | null;
   metadata?: Record<string, unknown>;
 };
 
