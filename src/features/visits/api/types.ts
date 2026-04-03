@@ -6,6 +6,18 @@ export type VisitStatusCatalog = {
   isActive?: boolean;
 };
 
+export type ServiceStatusCatalog = {
+  id: string;
+  workshopId: string;
+  code: string;
+  name: string;
+  description?: string | null;
+  color?: string | null;
+  sortOrder?: number;
+  isActive?: boolean;
+  isTerminal?: boolean;
+};
+
 export type VisitFilters = {
   search: string;
   statusId: string;
@@ -89,7 +101,7 @@ export type VisitService = {
   id: string;
   workshopServiceId?: string;
   name?: string;
-  status?: string | { id?: string; name?: string };
+  status?: string | { id?: string; code?: string; name?: string; color?: string };
   quantity?: number;
   price?: number;
   notes?: string;

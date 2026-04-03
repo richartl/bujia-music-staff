@@ -5,6 +5,10 @@ import { authStore } from '@/stores/auth-store';
 import { currency, dateTime } from '@/lib/utils';
 import { getIntakeLookups } from '@/features/intakes/api/get-intake-lookups';
 import { filesApi } from '@/features/intakes/api/filesApi';
+import { useServiceStatuses } from '@/features/visits/hooks/useServiceStatuses';
+import { useUpdateVisitServiceStatus } from '@/features/visits/hooks/useUpdateVisitServiceStatus';
+import { VisitServiceStatusChip } from '@/features/visits/components/VisitServiceStatusChip';
+import { VisitServiceStatusSheet } from '@/features/visits/components/VisitServiceStatusSheet';
 import type { WorkshopServiceLookup } from '@/features/intakes/types';
 import { 
   createVisitNote,
@@ -19,7 +23,6 @@ import {
   getVisitServiceNotes,
   getVisitServices,
   patchVisitService,
-  patchVisitServiceStatus,
   patchVisitServiceNote,
 } from '../api/visitServicesApi';
 import {
@@ -83,6 +86,7 @@ export function VisitDetailPage() {
   const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
   const [isCancelVisitModalOpen, setIsCancelVisitModalOpen] = useState(false);
   const [paymentModalIndex, setPaymentModalIndex] = useState<number | null>(null);
+  const [statusSheetServiceId, setStatusSheetServiceId] = useState<string | null>(null);
   const [uploadingCount, setUploadingCount] = useState(0);
   const [apiPendingCount, setApiPendingCount] = useState(0);
   const queryClient = useQueryClient();
@@ -133,6 +137,8 @@ export function VisitDetailPage() {
   });
 
   const [editPayload, setEditPayload] = useState<UpdateVisitPayload>({});
+  const serviceStatusesQuery = useServiceStatuses(workshopId);
+  const updateServiceStatusMutation = useUpdateVisitServiceStatus();
   const updateVisitMutation = useMutation({
     mutationFn: async () => {
       if (!workshopId) throw new Error('No hay workshop activo');
@@ -316,6 +322,10 @@ export function VisitDetailPage() {
     () => activeServices.find((service) => service.id === serviceDetailModalId) || null,
     [activeServices, serviceDetailModalId],
   );
+  const selectedServiceForStatus = useMemo(
+    () => activeServices.find((service) => service.id === statusSheetServiceId) || null,
+    [activeServices, statusSheetServiceId],
+  );
   const adjustService = useMemo(
     () => activeServices.find((service) => service.isAdjust) || null,
     [activeServices],
@@ -324,15 +334,10 @@ export function VisitDetailPage() {
     () => activeServices.filter((service) => !service.isAdjust),
     [activeServices],
   );
-  const serviceStatusOptions = useMemo(() => {
-    const map = new Map<string, { id: string; name: string }>();
-    (servicesQuery.data || []).forEach((service) => {
-      if (typeof service.status === 'object' && service.status?.id) {
-        map.set(service.status.id, { id: service.status.id, name: service.status.name || 'Estatus' });
-      }
-    });
-    return Array.from(map.values());
-  }, [servicesQuery.data]);
+  const serviceStatusOptions = useMemo(
+    () => serviceStatusesQuery.data || [],
+    [serviceStatusesQuery.data],
+  );
   const payments = useMemo(() => {
     const raw = (visit as unknown as { payments?: Array<{ amount?: number | string; paymentMethod?: { name?: string } | null; paidAt?: string; notes?: string }> } | undefined)?.payments || [];
     return raw.map((item) => ({
@@ -506,7 +511,8 @@ export function VisitDetailPage() {
     saveTrackingLinkMutation.isPending ||
     notesQuery.isFetching ||
     servicesQuery.isFetching ||
-    timelineQuery.isFetching;
+    timelineQuery.isFetching ||
+    serviceStatusesQuery.isFetching;
 
   return (
     <div className="space-y-3">
@@ -692,33 +698,13 @@ export function VisitDetailPage() {
                 Cantidad: {adjustService.quantity || 1} · Precio: {currency(Number(adjustService.price || 0))}
               </p>
               <div className="mt-1">
-                <select
-                  className="input h-8 text-xs"
-                  value={typeof adjustService.status === 'object' ? adjustService.status?.id || '' : ''}
-                  onChange={(event) =>
-                    runApi(async () => {
-                      const statusId = event.target.value;
-                      if (!statusId) return;
-                      try {
-                        await patchVisitServiceStatus(visitId, adjustService.id, statusId);
-                      } catch (error) {
-                        await patchVisitService(visitId, adjustService.id, { statusId });
-                        if (error && typeof error === 'object' && 'response' in error) {
-                          const maybe = error as { response?: { data?: { message?: string | string[] } } };
-                          const msg = maybe.response?.data?.message;
-                          if (msg) window.alert(Array.isArray(msg) ? msg.join(', ') : msg);
-                        }
-                      }
-                      await queryClient.invalidateQueries({ queryKey: ['visit-services', visitId] });
-                      await queryClient.invalidateQueries({ queryKey: ['visit-timeline', visitId] });
-                    })
-                  }
-                >
-                  <option value="">Estatus</option>
-                  {serviceStatusOptions.map((status) => (
-                    <option key={status.id} value={status.id}>{status.name}</option>
-                  ))}
-                </select>
+                <VisitServiceStatusChip
+                  label={typeof adjustService.status === 'object' ? adjustService.status?.name || 'Sin estatus' : 'Sin estatus'}
+                  color={typeof adjustService.status === 'object' ? adjustService.status?.color : undefined}
+                  disabled={!serviceStatusOptions.length}
+                  loading={updateServiceStatusMutation.isPending && statusSheetServiceId === adjustService.id}
+                  onClick={() => setStatusSheetServiceId(adjustService.id)}
+                />
               </div>
               <p className="mt-1 text-xs text-indigo-700">
                 Notas: {(serviceNotesQuery.data?.[adjustService.id] || []).length} (doble click para detalle)
@@ -755,33 +741,13 @@ export function VisitDetailPage() {
                   Cantidad: {service.quantity || 1} · Precio: {currency(Number(service.price || 0))}
                 </p>
                 <div className="mt-1">
-                  <select
-                    className="input h-8 text-xs"
-                    value={typeof service.status === 'object' ? service.status?.id || '' : ''}
-                    onChange={(event) =>
-                      runApi(async () => {
-                        const statusId = event.target.value;
-                        if (!statusId) return;
-                        try {
-                          await patchVisitServiceStatus(visitId, service.id, statusId);
-                        } catch (error) {
-                          await patchVisitService(visitId, service.id, { statusId });
-                          if (error && typeof error === 'object' && 'response' in error) {
-                            const maybe = error as { response?: { data?: { message?: string | string[] } } };
-                            const msg = maybe.response?.data?.message;
-                            if (msg) window.alert(Array.isArray(msg) ? msg.join(', ') : msg);
-                          }
-                        }
-                        await queryClient.invalidateQueries({ queryKey: ['visit-services', visitId] });
-                        await queryClient.invalidateQueries({ queryKey: ['visit-timeline', visitId] });
-                      })
-                    }
-                  >
-                    <option value="">Estatus</option>
-                    {serviceStatusOptions.map((status) => (
-                      <option key={status.id} value={status.id}>{status.name}</option>
-                    ))}
-                  </select>
+                  <VisitServiceStatusChip
+                    label={typeof service.status === 'object' ? service.status?.name || 'Sin estatus' : 'Sin estatus'}
+                    color={typeof service.status === 'object' ? service.status?.color : undefined}
+                    disabled={!serviceStatusOptions.length}
+                    loading={updateServiceStatusMutation.isPending && statusSheetServiceId === service.id}
+                    onClick={() => setStatusSheetServiceId(service.id)}
+                  />
                 </div>
                 <p className="mt-1 text-xs text-slate-600">Notas: {(serviceNotesQuery.data?.[service.id] || []).length} (doble click para detalle)</p>
               </div>
@@ -898,6 +864,47 @@ export function VisitDetailPage() {
           </div>
         </section>
       ) : null}
+
+      <VisitServiceStatusSheet
+        open={!!statusSheetServiceId}
+        title={selectedServiceForStatus?.name ? `Cambiar estatus · ${selectedServiceForStatus.name}` : 'Cambiar estatus'}
+        statuses={serviceStatusOptions}
+        currentStatusId={typeof selectedServiceForStatus?.status === 'object' ? selectedServiceForStatus.status?.id : undefined}
+        loading={updateServiceStatusMutation.isPending}
+        onClose={() => setStatusSheetServiceId(null)}
+        onSelect={(status) => {
+          if (!selectedServiceForStatus) return;
+          const applyStatus = () =>
+            runApi(async () => {
+              await updateServiceStatusMutation.mutateAsync({
+                visitId,
+                serviceId: selectedServiceForStatus.id,
+                statusId: status.id,
+              });
+              setStatusSheetServiceId(null);
+            }).catch((error) => {
+              const fallback = getErrorMessage(error);
+              if (error && typeof error === 'object' && 'response' in error) {
+                const maybe = error as { response?: { data?: { message?: string | string[] } } };
+                const msg = maybe.response?.data?.message;
+                if (msg) window.alert(Array.isArray(msg) ? msg.join(', ') : msg);
+                else window.alert(fallback);
+              } else {
+                window.alert(fallback);
+              }
+            });
+
+          if (status.isTerminal) {
+            setConfirmModal({
+              title: 'Confirmar estatus terminal',
+              message: `¿Cambiar a "${status.name}"?`,
+              action: applyStatus,
+            });
+            return;
+          }
+          void applyStatus();
+        }}
+      />
 
       {isStatusModalOpen ? (
         <div className="fixed inset-0 z-50 flex items-end bg-black/40 p-3">
