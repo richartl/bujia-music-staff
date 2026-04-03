@@ -286,20 +286,31 @@ function getFinancialSummary(data: TrackingResponse) {
     return acc + qty * price;
   }, 0);
 
+  const paymentsSummary = data.payments || {};
+  const paymentsItems = Array.isArray(paymentsSummary.items) ? paymentsSummary.items : [];
   const visitAsRecord = (data.visit || {}) as Record<string, unknown>;
   const paymentsTotal =
+    toNumberSafe(paymentsSummary.totalPaid) ||
     toNumberSafe(visitAsRecord.totalPaid) ||
     toNumberSafe(visitAsRecord.paidAmount) ||
     toNumberSafe(visitAsRecord.deposit) ||
     toNumberSafe(visitAsRecord.advance) ||
-    (Array.isArray(visitAsRecord.payments)
-      ? visitAsRecord.payments.reduce((sum, row) => {
+    (paymentsItems.length
+      ? paymentsItems.reduce((sum, row) => {
           const item = (row || {}) as Record<string, unknown>;
           return sum + toNumberSafe(item.amount);
         }, 0)
-      : 0);
+      : Array.isArray(visitAsRecord.payments)
+        ? visitAsRecord.payments.reduce((sum, row) => {
+          const item = (row || {}) as Record<string, unknown>;
+          return sum + toNumberSafe(item.amount);
+        }, 0)
+        : 0);
 
-  const visitTotal = toNumberSafe(data.visit?.total) || servicesTotal;
+  const visitTotal =
+    toNumberSafe(paymentsSummary.visitTotal) ||
+    toNumberSafe(data.visit?.total) ||
+    servicesTotal;
 
   return { servicesTotal, paymentsTotal, visitTotal };
 }
