@@ -7,7 +7,6 @@ import {
   Loader2,
   Phone,
   PlusCircle,
-  Search,
   Trash2,
   UserPlus2,
   Wrench,
@@ -15,6 +14,11 @@ import {
 } from 'lucide-react';
 import { authStore } from '@/stores/auth-store';
 import { currency, cn } from '@/lib/utils';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
+import { SearchInput } from '@/components/ui/SearchInput';
+import { InputField } from '@/components/ui/InputField';
+import { BaseCard } from '@/components/ui/BaseCard';
+import { StepProgress } from '@/components/ui/StepProgress';
 import { searchClientByPhone, type ClientSearchItem } from '../api/search-client';
 import { createIntake } from '../api/create-intake';
 import { getClientInstruments } from '../api/get-client-instruments';
@@ -155,6 +159,7 @@ export function IntakesPage() {
 
   const [activeStep, setActiveStep] = useState<IntakeStep>('client');
   const [searchPhone, setSearchPhone] = useState('');
+  const debouncedSearchPhone = useDebouncedValue(searchPhone.trim(), PHONE_SEARCH_DEBOUNCE_MS);
   const [searchingClient, setSearchingClient] = useState(false);
   const [searchError, setSearchError] = useState('');
   const [searchResults, setSearchResults] = useState<ClientSearchItem[]>([]);
@@ -238,49 +243,46 @@ export function IntakesPage() {
     }
   }, [selectedClient, instrumentsQuery.data]);
 
+  const clientSearchQuery = useQuery({
+    queryKey: ['intake-client-search', workshopId, debouncedSearchPhone],
+    queryFn: ({ signal }) =>
+      searchClientByPhone(workshopId!, debouncedSearchPhone, { signal }),
+    enabled:
+      !!workshopId &&
+      !selectedClient &&
+      debouncedSearchPhone.length >= PHONE_SEARCH_MIN_LENGTH,
+    staleTime: 1000 * 15,
+    retry: 1,
+  });
+
   useEffect(() => {
-    if (!workshopId) return;
-    if (selectedClient) return;
-    const normalizedPhone = searchPhone.trim();
-    if (normalizedPhone.length < PHONE_SEARCH_MIN_LENGTH) {
+    const normalizedPhone = debouncedSearchPhone;
+    if (normalizedPhone.length < PHONE_SEARCH_MIN_LENGTH || selectedClient) {
       setSearchResults([]);
       setSearchError('');
       setSearchingClient(false);
       return;
     }
 
-    let cancelled = false;
-    setSearchingClient(true);
-    setSearchError('');
-    const timer = window.setTimeout(async () => {
-      try {
-        const result = await searchClientByPhone(workshopId, normalizedPhone);
-        if (cancelled) return;
-        setSearchResults(result);
-        setSearchError('');
-        if (result.length === 0) {
-          setIsNewClientMode(true);
-          setClientForm((current) => ({
-            ...current,
-            phone: normalizedPhone,
-          }));
-        } else {
-          setIsNewClientMode(false);
-        }
-      } catch {
-        if (cancelled) return;
-        setSearchError('No se pudo buscar cliente. Revisa conexión/API.');
-        setSearchResults([]);
-      } finally {
-        if (!cancelled) setSearchingClient(false);
-      }
-    }, PHONE_SEARCH_DEBOUNCE_MS);
+    setSearchingClient(clientSearchQuery.isFetching);
+    if (clientSearchQuery.isError) {
+      setSearchError('No se pudo buscar cliente. Revisa conexión/API.');
+      setSearchResults([]);
+      return;
+    }
 
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-    };
-  }, [searchPhone, selectedClient, workshopId]);
+    const result = clientSearchQuery.data || [];
+    setSearchResults(result);
+    setSearchError('');
+    if (!clientSearchQuery.isFetching) {
+      if (result.length === 0) {
+        setIsNewClientMode(true);
+        setClientForm((current) => ({ ...current, phone: normalizedPhone }));
+      } else if (!selectedClient) {
+        setIsNewClientMode(false);
+      }
+    }
+  }, [clientSearchQuery.data, clientSearchQuery.isError, clientSearchQuery.isFetching, debouncedSearchPhone, selectedClient]);
 
   const catalogServices = lookupsQuery.data?.services || [];
   const adjustServices = catalogServices.filter((service) => service.isAdjust);
@@ -663,29 +665,18 @@ export function IntakesPage() {
 
   return (
     <div className="mx-auto w-full max-w-3xl px-3 pb-44 pt-3 sm:px-4">
-      <article className="card p-4">
+      <BaseCard>
         <h1 className="section-title text-lg">Intake rápido (mobile-first)</h1>
         <p className="mt-1 text-sm text-slate-500">
           Flujo optimizado para mostrador: mínimo de toques, máximo contexto.
         </p>
-        <div className="mt-3 grid grid-cols-4 gap-2">
-          {STEP_ORDER.map((step, index) => (
-            <button
-              key={step}
-              type="button"
-              onClick={() => setActiveStep(step)}
-              className={cn(
-                'rounded-xl border px-2 py-2 text-[11px] font-medium',
-                activeStep === step
-                  ? 'border-amber-500 bg-amber-50 text-amber-700'
-                  : 'border-slate-200 bg-white text-slate-600',
-              )}
-            >
-              {index + 1}. {STEP_LABEL[step]}
-            </button>
-          ))}
-        </div>
-      </article>
+        <StepProgress
+          steps={STEP_ORDER}
+          labels={STEP_LABEL}
+          activeStep={activeStep}
+          onStepClick={setActiveStep}
+        />
+      </BaseCard>
 
       {activeStep === 'client' ? (
         <article className="card mt-3 p-4">
@@ -695,27 +686,19 @@ export function IntakesPage() {
           </p>
 
           <div className="mt-4 space-y-3">
-            <div className="relative">
-              <input
-                className="input h-12 w-full pr-10"
-                placeholder="Teléfono"
-                inputMode="tel"
-                value={searchPhone}
-                onChange={(e) => {
-                  const value = normalizePhoneInput(e.target.value);
-                  if (selectedClient) resetClientSelection();
-                  setSearchPhone(value);
-                  setClientForm((current) => ({ ...current, phone: value }));
-                }}
-              />
-              <div className="pointer-events-none absolute inset-y-0 right-3 flex items-center">
-                {searchingClient ? (
-                  <Loader2 className="h-4 w-4 animate-spin text-slate-400" />
-                ) : (
-                  <Search className="h-4 w-4 text-slate-400" />
-                )}
-              </div>
-            </div>
+            <SearchInput
+              placeholder="Teléfono"
+              inputMode="tel"
+              autoFocus
+              value={searchPhone}
+              loading={searchingClient}
+              onChange={(rawValue) => {
+                const value = normalizePhoneInput(rawValue);
+                if (selectedClient) resetClientSelection();
+                setSearchPhone(value);
+                setClientForm((current) => ({ ...current, phone: value }));
+              }}
+            />
 
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               <button
@@ -771,8 +754,7 @@ export function IntakesPage() {
 
             {(isNewClientMode || selectedClient) && (
               <div className="space-y-3 rounded-xl border border-slate-200 p-3">
-                <input
-                  className="input h-12"
+                <InputField
                   placeholder="Nombre completo"
                   value={clientForm.fullName}
                   disabled={!!selectedClient}
@@ -783,8 +765,7 @@ export function IntakesPage() {
                     }))
                   }
                 />
-                <input
-                  className="input h-12"
+                <InputField
                   placeholder="Instagram (opcional)"
                   value={clientForm.instagram}
                   disabled={!!selectedClient}
@@ -1505,7 +1486,7 @@ export function IntakesPage() {
         </div>
       ) : null}
 
-      <div className="fixed inset-x-0 bottom-16 z-30 border-t border-slate-200 bg-white/95 px-3 py-3 shadow-[0_-8px_24px_rgba(15,23,42,0.08)] backdrop-blur">
+      <div className="mobile-safe-bottom fixed inset-x-0 bottom-16 z-30 border-t border-slate-200 bg-white/95 px-3 py-3 shadow-[0_-8px_24px_rgba(15,23,42,0.08)] backdrop-blur">
         <div className="mx-auto max-w-3xl space-y-2">
           <div className="flex items-center justify-between rounded-xl bg-emerald-50 px-3 py-2 text-sm">
             <span className="font-medium text-emerald-800">Resumen rápido</span>

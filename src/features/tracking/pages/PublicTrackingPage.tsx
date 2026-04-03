@@ -3,6 +3,11 @@ import { useQuery } from '@tanstack/react-query';
 import { useParams } from 'react-router-dom';
 import { currency, dateTime } from '@/lib/utils';
 import { getPublicTracking } from '@/features/visits/api/trackingApi';
+import { getTimelineEventIcon, getTimelineEventTone } from '@/features/visits/utils/timelineEventIcon';
+import { PaymentAttachmentGallery } from '@/features/visits/components/PaymentAttachmentGallery';
+import { getTimelinePaymentAttachments } from '@/features/visits/utils/paymentAttachments';
+import { WorkshopAvatar } from '@/components/avatars/WorkshopAvatar';
+import { UserAvatar } from '@/components/avatars/UserAvatar';
 import type { NoteAttachment, TrackingResponse, VisitServiceNote, VisitTimelineEvent } from '@/features/visits/api/types';
 
 export function PublicTrackingPage() {
@@ -17,7 +22,15 @@ export function PublicTrackingPage() {
   });
 
   if (trackingQuery.isLoading) {
-    return <div className="mx-auto max-w-2xl p-4 text-sm text-slate-500">Cargando tracking…</div>;
+    return (
+      <div className="mx-auto max-w-2xl p-4">
+        <div className="space-y-2">
+          {[0, 1, 2].map((item) => (
+            <div key={item} className="h-24 animate-pulse rounded-xl bg-slate-100" />
+          ))}
+        </div>
+      </div>
+    );
   }
 
   if (trackingQuery.isError || !trackingQuery.data) {
@@ -49,7 +62,15 @@ export function PublicTrackingPage() {
       <section className="overflow-hidden rounded-2xl border border-slate-200 shadow-sm">
         <div className="p-4" style={{ background: heroGradient }}>
           <h1 className="text-lg font-bold text-slate-900">Tracking de tu instrumento</h1>
-          <p className="mt-1 text-sm text-slate-700">{data.workshop?.name} · {data.branch?.name || 'Sucursal'}</p>
+          <div className="mt-1 flex items-center gap-2 text-sm text-slate-700">
+            <WorkshopAvatar
+              name={data.workshop?.name}
+              profileImageUrl={data.workshop?.profileImageUrl}
+              logoUrl={data.workshop?.logoUrl}
+              size="sm"
+            />
+            <span className="truncate">{data.workshop?.name} · {data.branch?.name || 'Sucursal'}</span>
+          </div>
           <div className="mt-3 grid grid-cols-1 gap-2 text-sm sm:grid-cols-3">
             <InfoPill label="Cliente" value={clientName} />
             <InfoPill label="Instrumento" value={instrumentName} />
@@ -75,45 +96,103 @@ export function PublicTrackingPage() {
 
       <section className="card border border-slate-200 p-4 shadow-sm">
         <h2 className="text-sm font-semibold text-slate-800">Timeline público (más reciente primero)</h2>
-        <div className="mt-3 space-y-3">
-          {timeline.map((event) => (
-            <article
-              key={`${event.id || event.eventType}-${event.occurredAt}-${event.title}`}
-              className={`rounded-xl border p-3 shadow-sm ${getEventColors(event.eventType)}`}
-            >
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="rounded-full bg-white/90 px-2 py-0.5 text-[11px] font-bold text-slate-700">
-                  {humanizeEventType(event.eventType)}
-                </p>
-                <p className="text-[11px] font-medium text-slate-600">{event.occurredAt ? dateTime(event.occurredAt) : '-'}</p>
-              </div>
-              <p className="mt-2 text-sm font-medium text-slate-900">{event.title || event.description || 'Actualización'}</p>
-              {extractEventNoteContent(event) ? (
-                <button
-                  type="button"
-                  className="mt-1 w-full rounded-lg border border-white/60 bg-white/70 p-2 text-left text-xs text-slate-700"
-                  onDoubleClick={() => setSelectedNoteEvent(event)}
+        {!timeline.length ? (
+          <div className="mt-3 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-center text-sm text-slate-600">
+            Aún no hay movimientos públicos para esta orden.
+          </div>
+        ) : (
+          <div className="mt-3 space-y-3">
+            {timeline.map((event) => {
+              const eventType = event.eventType || '';
+              const paymentData =
+                ((event.payment as Record<string, unknown> | undefined) ||
+                (event.metadata as Record<string, unknown>)?.payment as Record<string, unknown> | undefined) ||
+                {};
+              const paymentAmount = toNumberSafe((paymentData as Record<string, unknown>)?.amount);
+              const paymentMethod = String((paymentData as Record<string, unknown>)?.method || (event.metadata as Record<string, unknown>)?.method || '');
+              const paymentMediaIds = Array.isArray((paymentData as Record<string, unknown>)?.mediaIds)
+                ? ((paymentData as Record<string, unknown>).mediaIds as string[])
+                : [];
+              const paymentAttachments = getTimelinePaymentAttachments(event);
+              const isPaymentEvent = eventType.toUpperCase().includes('PAYMENT');
+
+              return (
+                <article
+                  key={`${event.id || event.eventType}-${event.occurredAt}-${event.title}`}
+                  className={`rounded-xl border p-3 shadow-sm ${getTimelineEventTone(eventType)}`}
                 >
-                  <p className="line-clamp-2">{extractEventNoteContent(event)}</p>
-                  <p className="mt-1 text-[11px] text-slate-500">Doble click para ver detalle</p>
-                </button>
-              ) : null}
-              {event.service?.name ? (
-                <p className="mt-1 text-xs text-slate-700">Servicio: {event.service.name}</p>
-              ) : null}
-              {event.actor?.name ? (
-                <p className="text-xs text-slate-500">Actualizado por: {event.actor.name}</p>
-              ) : null}
-              <div className="mt-2 space-y-2">
-                {extractTimelineAttachments(event).map((attachment) => (
-                  <div key={attachment.id || `${attachment.publicUrl}-${attachment.originalName}`} className="rounded-lg bg-white/80 p-2">
-                    <PublicAttachmentPreview attachment={attachment} onOpen={setPreview} inlinePlayable withName />
+                  <div className="flex items-start gap-3">
+                    <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/80 bg-white/80 text-lg">
+                      {getTimelineEventIcon(eventType)}
+                    </span>
+
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold text-slate-900">{event.title || event.description || 'Actualización'}</p>
+                      {event.description ? <p className="mt-0.5 text-xs text-slate-600">{event.description}</p> : null}
+                      <p className="mt-1 text-[11px] font-medium text-slate-600">{event.occurredAt ? dateTime(event.occurredAt) : '-'}</p>
+
+                      {isPaymentEvent ? (
+                        <div className="mt-2 rounded-lg border border-emerald-200 bg-white/90 p-2 text-xs text-slate-700">
+                          <p className="text-sm font-semibold text-emerald-800">{currency(paymentAmount || toNumberSafe((event.metadata as Record<string, unknown>)?.amount))}</p>
+                          <p className="text-xs text-slate-600">{paymentMethod || 'Método no especificado'}</p>
+                          {paymentMediaIds.length ? (
+                            <p className="mt-1 flex items-center gap-1 text-xs text-slate-600">
+                              <span>📎</span>
+                              <span>{paymentMediaIds.length} evidencia(s)</span>
+                            </p>
+                          ) : null}
+                          {paymentAttachments.length ? (
+                            <div className="mt-2">
+                              <PaymentAttachmentGallery
+                                attachments={paymentAttachments}
+                                compact
+                                onOpen={(attachment) => {
+                                  if (!attachment.publicUrl) return;
+                                  setPreview({
+                                    url: attachment.publicUrl,
+                                    mimeType: attachment.mimeType || '',
+                                    name: attachment.originalName,
+                                  });
+                                }}
+                              />
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
+
+                      {extractEventNoteContent(event) ? (
+                        <button
+                          type="button"
+                          className="mt-2 w-full rounded-lg border border-white/60 bg-white/70 p-2 text-left text-xs text-slate-700"
+                          onDoubleClick={() => setSelectedNoteEvent(event)}
+                        >
+                          <p className="line-clamp-2">{extractEventNoteContent(event)}</p>
+                          <p className="mt-1 text-[11px] text-slate-500">Doble click para ver detalle</p>
+                        </button>
+                      ) : null}
+                      {event.service?.name ? (
+                        <p className="mt-1 text-xs text-slate-700">Servicio: {event.service.name}</p>
+                      ) : null}
+                      {event.actor?.name ? (
+                        <div className="mt-1 flex items-center gap-2">
+                          <UserAvatar name={event.actor.name} profileImageUrl={event.actor.profileImageUrl} size="sm" />
+                          <p className="text-xs text-slate-500">Actualizado por: {event.actor.name}</p>
+                        </div>
+                      ) : null}
+                      <div className="mt-2 space-y-2">
+                        {extractTimelineAttachments(event).map((attachment) => (
+                          <div key={attachment.id || `${attachment.publicUrl}-${attachment.originalName}`} className="rounded-lg bg-white/80 p-2">
+                            <PublicAttachmentPreview attachment={attachment} onOpen={setPreview} inlinePlayable withName />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                   </div>
-                ))}
-              </div>
-            </article>
-          ))}
-        </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
       </section>
 
       <section className="card border border-slate-200 p-4 shadow-sm">
@@ -218,17 +297,6 @@ function getStatusColors(statusColor?: string | null) {
   };
 }
 
-function getEventColors(eventType: string) {
-  const normalized = eventType.toUpperCase();
-  if (normalized.includes('VISIT_CREATED')) return 'border-cyan-300 bg-gradient-to-r from-cyan-50 to-sky-100';
-  if (normalized.includes('STATUS')) return 'border-amber-300 bg-gradient-to-r from-amber-50 to-yellow-100';
-  if (normalized.includes('NOTE')) return 'border-violet-300 bg-gradient-to-r from-violet-50 to-fuchsia-100';
-  if (normalized.includes('ATTACHMENT')) return 'border-emerald-300 bg-gradient-to-r from-emerald-50 to-lime-100';
-  if (normalized.includes('CANCEL')) return 'border-rose-300 bg-gradient-to-r from-rose-50 to-red-100';
-  if (normalized.includes('SERVICE')) return 'border-blue-300 bg-gradient-to-r from-blue-50 to-indigo-100';
-  return 'border-slate-300 bg-gradient-to-r from-slate-50 to-slate-100';
-}
-
 function getSoftGradient(color?: string | null) {
   if (!color) return 'linear-gradient(135deg, #E0F2FE 0%, #F8FAFC 100%)';
   return `linear-gradient(135deg, ${color}22 0%, #F8FAFC 100%)`;
@@ -251,20 +319,31 @@ function getFinancialSummary(data: TrackingResponse) {
     return acc + qty * price;
   }, 0);
 
+  const paymentsSummary = data.payments || {};
+  const paymentsItems = Array.isArray(paymentsSummary.items) ? paymentsSummary.items : [];
   const visitAsRecord = (data.visit || {}) as Record<string, unknown>;
   const paymentsTotal =
+    toNumberSafe(paymentsSummary.totalPaid) ||
     toNumberSafe(visitAsRecord.totalPaid) ||
     toNumberSafe(visitAsRecord.paidAmount) ||
     toNumberSafe(visitAsRecord.deposit) ||
     toNumberSafe(visitAsRecord.advance) ||
-    (Array.isArray(visitAsRecord.payments)
-      ? visitAsRecord.payments.reduce((sum, row) => {
+    (paymentsItems.length
+      ? paymentsItems.reduce((sum, row) => {
           const item = (row || {}) as Record<string, unknown>;
           return sum + toNumberSafe(item.amount);
         }, 0)
-      : 0);
+      : Array.isArray(visitAsRecord.payments)
+        ? visitAsRecord.payments.reduce((sum, row) => {
+          const item = (row || {}) as Record<string, unknown>;
+          return sum + toNumberSafe(item.amount);
+        }, 0)
+        : 0);
 
-  const visitTotal = toNumberSafe(data.visit?.total) || servicesTotal;
+  const visitTotal =
+    toNumberSafe(paymentsSummary.visitTotal) ||
+    toNumberSafe(data.visit?.total) ||
+    servicesTotal;
 
   return { servicesTotal, paymentsTotal, visitTotal };
 }
@@ -305,14 +384,6 @@ function extractEventNoteContent(event: VisitTimelineEvent) {
       : undefined;
   const directMetaNote = (metadata as Record<string, unknown>).note;
   return event.note?.note || (typeof current === 'string' ? current : '') || (typeof directMetaNote === 'string' ? directMetaNote : '') || event.description || '';
-}
-
-function humanizeEventType(eventType: string) {
-  return eventType
-    .toLowerCase()
-    .split('_')
-    .map((chunk) => chunk.charAt(0).toUpperCase() + chunk.slice(1))
-    .join(' ');
 }
 
 type TrackingService = NonNullable<TrackingResponse['services']>[number];

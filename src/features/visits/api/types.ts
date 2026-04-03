@@ -156,6 +156,15 @@ export type VisitTimelineEvent = {
     scope?: string;
   } | null;
   attachment?: NoteAttachment | null;
+  payment?: {
+    id?: string;
+    amount?: number | string;
+    method?: string | null;
+    notes?: string | null;
+    paidAt?: string | null;
+    mediaIds?: string[];
+    attachments?: NoteAttachment[];
+  } | null;
   metadata?: Record<string, unknown>;
 };
 
@@ -192,6 +201,20 @@ export type TrackingResponse = {
     serviceNotes?: Array<VisitServiceNote & { attachments?: NoteAttachment[] }>;
     notes?: Array<VisitServiceNote & { attachments?: NoteAttachment[] }>;
   }>;
+  payments?: {
+    items?: Array<{
+      id?: string;
+      amount?: number | string;
+      paymentMethodId?: string | null;
+      method?: string | null;
+      notes?: string | null;
+      paidAt?: string | null;
+      mediaIds?: string[];
+    }>;
+    totalPaid?: number | string;
+    visitTotal?: number | string;
+    pendingAmount?: number | string;
+  };
   trackingLinks?: TrackingLinkResponse[];
   timeline?: VisitTimelineEvent[];
 };

@@ -10,8 +10,11 @@ import { useServiceStatuses } from '@/features/visits/hooks/useServiceStatuses';
 import { useUpdateVisitServiceStatus } from '@/features/visits/hooks/useUpdateVisitServiceStatus';
 import { VisitServiceStatusChip } from '@/features/visits/components/VisitServiceStatusChip';
 import { VisitServiceStatusSheet } from '@/features/visits/components/VisitServiceStatusSheet';
-import { AddPaymentSheet } from '@/features/visits/components/AddPaymentSheet';
-import { buildVisitPaymentPayload, parseEvidenceMarkerFromNotes, type IntakePaymentForm } from '@/features/visits/utils/paymentEvidence';
+import { VisitPaymentsSection } from '@/features/visits/components/VisitPaymentsSection';
+import { parseEvidenceMarkerFromNotes } from '@/features/visits/utils/paymentEvidence';
+import { getTimelineEventIcon, getTimelineEventTone } from '@/features/visits/utils/timelineEventIcon';
+import { PaymentAttachmentGallery } from '@/features/visits/components/PaymentAttachmentGallery';
+import { getTimelinePaymentAttachments } from '@/features/visits/utils/paymentAttachments';
 import type { WorkshopServiceLookup } from '@/features/intakes/types';
 import { 
   createVisitNote,
@@ -38,7 +41,7 @@ import {
 } from '../api/attachmentsApi';
 import { getVisitTimeline, getVisitTrackingLink, regenerateVisitTrackingLink } from '../api/trackingApi';
 import { getVisitDetail, getWorkshopVisitStatuses, patchVisit } from '../api/visitsApi';
-import type { NoteAttachment, UpdateVisitPayload, VisitNote, VisitPayment } from '../api/types';
+import type { NoteAttachment, UpdateVisitPayload, VisitNote } from '../api/types';
 
 type TabKey = 'summary' | 'services' | 'finance' | 'tracking';
 
@@ -88,8 +91,6 @@ export function VisitDetailPage() {
   const [mediaPreview, setMediaPreview] = useState<{ url: string; mimeType: string; name: string } | null>(null);
   const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
   const [isCancelVisitModalOpen, setIsCancelVisitModalOpen] = useState(false);
-  const [isAddPaymentSheetOpen, setIsAddPaymentSheetOpen] = useState(false);
-  const [paymentModalIndex, setPaymentModalIndex] = useState<number | null>(null);
   const [statusSheetServiceId, setStatusSheetServiceId] = useState<string | null>(null);
   const [uploadingCount, setUploadingCount] = useState(0);
   const [apiPendingCount, setApiPendingCount] = useState(0);
@@ -163,17 +164,6 @@ export function VisitDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['visit-detail', workshopId, instrumentId, visitId] });
     },
   });
-  const addPaymentMutation = useMutation({
-    mutationFn: (payload: Pick<UpdateVisitPayload, 'payments' | 'visitMediaIds'>) => {
-      if (!workshopId) throw new Error('No hay workshop activo');
-      return patchVisit(workshopId, instrumentId, visitId, payload);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['visit-detail', workshopId, instrumentId, visitId] });
-      queryClient.invalidateQueries({ queryKey: ['visit-timeline', visitId] });
-    },
-  });
-
   const createNoteMutation = useMutation({
     mutationFn: (payload: { note: string; isInternal: boolean }) => createVisitNote(visitId, payload),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['visit-notes', visitId] }),
@@ -267,17 +257,21 @@ export function VisitDetailPage() {
     const internalTimeline = (Array.isArray(timelineQuery.data) ? timelineQuery.data : []).map((event) => ({
       type: event.eventType,
       title: event.title || event.description || event.eventType,
+      description: event.description || '',
       occurredAt: event.occurredAt || '',
       attachments: [] as NoteAttachment[],
       metadata: event.metadata || {},
+      payment: event.payment || null,
       actor: event.actor || null,
     }));
     const visitNotes = (notesQuery.data || []).map((note) => ({
       type: note.isInternal ? 'NOTA_INTERNA' : 'NOTA_CLIENTE',
       title: note.note,
+      description: '',
       occurredAt: note.createdAt || note.updatedAt || '',
       attachments: noteAttachmentsQueries.data?.[note.id] || [],
       metadata: {},
+      payment: null,
       actor: note.author || note.createdByUser || null,
     }));
     const serviceNotes = Object.values(serviceNotesQuery.data || {})
@@ -285,9 +279,11 @@ export function VisitDetailPage() {
       .map((note) => ({
         type: note.isInternal ? 'NOTA_SERVICIO_INTERNA' : 'NOTA_SERVICIO_CLIENTE',
         title: note.note,
+        description: '',
         occurredAt: note.createdAt || note.updatedAt || '',
         attachments: serviceAttachmentsQuery.data?.[note.id] || [],
         metadata: {},
+        payment: null,
         actor: null,
       }));
 
@@ -356,48 +352,6 @@ export function VisitDetailPage() {
     () => lookupsQuery.data?.paymentMethods || [],
     [lookupsQuery.data?.paymentMethods],
   );
-  const payments = useMemo(() => {
-    const raw = (visit?.payments || []) as VisitPayment[];
-    return raw.map((item) => {
-      const parsed = parseEvidenceMarkerFromNotes(item.notes);
-      return {
-        amount: Number(item.amount || 0),
-        paymentMethod: item.paymentMethod?.name || item.method || 'Método',
-        paidAt: item.paidAt || '',
-        notes: parsed.cleanNotes,
-        evidenceMediaIds: parsed.evidenceMediaIds,
-      };
-    });
-  }, [visit?.payments]);
-  const paymentEvidenceIds = useMemo(
-    () => Array.from(new Set(payments.flatMap((payment) => payment.evidenceMediaIds || []))),
-    [payments],
-  );
-  const paymentEvidenceQuery = useQuery({
-    queryKey: ['visit-payment-evidence', paymentEvidenceIds.join(',')],
-    queryFn: async () => {
-      const entries = await Promise.all(
-        paymentEvidenceIds.map(async (mediaId) => {
-          const download = await filesApi.getDownloadUrl(mediaId);
-          return [
-            mediaId,
-            {
-              id: mediaId,
-              mediaId,
-              url: download.url,
-              publicUrl: download.url,
-              originalName: `Evidencia ${mediaId.slice(0, 6)}`,
-              mimeType: '',
-            } satisfies NoteAttachment,
-          ] as const;
-        }),
-      );
-      return Object.fromEntries(entries) as Record<string, NoteAttachment>;
-    },
-    enabled: paymentEvidenceIds.length > 0,
-    staleTime: 1000 * 60 * 10,
-  });
-
   async function addCatalogService(service: WorkshopServiceLookup) {
     if (
       service.isAdjust &&
@@ -536,29 +490,6 @@ export function VisitDetailPage() {
       mediaIds.push(init.mediaId);
     }
     return mediaIds;
-  }
-
-  async function submitPayment(form: IntakePaymentForm, evidenceMediaIds: string[]) {
-    const payload = buildVisitPaymentPayload({
-      form,
-      evidenceMediaIds,
-      existingVisitMediaIds: visit?.visitMediaIds || [],
-    });
-    await runApi(async () => {
-      await addPaymentMutation.mutateAsync(payload);
-    }).catch((error) => {
-      const fallback = getErrorMessage(error);
-      if (error && typeof error === 'object' && 'response' in error) {
-        const maybe = error as { response?: { data?: { message?: string | string[] } } };
-        const message = maybe.response?.data?.message;
-        if (message) {
-          window.alert(Array.isArray(message) ? message.join(', ') : message);
-          throw error;
-        }
-      }
-      window.alert(fallback);
-      throw error;
-    });
   }
 
   if (!instrumentId) {
@@ -852,45 +783,11 @@ export function VisitDetailPage() {
       ) : null}
 
       {tab === 'finance' ? (
-        <section className="card space-y-3 p-4">
-          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-            <p className="text-xs font-semibold uppercase text-slate-500">Resumen</p>
-            <p className="mt-1 text-sm text-slate-700">Total visita: {currency(Number(visit.total || 0))}</p>
-            <p className="text-sm text-slate-700">Subtotal: {currency(Number(visit.subtotal || 0))} · Descuento: {currency(Number(visit.discount || 0))}</p>
-          </div>
-          <button type="button" className="btn-primary h-11 w-full justify-center" onClick={() => setIsAddPaymentSheetOpen(true)}>
-            Agregar abono
-          </button>
-          {!payments.length ? (
-            <p className="text-sm text-slate-500">Aún no hay abonos registrados.</p>
-          ) : (
-            payments.map((payment, index) => (
-              <button key={`${payment.paidAt}-${index}`} type="button" className="w-full rounded-lg border border-slate-200 p-3 text-left" onDoubleClick={() => setPaymentModalIndex(index)}>
-                <p className="text-sm font-semibold text-slate-900">{currency(payment.amount)} · {payment.paymentMethod}</p>
-                <p className="text-xs text-slate-500">{payment.paidAt ? dateTime(payment.paidAt) : 'Sin fecha'}</p>
-                {payment.notes ? <p className="mt-1 text-xs text-slate-600">{payment.notes}</p> : null}
-                {payment.evidenceMediaIds.length ? (
-                  <div className="mt-2">
-                    <p className="text-[11px] font-semibold uppercase text-slate-500">Evidencia del abono</p>
-                    <div className="mt-1 flex gap-2 overflow-x-auto">
-                      {payment.evidenceMediaIds.map((mediaId) => {
-                        const attachment = paymentEvidenceQuery.data?.[mediaId];
-                        if (!attachment) {
-                          return <span key={mediaId} className="rounded bg-slate-100 px-2 py-1 text-[11px] text-slate-500">Cargando…</span>;
-                        }
-                        return (
-                          <div key={mediaId} className="rounded border border-slate-200 bg-white p-1">
-                            <AttachmentPreview attachment={attachment} onOpen={setMediaPreview} />
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ) : null}
-              </button>
-            ))
-          )}
-        </section>
+        <VisitPaymentsSection
+          visitId={visitId}
+          paymentMethods={paymentMethods}
+          fallbackVisitTotal={Number(visit.total || 0)}
+        />
       ) : null}
 
       {tab === 'tracking' ? (
@@ -903,79 +800,98 @@ export function VisitDetailPage() {
               <button type="button" className="btn-primary h-9 px-3" onClick={() => setIsRegenerateModalOpen(true)}>Regenerar</button>
             </div>
           </div>
-          <div className="space-y-2">
-            {normalizedTrackingItems.map((event) => (
-              <article
-                key={`${event.type}-${event.occurredAt}-${event.title}`}
-                className={`rounded-xl border p-3 ${
-                  event.type.includes('PAYMENT')
-                    ? 'border-fuchsia-300 bg-gradient-to-r from-fuchsia-50 to-purple-50'
-                    : 
-                  event.type.includes('INTERNA')
-                    ? 'border-amber-300 bg-gradient-to-r from-amber-50 to-yellow-50'
-                    : event.type.includes('SERVICIO')
-                      ? 'border-blue-300 bg-gradient-to-r from-blue-50 to-indigo-50'
-                      : 'border-emerald-300 bg-gradient-to-r from-emerald-50 to-lime-50'
-                }`}
-              >
-                <div className="mb-1 flex items-center justify-between gap-2">
-                  {event.actor?.name ? (
-                    <div className="flex items-center gap-2">
-                      <AvatarImage
-                        imageUrl={event.actor.profileImageUrl || null}
-                        fallback={event.actor.name}
-                        sizeClassName="h-7 w-7"
-                      />
-                      <p className="text-xs text-slate-600">{event.actor.name}</p>
-                    </div>
-                  ) : <span />}
-                </div>
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">{event.type}</p>
-                <p className="mt-1 text-sm font-medium text-slate-900">{event.type === 'PAYMENT_ADDED' ? 'Abono registrado' : event.title}</p>
-                <p className="text-xs text-slate-500">{event.occurredAt ? dateTime(event.occurredAt) : '-'}</p>
-                {event.type === 'PAYMENT_ADDED' ? (
-                  <div className="mt-2 rounded-lg border border-fuchsia-200 bg-white/80 p-2 text-xs text-slate-700">
-                    {(() => {
-                      const parsedNotes = parseEvidenceMarkerFromNotes(String((event.metadata as Record<string, unknown>)?.notes || ''));
-                      return (
-                        <>
-                    <p>Monto: {currency(Number((event.metadata as Record<string, unknown>)?.amount || 0))}</p>
-                    <p>Método: {String((event.metadata as Record<string, unknown>)?.method || 'No especificado')}</p>
-                    <p>Pagado: {(event.metadata as Record<string, unknown>)?.paidAt ? dateTime(String((event.metadata as Record<string, unknown>).paidAt)) : 'Sin fecha'}</p>
-                    {parsedNotes.cleanNotes ? <p>Notas: {parsedNotes.cleanNotes}</p> : null}
-                    {parsedNotes.evidenceMediaIds.length ? (
-                      <div className="mt-2">
-                        <p className="text-[11px] font-semibold uppercase text-slate-500">Evidencia del abono</p>
-                        <div className="mt-1 flex gap-2 overflow-x-auto">
-                          {parsedNotes.evidenceMediaIds.map((mediaId) => {
-                            const attachment = paymentEvidenceQuery.data?.[mediaId];
-                            if (!attachment) return <span key={mediaId} className="rounded bg-slate-100 px-2 py-1 text-[11px] text-slate-500">Cargando…</span>;
-                            return (
-                              <div key={mediaId} className="rounded border border-slate-200 bg-white p-1">
+          {timelineQuery.isLoading ? (
+            <div className="space-y-2">
+              {[0, 1, 2].map((item) => (
+                <div key={item} className="h-24 animate-pulse rounded-xl bg-slate-100" />
+              ))}
+            </div>
+          ) : !normalizedTrackingItems.length ? (
+            <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-center text-sm text-slate-600">
+              Aún no hay eventos en el timeline.
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {normalizedTrackingItems.map((event) => {
+                const isPaymentEvent = event.type.includes('PAYMENT');
+                const paymentMetadata = event.metadata as Record<string, unknown>;
+                const parsedNotes = parseEvidenceMarkerFromNotes(String(paymentMetadata?.notes || ''));
+                const paymentAttachments = getTimelinePaymentAttachments({
+                  ...event,
+                  payment: event.payment || (paymentMetadata?.payment as { attachments?: NoteAttachment[]; mediaIds?: string[] } | null) || null,
+                });
+                return (
+                  <article
+                    key={`${event.type}-${event.occurredAt}-${event.title}`}
+                    className={`rounded-xl border p-3 ${getTimelineEventTone(event.type)}`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/80 bg-white/70 text-lg">
+                        {getTimelineEventIcon(event.type)}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="mb-1 flex items-center justify-between gap-2">
+                          {event.actor?.name ? (
+                            <div className="flex items-center gap-2">
+                              <AvatarImage
+                                imageUrl={event.actor.profileImageUrl || null}
+                                fallback={event.actor.name}
+                                sizeClassName="h-7 w-7"
+                              />
+                              <p className="text-xs text-slate-600">{event.actor.name}</p>
+                            </div>
+                          ) : <span />}
+                        </div>
+                        <p className="text-sm font-semibold text-slate-900">{event.type === 'PAYMENT_ADDED' ? 'Se registró un abono' : event.title}</p>
+                        {event.description ? <p className="mt-0.5 text-xs text-slate-600">{event.description}</p> : null}
+                        <p className="mt-1 text-xs text-slate-500">{event.occurredAt ? dateTime(event.occurredAt) : '-'}</p>
+
+                        {isPaymentEvent ? (
+                          <div className="mt-2 rounded-lg border border-emerald-200 bg-white/90 p-2 text-xs text-slate-700">
+                            <p className="text-sm font-semibold text-emerald-800">
+                              {currency(Number(paymentMetadata?.amount || 0))}
+                              <span className="ml-2 text-xs font-medium text-slate-600">
+                                • {String(paymentMetadata?.method || 'Método no especificado')}
+                              </span>
+                            </p>
+                            <p className="mt-0.5 text-xs text-slate-500">
+                              {paymentMetadata?.paidAt ? dateTime(String(paymentMetadata.paidAt)) : 'Sin fecha de pago'}
+                            </p>
+                            {parsedNotes.cleanNotes ? <p className="mt-1">{parsedNotes.cleanNotes}</p> : null}
+                            {paymentAttachments.length ? (
+                              <div className="mt-2">
+                                <PaymentAttachmentGallery
+                                  attachments={paymentAttachments}
+                                  compact
+                                  onOpen={(item) => {
+                                    if (!item.publicUrl) return;
+                                    setMediaPreview({
+                                      url: item.publicUrl,
+                                      mimeType: item.mimeType || '',
+                                      name: item.originalName,
+                                    });
+                                  }}
+                                />
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : null}
+                        {(event.attachments || []).length ? (
+                          <div className="mt-2 space-y-1">
+                            {(event.attachments || []).map((attachment) => (
+                              <div key={attachment.id} className="rounded bg-white/70 p-1">
                                 <AttachmentPreview attachment={attachment} onOpen={setMediaPreview} />
                               </div>
-                            );
-                          })}
-                        </div>
+                            ))}
+                          </div>
+                        ) : null}
                       </div>
-                    ) : null}
-                        </>
-                      );
-                    })()}
-                  </div>
-                ) : null}
-                {(event.attachments || []).length ? (
-                  <div className="mt-2 space-y-1">
-                    {(event.attachments || []).map((attachment) => (
-                      <div key={attachment.id} className="rounded bg-white/70 p-1">
-                        <AttachmentPreview attachment={attachment} onOpen={setMediaPreview} />
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-              </article>
-            ))}
-          </div>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          )}
         </section>
       ) : null}
 
@@ -1071,48 +987,6 @@ export function VisitDetailPage() {
                 Sí, cancelar
               </button>
             </div>
-          </div>
-        </div>
-      ) : null}
-
-      {isAddPaymentSheetOpen ? (
-        <AddPaymentSheet
-          open={isAddPaymentSheetOpen}
-          visitId={visitId}
-          paymentMethods={paymentMethods}
-          isSaving={addPaymentMutation.isPending}
-          onClose={() => setIsAddPaymentSheetOpen(false)}
-          onSubmit={submitPayment}
-        />
-      ) : null}
-
-      {paymentModalIndex !== null ? (
-        <div className="fixed inset-0 z-50 flex items-end bg-black/40 p-3">
-          <div className="w-full rounded-2xl bg-white p-4">
-            <h4 className="text-sm font-semibold text-slate-900">Detalle de abono</h4>
-            <p className="mt-1 text-sm text-slate-700">{currency(payments[paymentModalIndex]?.amount || 0)}</p>
-            <p className="text-xs text-slate-500">{payments[paymentModalIndex]?.paymentMethod}</p>
-            <p className="text-xs text-slate-500">{payments[paymentModalIndex]?.paidAt ? dateTime(payments[paymentModalIndex].paidAt) : 'Sin fecha'}</p>
-            {payments[paymentModalIndex]?.notes ? (
-              <p className="mt-2 rounded-lg bg-slate-50 p-2 text-xs text-slate-700">{payments[paymentModalIndex]?.notes}</p>
-            ) : null}
-            {(payments[paymentModalIndex]?.evidenceMediaIds || []).length ? (
-              <div className="mt-2">
-                <p className="text-xs font-semibold text-slate-700">Evidencia del abono</p>
-                <div className="mt-1 grid grid-cols-3 gap-2">
-                  {(payments[paymentModalIndex]?.evidenceMediaIds || []).map((mediaId) => {
-                    const attachment = paymentEvidenceQuery.data?.[mediaId];
-                    if (!attachment) return <span key={mediaId} className="rounded bg-slate-100 px-2 py-1 text-[11px] text-slate-500">...</span>;
-                    return (
-                      <div key={mediaId} className="rounded border border-slate-200 p-1">
-                        <AttachmentInlinePreview attachment={attachment} onOpen={setMediaPreview} />
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : null}
-            <button type="button" className="btn-secondary mt-3 h-10 w-full justify-center" onClick={() => setPaymentModalIndex(null)}>Cerrar</button>
           </div>
         </div>
       ) : null}

@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getWorkshops } from '../api/get-workshops';
 import { authStore } from '@/stores/auth-store';
+import { WorkshopAvatar } from '@/components/avatars/WorkshopAvatar';
 
 export function WorkshopSwitcher() {
   const user = authStore((state) => state.user);
@@ -37,13 +38,6 @@ export function WorkshopSwitcher() {
       <div className="max-h-56 space-y-2 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2">
         {isLoading ? <p className="px-2 py-1 text-xs text-slate-500">Cargando talleres...</p> : null}
         {(data || []).map((workshop) => {
-          const image = workshop.profileImageUrl || workshop.logoUrl || '';
-          const initials = workshop.name
-            .split(' ')
-            .filter(Boolean)
-            .slice(0, 2)
-            .map((part) => part[0]?.toUpperCase())
-            .join('');
           return (
             <button
               key={workshop.id}
@@ -54,11 +48,12 @@ export function WorkshopSwitcher() {
               onClick={() => setWorkshopId(workshop.id)}
               disabled={!user?.id}
             >
-              {image ? (
-                <img src={image} alt={workshop.name} className="h-8 w-8 rounded-full object-cover" />
-              ) : (
-                <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-slate-200 text-xs font-semibold text-slate-700">{initials || 'TL'}</span>
-              )}
+              <WorkshopAvatar
+                name={workshop.name}
+                profileImageUrl={workshop.profileImageUrl}
+                logoUrl={workshop.logoUrl}
+                size="sm"
+              />
               <span className="truncate">{workshop.name}</span>
             </button>
           );
