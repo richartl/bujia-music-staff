@@ -376,7 +376,9 @@ export function VisitDetailPage() {
   );
   const totalVisit = Number(visit?.total || servicesTotal + partsTotal);
   const discountValue = Number(visit?.discount || 0);
-  const paidTotal = Number(((visit as unknown as Record<string, unknown>).paidAmount as number | string | undefined) || 0);
+  const paidTotal = Number(
+    (((visit as unknown as Record<string, unknown> | undefined)?.paidAmount as number | string | undefined) || 0),
+  );
   async function addCatalogService(service: WorkshopServiceLookup) {
     if (
       service.isAdjust &&
