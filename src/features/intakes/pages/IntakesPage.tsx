@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { authStore } from '@/stores/auth-store';
 import { currency, cn } from '@/lib/utils';
+import { notifyError, notifySuccess } from '@/lib/notify';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { SearchInput } from '@/components/ui/SearchInput';
 import { InputField } from '@/components/ui/InputField';
@@ -341,6 +342,11 @@ export function IntakesPage() {
 
   useEffect(() => {
     if (!mediaToast) return;
+    notifyError('Error al subir archivo', mediaToast);
+  }, [mediaToast]);
+
+  useEffect(() => {
+    if (!mediaToast) return;
     const timer = window.setTimeout(() => setMediaToast(''), 1800);
     return () => window.clearTimeout(timer);
   }, [mediaToast]);
@@ -629,6 +635,7 @@ export function IntakesPage() {
     onSuccess: () => {
       setSubmitError('');
       setSubmitMessage('Visita creada correctamente.');
+      notifySuccess('Visita creada', 'La orden se guardó correctamente.');
       setSearchPhone('');
       setSearchResults([]);
       setSelectedClient(null);
@@ -660,6 +667,7 @@ export function IntakesPage() {
     onError: (error: Error) => {
       setSubmitMessage('');
       setSubmitError(error.message || 'No se pudo crear la visita.');
+      notifyError('No se pudo crear la visita', error.message || 'Revisa la información e inténtalo de nuevo.');
     },
   });
 

@@ -68,7 +68,18 @@ export type VisitResponse = {
   stringGaugeId?: string | null;
   branch?: { id: string; name: string } | null;
   client?: { id: string; fullName?: string; firstName?: string; lastName?: string; phone?: string } | null;
-  instrument?: { id: string; name?: string; model?: string; colorName?: string } | null;
+  instrument?: {
+    id: string;
+    name?: string;
+    model?: string;
+    colorName?: string;
+    brandId?: string | null;
+    colorId?: string | null;
+    instrumentTypeId?: string | null;
+    brand?: { id?: string; name?: string } | null;
+    color?: { id?: string; name?: string } | null;
+    instrumentType?: { id?: string; name?: string } | null;
+  } | null;
   payments?: VisitPayment[];
   visitMediaIds?: string[];
 };

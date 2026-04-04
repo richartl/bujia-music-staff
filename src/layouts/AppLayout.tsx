@@ -37,11 +37,11 @@ export function AppLayout() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-24 md:pb-0">
-      <header className="border-b border-slate-200 bg-white md:sticky md:top-0 md:z-30 md:bg-white/95 md:backdrop-blur">
+    <div className="min-h-screen bg-gradient-to-b from-slate-100 via-slate-100 to-slate-200 pb-24 md:pb-0">
+      <header className="border-b border-slate-300 bg-white/95 shadow-sm md:sticky md:top-0 md:z-30 md:backdrop-blur">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-3 py-3 sm:px-4 md:px-4">
           <div className="min-w-0">
-            <div className="truncate text-base font-bold sm:text-lg">{routeMeta.title}</div>
+            <div className="truncate text-base font-bold text-slate-900 sm:text-lg">{routeMeta.title}</div>
             <div className="truncate text-xs text-slate-500 sm:text-sm">{routeMeta.subtitle}</div>
           </div>
 
@@ -105,7 +105,7 @@ export function AppLayout() {
 
       <div className="mx-auto grid max-w-7xl gap-4 px-3 py-4 sm:px-4 md:grid-cols-[260px_1fr] md:px-4">
         <aside className="hidden md:block md:sticky md:top-24 md:h-fit">
-          <div className="card p-3">
+          <div className="card p-3 shadow-sm">
             <div className="mb-4 flex items-center gap-2 px-2">
               <UserAvatar email={user?.email} profileImageUrl={user?.profileImageUrl} size="md" />
               <div className="min-w-0">

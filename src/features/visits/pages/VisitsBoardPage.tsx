@@ -1,11 +1,14 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Link, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
+import { dateTime } from '@/lib/utils';
 import { authStore } from '@/stores/auth-store';
-import { currency, dateTime } from '@/lib/utils';
+import { QuickFilterChips } from '../components/QuickFilterChips';
+import { VisitCard } from '../components/VisitCard';
 import { getWorkshopVisitStatuses, getWorkshopVisitsWithFilters } from '../api/visitsApi';
 import { getClientInstruments, getWorkshopBranches, getWorkshopClients } from '../api/workshopCatalogsApi';
-import type { VisitFilters } from '../api/types';
+import type { VisitFilters, VisitStatusCatalog } from '../api/types';
 
 const EMPTY_FILTERS: VisitFilters = {
   search: '',
@@ -19,13 +22,44 @@ const EMPTY_FILTERS: VisitFilters = {
   openedTo: '',
 };
 
-function statusColor(color?: string | null) {
-  return color || '#0f172a';
-}
+const QUICK_FILTERS = [
+  { label: 'Activas', value: 'active' },
+  { label: 'Hoy', value: 'today' },
+  { label: 'Pendientes', value: 'pending' },
+  { label: 'Entregadas', value: 'delivered' },
+  { label: 'Todas', value: 'all' },
+];
 
 function toInputDate(iso?: string | null) {
   if (!iso) return '';
   return iso.slice(0, 10);
+}
+
+function getStartOfTodayIso() {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return today.toISOString();
+}
+
+function getEndOfTodayIso() {
+  const today = new Date();
+  today.setHours(23, 59, 59, 999);
+  return today.toISOString();
+}
+
+function detectQuickFilter(filters: VisitFilters, statuses: VisitStatusCatalog[]) {
+  if (filters.isActive === 'true' && !filters.statusId && !filters.openedFrom && !filters.openedTo) return 'active';
+  if (!filters.isActive && !filters.statusId && !filters.openedFrom && !filters.openedTo) return 'all';
+
+  const selectedStatus = statuses.find((status) => status.id === filters.statusId)?.name?.toLowerCase();
+  if (selectedStatus?.includes('entreg')) return 'delivered';
+  if (selectedStatus?.includes('pend')) return 'pending';
+
+  const todayStart = getStartOfTodayIso().slice(0, 10);
+  const todayEnd = getEndOfTodayIso().slice(0, 10);
+  if (filters.openedFrom.slice(0, 10) === todayStart && filters.openedTo.slice(0, 10) === todayEnd) return 'today';
+
+  return 'all';
 }
 
 export function VisitsBoardPage() {
@@ -45,6 +79,21 @@ export function VisitsBoardPage() {
   };
 
   const [draftFilters, setDraftFilters] = useState<VisitFilters>(urlFilters);
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+
+  const debouncedSearch = useDebouncedValue(draftFilters.search.trim(), 350);
+
+  useEffect(() => {
+    setDraftFilters(urlFilters);
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (debouncedSearch === (urlFilters.search || '').trim()) return;
+
+    const nextFilters = { ...urlFilters, search: debouncedSearch };
+    const entries = Object.entries(nextFilters).filter(([, value]) => value !== '');
+    setSearchParams(new URLSearchParams(entries as Array<[string, string]>));
+  }, [debouncedSearch]);
 
   const visitsQuery = useQuery({
     queryKey: ['workshop-visits', workshopId, urlFilters],
@@ -76,10 +125,30 @@ export function VisitsBoardPage() {
     enabled: !!workshopId && !!draftFilters.clientId,
   });
 
-  const filteredVisits = useMemo(() => visitsQuery.data || [], [visitsQuery.data]);
+  const sortedVisits = useMemo(() => {
+    const visits = visitsQuery.data || [];
+    return [...visits].sort((a, b) => {
+      if (Boolean(a.isActive) !== Boolean(b.isActive)) {
+        return a.isActive ? -1 : 1;
+      }
+      const aDate = new Date(a.openedAt || a.closedAt || 0).getTime();
+      const bDate = new Date(b.openedAt || b.closedAt || 0).getTime();
+      return bDate - aDate;
+    });
+  }, [visitsQuery.data]);
 
-  function applyFilters() {
-    const entries = Object.entries(draftFilters).filter(([, value]) => value !== '');
+  const quickFilter = useMemo(
+    () => detectQuickFilter(urlFilters, statusesQuery.data || []),
+    [urlFilters, statusesQuery.data],
+  );
+
+  const activeVisitsCount = useMemo(
+    () => (visitsQuery.data || []).filter((visit) => visit.isActive).length,
+    [visitsQuery.data],
+  );
+
+  function applyFilters(nextFilters = draftFilters) {
+    const entries = Object.entries(nextFilters).filter(([, value]) => value !== '');
     setSearchParams(new URLSearchParams(entries as Array<[string, string]>));
   }
 
@@ -88,76 +157,142 @@ export function VisitsBoardPage() {
     setSearchParams(new URLSearchParams({ isActive: 'true' }));
   }
 
+  function findStatusIdByKeyword(keyword: 'pend' | 'entreg') {
+    return (statusesQuery.data || []).find((status) => status.name.toLowerCase().includes(keyword))?.id || '';
+  }
+
+  function handleQuickFilter(value: string) {
+    const next = { ...draftFilters };
+
+    if (value === 'active') {
+      next.isActive = 'true';
+      next.statusId = '';
+      next.openedFrom = '';
+      next.openedTo = '';
+    } else if (value === 'all') {
+      next.isActive = '';
+      next.statusId = '';
+      next.openedFrom = '';
+      next.openedTo = '';
+    } else if (value === 'today') {
+      next.isActive = '';
+      next.statusId = '';
+      next.openedFrom = getStartOfTodayIso();
+      next.openedTo = getEndOfTodayIso();
+    } else if (value === 'pending') {
+      next.isActive = '';
+      next.statusId = findStatusIdByKeyword('pend');
+      next.openedFrom = '';
+      next.openedTo = '';
+    } else if (value === 'delivered') {
+      next.isActive = 'false';
+      next.statusId = findStatusIdByKeyword('entreg');
+      next.openedFrom = '';
+      next.openedTo = '';
+    }
+
+    setDraftFilters(next);
+    applyFilters(next);
+  }
+
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 pb-6">
       <section className="card p-4">
-        <h1 className="section-title">Visitas del taller</h1>
-        <p className="mt-1 text-sm text-slate-500">Listado global activo, pensado para operación diaria rápida.</p>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h1 className="section-title">Intakes / órdenes de trabajo</h1>
+            <p className="mt-1 text-sm text-slate-500">Lista operativa para revisar rápido qué visita sigue activa y qué ya está lista.</p>
+          </div>
+          <div className="rounded-xl bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-700">
+            {activeVisitsCount} activas · {sortedVisits.length} totales
+          </div>
+        </div>
+
+        <div className="mt-3">
+          <QuickFilterChips items={QUICK_FILTERS} selected={quickFilter} onChange={handleQuickFilter} />
+        </div>
 
         <div className="mt-3 space-y-2">
-          <input className="input h-11" value={draftFilters.search} placeholder="Buscar folio / cliente / teléfono / modelo / color" onChange={(event) => setDraftFilters((current) => ({ ...current, search: event.target.value }))} />
-          <div className="grid grid-cols-2 gap-2">
-            <select className="input h-11" value={draftFilters.statusId} onChange={(event) => setDraftFilters((current) => ({ ...current, statusId: event.target.value }))}>
-              <option value="">Status</option>
-              {(statusesQuery.data || []).map((status) => <option key={status.id} value={status.id}>{status.name}</option>)}
-            </select>
-            <select className="input h-11" value={draftFilters.branchId} onChange={(event) => setDraftFilters((current) => ({ ...current, branchId: event.target.value }))}>
-              <option value="">Sucursal</option>
-              {(branchesQuery.data || []).map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
-            </select>
-            <select className="input h-11" value={draftFilters.clientId} onChange={(event) => setDraftFilters((current) => ({ ...current, clientId: event.target.value, instrumentId: '' }))}>
-              <option value="">Cliente</option>
-              {(clientsQuery.data || []).map((client) => <option key={client.id} value={client.id}>{client.fullName || `${client.firstName || ''} ${client.lastName || ''}`.trim() || client.phone || client.id}</option>)}
-            </select>
-            <select className="input h-11" value={draftFilters.instrumentId} onChange={(event) => setDraftFilters((current) => ({ ...current, instrumentId: event.target.value }))}>
-              <option value="">Instrumento</option>
-              {(instrumentsQuery.data || []).map((instrument) => <option key={instrument.id} value={instrument.id}>{instrument.name || instrument.model || instrument.id}</option>)}
-            </select>
-            <input className="input h-11" placeholder="Creado por userId" value={draftFilters.createdByUserId} onChange={(event) => setDraftFilters((current) => ({ ...current, createdByUserId: event.target.value }))} />
-            <select className="input h-11" value={draftFilters.isActive} onChange={(event) => setDraftFilters((current) => ({ ...current, isActive: event.target.value as VisitFilters['isActive'] }))}>
-              <option value="true">Solo activas</option>
-              <option value="false">Solo inactivas</option>
-              <option value="">Todas</option>
-            </select>
-            <input className="input h-11" type="date" value={toInputDate(draftFilters.openedFrom)} onChange={(event) => setDraftFilters((current) => ({ ...current, openedFrom: event.target.value ? `${event.target.value}T00:00:00.000Z` : '' }))} />
-            <input className="input h-11" type="date" value={toInputDate(draftFilters.openedTo)} onChange={(event) => setDraftFilters((current) => ({ ...current, openedTo: event.target.value ? `${event.target.value}T23:59:59.999Z` : '' }))} />
-          </div>
+          <input
+            className="input h-11"
+            value={draftFilters.search}
+            placeholder="Buscar folio, cliente, teléfono, modelo o color"
+            onChange={(event) => setDraftFilters((current) => ({ ...current, search: event.target.value }))}
+          />
 
           <div className="grid grid-cols-2 gap-2">
-            <button type="button" className="btn-primary h-11 justify-center" onClick={applyFilters}>Aplicar</button>
+            <select className="input h-11" value={draftFilters.statusId} onChange={(event) => setDraftFilters((current) => ({ ...current, statusId: event.target.value }))}>
+              <option value="">Estatus</option>
+              {(statusesQuery.data || []).map((status) => <option key={status.id} value={status.id}>{status.name}</option>)}
+            </select>
+            <select className="input h-11" value={draftFilters.isActive} onChange={(event) => setDraftFilters((current) => ({ ...current, isActive: event.target.value as VisitFilters['isActive'] }))}>
+              <option value="true">Activas</option>
+              <option value="">Todas</option>
+              <option value="false">Inactivas</option>
+            </select>
+          </div>
+
+          <button type="button" className="btn-secondary h-10 w-full justify-center text-xs" onClick={() => setShowAdvancedFilters((current) => !current)}>
+            {showAdvancedFilters ? 'Ocultar filtros avanzados' : 'Más filtros'}
+          </button>
+
+          {showAdvancedFilters ? (
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <select className="input h-11" value={draftFilters.branchId} onChange={(event) => setDraftFilters((current) => ({ ...current, branchId: event.target.value }))}>
+                <option value="">Sucursal</option>
+                {(branchesQuery.data || []).map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
+              </select>
+
+              <select className="input h-11" value={draftFilters.clientId} onChange={(event) => setDraftFilters((current) => ({ ...current, clientId: event.target.value, instrumentId: '' }))}>
+                <option value="">Cliente</option>
+                {(clientsQuery.data || []).map((client) => <option key={client.id} value={client.id}>{client.fullName || `${client.firstName || ''} ${client.lastName || ''}`.trim() || client.phone || client.id}</option>)}
+              </select>
+
+              <select className="input h-11" value={draftFilters.instrumentId} onChange={(event) => setDraftFilters((current) => ({ ...current, instrumentId: event.target.value }))}>
+                <option value="">Instrumento</option>
+                {(instrumentsQuery.data || []).map((instrument) => <option key={instrument.id} value={instrument.id}>{instrument.name || instrument.model || instrument.id}</option>)}
+              </select>
+
+              <input className="input h-11" placeholder="Creado por userId" value={draftFilters.createdByUserId} onChange={(event) => setDraftFilters((current) => ({ ...current, createdByUserId: event.target.value }))} />
+
+              <input className="input h-11" type="date" value={toInputDate(draftFilters.openedFrom)} onChange={(event) => setDraftFilters((current) => ({ ...current, openedFrom: event.target.value ? `${event.target.value}T00:00:00.000Z` : '' }))} />
+
+              <input className="input h-11" type="date" value={toInputDate(draftFilters.openedTo)} onChange={(event) => setDraftFilters((current) => ({ ...current, openedTo: event.target.value ? `${event.target.value}T23:59:59.999Z` : '' }))} />
+            </div>
+          ) : null}
+
+          <div className="grid grid-cols-2 gap-2">
+            <button type="button" className="btn-primary h-11 justify-center" onClick={() => applyFilters()}>Aplicar filtros</button>
             <button type="button" className="btn-secondary h-11 justify-center" onClick={clearFilters}>Limpiar</button>
           </div>
         </div>
       </section>
 
-      {visitsQuery.isLoading ? <section className="card p-4 text-sm text-slate-500">Cargando visitas…</section> : null}
-      {visitsQuery.isError ? <section className="card p-4 text-sm text-red-700">No se pudo cargar visitas. Reintenta.</section> : null}
-      {!filteredVisits.length && !visitsQuery.isLoading ? <section className="card p-4 text-sm text-slate-500">No hay visitas para estos filtros.</section> : null}
+      {visitsQuery.isLoading ? (
+        <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {[...Array(3)].map((_, index) => (
+            <div key={index} className="card animate-pulse p-4">
+              <div className="h-3 w-24 rounded bg-slate-200" />
+              <div className="mt-3 h-5 w-40 rounded bg-slate-200" />
+              <div className="mt-2 h-4 w-32 rounded bg-slate-100" />
+              <div className="mt-4 h-14 rounded bg-slate-100" />
+            </div>
+          ))}
+        </section>
+      ) : null}
 
-      <section className="grid gap-3">
-        {filteredVisits.map((visit) => (
-          <Link key={visit.id} to={`/app/visits/${visit.id}?instrumentId=${visit.instrumentId}`} className="card block p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-xs font-semibold text-slate-500">{visit.folio}</p>
-                <h3 className="text-base font-semibold text-slate-900">{visit.instrument?.name || 'Instrumento'}</h3>
-                <p className="text-sm text-slate-500">{visit.client?.fullName || 'Cliente sin nombre'} {visit.client?.phone ? `· ${visit.client.phone}` : ''}</p>
-              </div>
-              <span className="rounded-full px-2 py-1 text-xs font-semibold" style={{ backgroundColor: `${statusColor(visit.status?.color)}22`, color: statusColor(visit.status?.color) }}>
-                {visit.status?.name || 'Sin estatus'}
-              </span>
-            </div>
-            <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
-              <p className="text-slate-500">Total</p>
-              <p className="text-right font-semibold text-slate-900">{currency(Number(visit.total || 0))}</p>
-              <p className="text-slate-500">Apertura</p>
-              <p className="text-right text-slate-700">{visit.openedAt ? dateTime(visit.openedAt) : '-'}</p>
-              <p className="text-slate-500">Modelo / Color</p>
-              <p className="text-right text-slate-700">{visit.instrument?.model || '-'} {visit.instrument?.colorName ? `· ${visit.instrument.colorName}` : ''}</p>
-            </div>
-          </Link>
-        ))}
-      </section>
+      {visitsQuery.isError ? <section className="card p-4 text-sm text-red-700">No se pudieron cargar las visitas. Reintenta.</section> : null}
+      {!sortedVisits.length && !visitsQuery.isLoading ? <section className="card p-4 text-sm text-slate-500">No hay órdenes para estos filtros. Prueba “Todas” o ajusta la búsqueda.</section> : null}
+
+      {!!sortedVisits.length ? (
+        <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {sortedVisits.map((visit) => <VisitCard key={visit.id} visit={visit} />)}
+        </section>
+      ) : null}
+
+      {!visitsQuery.isLoading && sortedVisits.length > 0 ? (
+        <p className="px-1 text-xs text-slate-500">Última actualización de datos: {dateTime(new Date())}</p>
+      ) : null}
     </div>
   );
 }
