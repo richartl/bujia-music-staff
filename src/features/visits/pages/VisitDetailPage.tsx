@@ -3,6 +3,7 @@ import { useIsFetching, useIsMutating, useMutation, useQuery, useQueryClient } f
 import { useSearchParams, useParams } from 'react-router-dom';
 import { authStore } from '@/stores/auth-store';
 import { currency, dateTime } from '@/lib/utils';
+import { notifyError, notifyInfo } from '@/lib/notify';
 import { getIntakeLookups } from '@/features/intakes/api/get-intake-lookups';
 import { filesApi } from '@/features/intakes/api/filesApi';
 import type { LookupOption } from '@/features/intakes/types';
@@ -358,7 +359,7 @@ export function VisitDetailPage() {
       existingAdjustService &&
       existingAdjustService.workshopServiceId !== service.id
     ) {
-      window.alert('Ya existe un servicio de ajuste. Usa el botón Modificar ajuste.');
+      notifyInfo('Ya existe un servicio de ajuste', 'Usa el botón Modificar ajuste.');
       return;
     }
     setConfirmModal({
@@ -917,10 +918,10 @@ export function VisitDetailPage() {
               if (error && typeof error === 'object' && 'response' in error) {
                 const maybe = error as { response?: { data?: { message?: string | string[] } } };
                 const msg = maybe.response?.data?.message;
-                if (msg) window.alert(Array.isArray(msg) ? msg.join(', ') : msg);
-                else window.alert(fallback);
+                if (msg) notifyError(Array.isArray(msg) ? msg.join(', ') : msg);
+                else notifyError(fallback);
               } else {
-                window.alert(fallback);
+                notifyError(fallback);
               }
             });
 
@@ -1170,11 +1171,11 @@ export function VisitDetailPage() {
                       const maybe = error as { response?: { data?: { message?: string | string[] } } };
                       const message = maybe.response?.data?.message;
                       if (message) {
-                        window.alert(Array.isArray(message) ? message.join(', ') : message);
+                        notifyError(Array.isArray(message) ? message.join(', ') : message);
                         return;
                       }
                     }
-                    window.alert(fallback);
+                    notifyError(fallback);
                   }
                 }}
               >
