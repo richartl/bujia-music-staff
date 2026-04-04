@@ -49,7 +49,7 @@ export function normalizeVisit(visit: VisitResponse): NormalizedVisit {
     isActive: Boolean(visit.isActive),
     clientName: fullName(visit),
     clientPhone: visit.client?.phone || 'Teléfono no registrado',
-    instrumentName: visit.instrument?.name || 'Instrumento sin nombre',
+    instrumentName: visit.instrument?.name || visit.instrument?.model || 'Instrumento',
     instrumentModel: visit.instrument?.model || 'Modelo no especificado',
     instrumentBrand,
     instrumentColor,
