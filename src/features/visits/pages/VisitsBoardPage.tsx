@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
-import { authStore } from '@/stores/auth-store';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { dateTime } from '@/lib/utils';
-import { getWorkshopVisitStatuses, getWorkshopVisitsWithFilters } from '../api/visitsApi';
-import { getClientInstruments, getWorkshopBranches, getWorkshopClients } from '../api/workshopCatalogsApi';
-import type { VisitFilters, VisitResponse } from '../api/types';
+import { authStore } from '@/stores/auth-store';
 import { QuickFilterChips } from '../components/QuickFilterChips';
 import { VisitCard } from '../components/VisitCard';
+import { getWorkshopVisitStatuses, getWorkshopVisitsWithFilters } from '../api/visitsApi';
+import { getClientInstruments, getWorkshopBranches, getWorkshopClients } from '../api/workshopCatalogsApi';
+import type { VisitFilters, VisitStatusCatalog } from '../api/types';
 
 const EMPTY_FILTERS: VisitFilters = {
   search: '',
@@ -46,11 +47,11 @@ function getEndOfTodayIso() {
   return today.toISOString();
 }
 
-function resolveQuickFilter(filters: VisitFilters, visits: VisitResponse[]) {
-  if (filters.isActive === 'true') return 'active';
+function detectQuickFilter(filters: VisitFilters, statuses: VisitStatusCatalog[]) {
+  if (filters.isActive === 'true' && !filters.statusId && !filters.openedFrom && !filters.openedTo) return 'active';
   if (!filters.isActive && !filters.statusId && !filters.openedFrom && !filters.openedTo) return 'all';
 
-  const selectedStatus = visits.find((visit) => visit.statusId === filters.statusId)?.status?.name?.toLowerCase();
+  const selectedStatus = statuses.find((status) => status.id === filters.statusId)?.name?.toLowerCase();
   if (selectedStatus?.includes('entreg')) return 'delivered';
   if (selectedStatus?.includes('pend')) return 'pending';
 
@@ -80,9 +81,19 @@ export function VisitsBoardPage() {
   const [draftFilters, setDraftFilters] = useState<VisitFilters>(urlFilters);
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
 
+  const debouncedSearch = useDebouncedValue(draftFilters.search.trim(), 350);
+
   useEffect(() => {
     setDraftFilters(urlFilters);
   }, [searchParams]);
+
+  useEffect(() => {
+    if (debouncedSearch === (urlFilters.search || '').trim()) return;
+
+    const nextFilters = { ...urlFilters, search: debouncedSearch };
+    const entries = Object.entries(nextFilters).filter(([, value]) => value !== '');
+    setSearchParams(new URLSearchParams(entries as Array<[string, string]>));
+  }, [debouncedSearch]);
 
   const visitsQuery = useQuery({
     queryKey: ['workshop-visits', workshopId, urlFilters],
@@ -116,31 +127,38 @@ export function VisitsBoardPage() {
 
   const sortedVisits = useMemo(() => {
     const visits = visitsQuery.data || [];
-
     return [...visits].sort((a, b) => {
-      if (!!a.isActive !== !!b.isActive) {
+      if (Boolean(a.isActive) !== Boolean(b.isActive)) {
         return a.isActive ? -1 : 1;
       }
-
       const aDate = new Date(a.openedAt || a.closedAt || 0).getTime();
       const bDate = new Date(b.openedAt || b.closedAt || 0).getTime();
       return bDate - aDate;
     });
   }, [visitsQuery.data]);
 
-  const quickFilter = useMemo(() => resolveQuickFilter(urlFilters, visitsQuery.data || []), [urlFilters, visitsQuery.data]);
+  const quickFilter = useMemo(
+    () => detectQuickFilter(urlFilters, statusesQuery.data || []),
+    [urlFilters, statusesQuery.data],
+  );
 
-  const activeVisitsCount = useMemo(() => (visitsQuery.data || []).filter((visit) => visit.isActive).length, [visitsQuery.data]);
+  const activeVisitsCount = useMemo(
+    () => (visitsQuery.data || []).filter((visit) => visit.isActive).length,
+    [visitsQuery.data],
+  );
 
   function applyFilters(nextFilters = draftFilters) {
-    const withDefaultActive = { ...nextFilters, isActive: nextFilters.isActive || 'true' };
-    const entries = Object.entries(withDefaultActive).filter(([, value]) => value !== '');
+    const entries = Object.entries(nextFilters).filter(([, value]) => value !== '');
     setSearchParams(new URLSearchParams(entries as Array<[string, string]>));
   }
 
   function clearFilters() {
     setDraftFilters(EMPTY_FILTERS);
     setSearchParams(new URLSearchParams({ isActive: 'true' }));
+  }
+
+  function findStatusIdByKeyword(keyword: 'pend' | 'entreg') {
+    return (statusesQuery.data || []).find((status) => status.name.toLowerCase().includes(keyword))?.id || '';
   }
 
   function handleQuickFilter(value: string) {
@@ -151,25 +169,24 @@ export function VisitsBoardPage() {
       next.statusId = '';
       next.openedFrom = '';
       next.openedTo = '';
-    }
-
-    if (value === 'all') {
+    } else if (value === 'all') {
       next.isActive = '';
       next.statusId = '';
       next.openedFrom = '';
       next.openedTo = '';
-    }
-
-    if (value === 'today') {
+    } else if (value === 'today') {
       next.isActive = '';
+      next.statusId = '';
       next.openedFrom = getStartOfTodayIso();
       next.openedTo = getEndOfTodayIso();
-    }
-
-    if (value === 'pending' || value === 'delivered') {
-      const target = (statusesQuery.data || []).find((status) => status.name.toLowerCase().includes(value === 'pending' ? 'pend' : 'entreg'));
-      next.isActive = value === 'delivered' ? 'false' : '';
-      next.statusId = target?.id || '';
+    } else if (value === 'pending') {
+      next.isActive = '';
+      next.statusId = findStatusIdByKeyword('pend');
+      next.openedFrom = '';
+      next.openedTo = '';
+    } else if (value === 'delivered') {
+      next.isActive = 'false';
+      next.statusId = findStatusIdByKeyword('entreg');
       next.openedFrom = '';
       next.openedTo = '';
     }
@@ -183,8 +200,8 @@ export function VisitsBoardPage() {
       <section className="card p-4">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h1 className="section-title">Intakes / Órdenes de trabajo</h1>
-            <p className="mt-1 text-sm text-slate-500">Vista operativa para priorizar trabajos activos y detectar atención inmediata.</p>
+            <h1 className="section-title">Intakes / órdenes de trabajo</h1>
+            <p className="mt-1 text-sm text-slate-500">Lista operativa para revisar rápido qué visita sigue activa y qué ya está lista.</p>
           </div>
           <div className="rounded-xl bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-700">
             {activeVisitsCount} activas · {sortedVisits.length} totales
@@ -196,7 +213,12 @@ export function VisitsBoardPage() {
         </div>
 
         <div className="mt-3 space-y-2">
-          <input className="input h-11" value={draftFilters.search} placeholder="Buscar folio / cliente / teléfono / instrumento" onChange={(event) => setDraftFilters((current) => ({ ...current, search: event.target.value }))} />
+          <input
+            className="input h-11"
+            value={draftFilters.search}
+            placeholder="Buscar folio, cliente, teléfono, modelo o color"
+            onChange={(event) => setDraftFilters((current) => ({ ...current, search: event.target.value }))}
+          />
 
           <div className="grid grid-cols-2 gap-2">
             <select className="input h-11" value={draftFilters.statusId} onChange={(event) => setDraftFilters((current) => ({ ...current, statusId: event.target.value }))}>
@@ -240,7 +262,7 @@ export function VisitsBoardPage() {
           ) : null}
 
           <div className="grid grid-cols-2 gap-2">
-            <button type="button" className="btn-primary h-11 justify-center" onClick={() => applyFilters()}>Aplicar</button>
+            <button type="button" className="btn-primary h-11 justify-center" onClick={() => applyFilters()}>Aplicar filtros</button>
             <button type="button" className="btn-secondary h-11 justify-center" onClick={clearFilters}>Limpiar</button>
           </div>
         </div>
@@ -258,8 +280,9 @@ export function VisitsBoardPage() {
           ))}
         </section>
       ) : null}
+
       {visitsQuery.isError ? <section className="card p-4 text-sm text-red-700">No se pudieron cargar las visitas. Reintenta.</section> : null}
-      {!sortedVisits.length && !visitsQuery.isLoading ? <section className="card p-4 text-sm text-slate-500">No hay órdenes para estos filtros. Prueba “Todas” o cambia la fecha.</section> : null}
+      {!sortedVisits.length && !visitsQuery.isLoading ? <section className="card p-4 text-sm text-slate-500">No hay órdenes para estos filtros. Prueba “Todas” o ajusta la búsqueda.</section> : null}
 
       {!!sortedVisits.length ? (
         <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
