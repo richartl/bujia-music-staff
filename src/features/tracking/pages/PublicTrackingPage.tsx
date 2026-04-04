@@ -35,7 +35,7 @@ export function PublicTrackingPage() {
       <div className="mx-auto max-w-2xl p-4">
         <div className="space-y-2">
           {[0, 1, 2].map((item) => (
-            <div key={item} className="h-24 animate-pulse rounded-xl bg-slate-100" />
+            <div key={item} className="h-24 animate-pulse rounded-xl bg-slate-200" />
           ))}
         </div>
       </div>
@@ -65,19 +65,21 @@ export function PublicTrackingPage() {
   const totals = getFinancialSummary(data);
 
   return (
-    <main className="mx-auto max-w-3xl space-y-4 bg-slate-950 p-3 pb-8 text-slate-100 sm:rounded-2xl sm:border sm:border-slate-800 sm:shadow-2xl">
-      <section className="overflow-hidden rounded-2xl border border-slate-700 shadow-lg">
+    <main className="mx-auto max-w-3xl space-y-4 p-3 pb-8 sm:p-4">
+      <section className="overflow-hidden rounded-2xl border border-slate-300 bg-white shadow-sm">
         <div className="p-4" style={{ background: heroGradient }}>
-          <h1 className="text-lg font-bold text-slate-100">Seguimiento de tu instrumento</h1>
-          <div className="mt-1 flex items-center gap-2 text-sm text-slate-300">
+          <h1 className="text-lg font-bold text-slate-900">Seguimiento de tu instrumento</h1>
+          <p className="mt-1 text-sm text-slate-700">Consulta aquí el avance de tu orden en tiempo real.</p>
+          <div className="mt-2 flex items-center gap-2 text-sm text-slate-700">
             <WorkshopAvatar name={data.workshop?.name} profileImageUrl={data.workshop?.profileImageUrl} logoUrl={data.workshop?.logoUrl} size="sm" />
             <span className="truncate">{data.workshop?.name} · {data.branch?.name || 'Sucursal'}</span>
           </div>
+
           <div className="mt-3 grid grid-cols-1 gap-2 text-sm sm:grid-cols-3">
             <InfoPill label="Cliente" value={clientName} />
             <InfoPill label="Instrumento" value={instrumentName} />
-            <div className="rounded-xl bg-slate-900/80 p-3 backdrop-blur-sm">
-              <p className="text-[11px] font-medium uppercase tracking-wide text-slate-400">Estado actual</p>
+            <div className="rounded-xl border border-slate-200 bg-white p-3">
+              <p className="text-[11px] font-medium uppercase tracking-wide text-slate-600">Estado actual</p>
               <p className="mt-1">
                 <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${statusColors.badge}`} style={statusColors.customColor ? { backgroundColor: statusColors.customColor, color: '#ffffff' } : undefined}>
                   {currentStatus}
@@ -85,6 +87,7 @@ export function PublicTrackingPage() {
               </p>
             </div>
           </div>
+
           <div className="mt-2 grid grid-cols-1 gap-2 text-sm sm:grid-cols-3">
             <MoneyPill label="Total servicios" value={totals.servicesTotal} />
             <MoneyPill label="Abonos" value={totals.paymentsTotal} />
@@ -93,10 +96,10 @@ export function PublicTrackingPage() {
         </div>
       </section>
 
-      <section className="rounded-2xl border border-slate-800 bg-slate-900 p-4 shadow-sm">
-        <h2 className="text-sm font-semibold text-slate-100">Historial de movimientos (más reciente primero)</h2>
+      <section className="rounded-2xl border border-slate-300 bg-white p-4 shadow-sm">
+        <h2 className="text-sm font-semibold text-slate-900">Historial de movimientos (más reciente primero)</h2>
         {!timeline.length ? (
-          <div className="mt-3 rounded-xl border border-dashed border-slate-700 bg-slate-900 p-4 text-center text-sm text-slate-400">
+          <div className="mt-3 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-center text-sm text-slate-700">
             Aún no hay movimientos públicos para esta orden.
           </div>
         ) : (
@@ -119,36 +122,36 @@ export function PublicTrackingPage() {
               return (
                 <article
                   key={`${event.id || event.eventType}-${event.occurredAt}-${event.title}`}
-                  className={cn('rounded-xl border p-3 shadow-sm transition hover:border-amber-400/40', getTimelineEventTone(eventType), 'border-slate-700/50 bg-slate-900/95')}
+                  className={cn('rounded-xl border border-slate-300 bg-white p-3 shadow-sm', getTimelineEventTone(eventType))}
                   onDoubleClick={() => setSelectedEvent(event)}
                 >
                   <div className="flex items-start gap-3">
-                    <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-700 bg-slate-800 text-lg">
+                    <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-lg">
                       {getTimelineEventIcon(eventType)}
                     </span>
 
                     <div className="min-w-0 flex-1">
                       <div className="flex items-start justify-between gap-2">
                         <div>
-                          <p className="text-sm font-semibold text-slate-100">{event.title || event.description || 'Actualización'}</p>
-                          <p className="mt-1 text-[11px] font-medium text-slate-400">{event.occurredAt ? dateTime(event.occurredAt) : '-'}</p>
+                          <p className="text-sm font-semibold text-slate-900">{event.title || event.description || 'Actualización'}</p>
+                          <p className="mt-1 text-[11px] font-medium text-slate-600">{event.occurredAt ? dateTime(event.occurredAt) : '-'}</p>
                         </div>
                         <button
                           type="button"
                           onClick={() => setSelectedEvent(event)}
-                          className="rounded-lg border border-amber-500/60 bg-amber-500/10 px-2.5 py-1.5 text-[11px] font-semibold text-amber-200"
+                          className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-700"
                         >
                           Ver detalle
                         </button>
                       </div>
 
-                      {event.description ? <p className="mt-1 text-xs text-slate-300">{event.description}</p> : null}
+                      {event.description ? <p className="mt-1 text-xs text-slate-700">{event.description}</p> : null}
 
                       {isPaymentEvent ? (
-                        <div className="mt-2 rounded-lg border border-emerald-700/60 bg-emerald-950/40 p-2 text-xs text-slate-200">
-                          <p className="text-sm font-semibold text-emerald-300">{currency(paymentAmount || toNumberSafe((event.metadata as Record<string, unknown>)?.amount))}</p>
-                          <p className="text-xs text-slate-300">{paymentMethod || 'Método no especificado'}</p>
-                          {paymentMediaIds.length ? <p className="mt-1 text-xs text-slate-300">📎 {paymentMediaIds.length} evidencia(s)</p> : null}
+                        <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 p-2 text-xs text-slate-800">
+                          <p className="text-sm font-semibold text-emerald-800">{currency(paymentAmount || toNumberSafe((event.metadata as Record<string, unknown>)?.amount))}</p>
+                          <p className="text-xs text-slate-700">{paymentMethod || 'Método no especificado'}</p>
+                          {paymentMediaIds.length ? <p className="mt-1 text-xs text-slate-700">📎 {paymentMediaIds.length} evidencia(s)</p> : null}
                           {paymentAttachments.length ? (
                             <div className="mt-2">
                               <PaymentAttachmentGallery
@@ -167,25 +170,25 @@ export function PublicTrackingPage() {
                       {eventNote ? (
                         <button
                           type="button"
-                          className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-800/80 p-2 text-left text-xs text-slate-200"
+                          className="mt-2 w-full rounded-lg border border-slate-300 bg-slate-50 p-2 text-left text-xs text-slate-700"
                           onClick={() => setSelectedEvent(event)}
                           onDoubleClick={() => setSelectedEvent(event)}
                         >
                           <p className="line-clamp-2">{eventNote}</p>
-                          <p className="mt-1 text-[11px] text-slate-400">Toca para ver detalle completo</p>
+                          <p className="mt-1 text-[11px] text-slate-600">Toca para ver detalle completo</p>
                         </button>
                       ) : null}
 
-                      {event.service?.name ? <p className="mt-1 text-xs text-slate-300">Servicio: {event.service.name}</p> : null}
+                      {event.service?.name ? <p className="mt-1 text-xs text-slate-700">Servicio: {event.service.name}</p> : null}
                       {event.actor?.name ? (
                         <div className="mt-1 flex items-center gap-2">
                           <UserAvatar name={event.actor.name} profileImageUrl={event.actor.profileImageUrl} size="sm" />
-                          <p className="text-xs text-slate-400">Actualizado por: {event.actor.name}</p>
+                          <p className="text-xs text-slate-600">Actualizado por: {event.actor.name}</p>
                         </div>
                       ) : null}
                       <div className="mt-2 space-y-2">
                         {extractTimelineAttachments(event).map((attachment) => (
-                          <div key={attachment.id || `${attachment.publicUrl}-${attachment.originalName}`} className="rounded-lg border border-slate-700 bg-slate-800 p-2">
+                          <div key={attachment.id || `${attachment.publicUrl}-${attachment.originalName}`} className="rounded-lg border border-slate-300 bg-white p-2">
                             <PublicAttachmentPreview attachment={attachment} onOpen={setPreview} inlinePlayable withName />
                           </div>
                         ))}
@@ -199,23 +202,23 @@ export function PublicTrackingPage() {
         )}
       </section>
 
-      <section className="rounded-2xl border border-slate-800 bg-slate-900 p-4 shadow-sm">
-        <h2 className="text-sm font-semibold text-slate-100">Servicios visibles</h2>
+      <section className="rounded-2xl border border-slate-300 bg-white p-4 shadow-sm">
+        <h2 className="text-sm font-semibold text-slate-900">Servicios visibles</h2>
         <div className="mt-3 space-y-3">
           {(data.services || []).map((service) => (
-            <article key={service.id} className="rounded-xl border border-slate-700 bg-slate-900 p-3">
+            <article key={service.id} className="rounded-xl border border-slate-300 bg-white p-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-sm font-semibold text-slate-100">{service.name || 'Servicio'}</p>
+                <p className="text-sm font-semibold text-slate-900">{service.name || 'Servicio'}</p>
                 <span className="rounded-full px-2 py-0.5 text-xs font-semibold text-white" style={{ backgroundColor: typeof service.status === 'object' && service.status?.color ? service.status.color : '#64748B' }}>
                   {typeof service.status === 'object' && service.status?.name ? service.status.name : 'Sin estado'}
                 </span>
               </div>
-              <p className="mt-1 text-xs text-slate-400">Cantidad: {service.quantity || 1}</p>
+              <p className="mt-1 text-xs text-slate-600">Cantidad: {service.quantity || 1}</p>
               {getServiceNotes(service).map((note) => (
-                <div key={note.id} className="mt-2 rounded-lg border border-slate-700 bg-slate-800 p-2 text-xs text-slate-200">
-                  <p className="text-sm text-slate-100">{note.note}</p>
+                <div key={note.id} className="mt-2 rounded-lg border border-slate-200 bg-slate-50 p-2 text-xs text-slate-700">
+                  <p className="text-sm text-slate-800">{note.note}</p>
                   {(note.attachments || []).filter((a) => !!a.publicUrl || !!a.url).map((attachment) => (
-                    <div key={attachment.id} className="mt-2 rounded border border-slate-600 bg-slate-900 p-2">
+                    <div key={attachment.id} className="mt-2 rounded border border-slate-200 bg-white p-2">
                       <PublicAttachmentPreview attachment={attachment} onOpen={setPreview} inlinePlayable withName />
                     </div>
                   ))}
@@ -227,7 +230,7 @@ export function PublicTrackingPage() {
       </section>
 
       {preview ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-3">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-3">
           <div className="w-full max-w-md rounded-2xl bg-white p-3">
             <p className="truncate text-sm font-medium text-slate-800">{preview.name}</p>
             <div className="mt-2">
@@ -266,39 +269,39 @@ function TrackingEventDetailModal({
   const content = extractEventNoteContent(event);
 
   return (
-    <div className="fixed inset-0 z-[60] bg-black/85 p-0 sm:p-4" role="dialog" aria-modal="true" aria-label="Detalle del evento">
-      <div className="mx-auto flex h-[100dvh] w-full max-w-2xl flex-col bg-slate-950 text-slate-100 sm:h-[90vh] sm:rounded-2xl sm:border sm:border-slate-700">
-        <header className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-700 bg-slate-950/95 px-4 py-3 backdrop-blur">
+    <div className="fixed inset-0 z-[60] bg-black/60 p-0 sm:p-4" role="dialog" aria-modal="true" aria-label="Detalle del evento">
+      <div className="mx-auto flex h-[100dvh] w-full max-w-2xl flex-col bg-white text-slate-900 sm:h-[90vh] sm:rounded-2xl sm:border sm:border-slate-300">
+        <header className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-300 bg-white px-4 py-3">
           <div>
-            <p className="text-xs uppercase tracking-wide text-slate-400">Detalle del evento</p>
-            <h3 className="text-sm font-semibold text-slate-100">{event.title || event.eventType || 'Actualización'}</h3>
+            <p className="text-xs uppercase tracking-wide text-slate-600">Detalle del evento</p>
+            <h3 className="text-sm font-semibold text-slate-900">{event.title || event.eventType || 'Actualización'}</h3>
           </div>
-          <button type="button" className="rounded-xl border border-amber-400 bg-amber-400/15 px-3 py-2 text-sm font-bold text-amber-100" onClick={onClose}>
+          <button type="button" className="rounded-xl border border-slate-400 bg-white px-3 py-2 text-sm font-bold text-slate-800" onClick={onClose}>
             ✕ Cerrar
           </button>
         </header>
 
         <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
-          <section className="rounded-xl border border-slate-700 bg-slate-900 p-3">
-            <p className="text-xs uppercase tracking-wide text-slate-400">Fecha y hora</p>
-            <p className="mt-1 text-sm text-slate-100">{event.occurredAt ? dateTime(event.occurredAt) : 'Sin fecha'}</p>
+          <section className="rounded-xl border border-slate-300 bg-slate-50 p-3">
+            <p className="text-xs uppercase tracking-wide text-slate-600">Fecha y hora</p>
+            <p className="mt-1 text-sm text-slate-900">{event.occurredAt ? dateTime(event.occurredAt) : 'Sin fecha'}</p>
           </section>
 
-          <section className="rounded-xl border border-slate-700 bg-slate-900 p-3">
-            <p className="text-xs uppercase tracking-wide text-slate-400">Descripción</p>
-            <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-100">
+          <section className="rounded-xl border border-slate-300 bg-slate-50 p-3">
+            <p className="text-xs uppercase tracking-wide text-slate-600">Descripción</p>
+            <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-900">
               {content || event.description || 'Sin descripción disponible para este movimiento.'}
             </p>
           </section>
 
-          <section className="rounded-xl border border-slate-700 bg-slate-900 p-3">
-            <p className="text-xs uppercase tracking-wide text-slate-400">Archivos adjuntos</p>
+          <section className="rounded-xl border border-slate-300 bg-slate-50 p-3">
+            <p className="text-xs uppercase tracking-wide text-slate-600">Archivos adjuntos</p>
             {!attachments.length ? (
-              <p className="mt-2 text-sm text-slate-400">Este evento no tiene archivos adjuntos.</p>
+              <p className="mt-2 text-sm text-slate-700">Este evento no tiene archivos adjuntos.</p>
             ) : (
               <div className="mt-3 space-y-2">
                 {attachments.map((attachment) => (
-                  <div key={attachment.id || `${attachment.publicUrl}-${attachment.originalName}`} className="rounded-lg border border-slate-700 bg-slate-800 p-2">
+                  <div key={attachment.id || `${attachment.publicUrl}-${attachment.originalName}`} className="rounded-lg border border-slate-300 bg-white p-2">
                     <PublicAttachmentPreview attachment={attachment} onOpen={onOpenAttachment} inlinePlayable withName />
                   </div>
                 ))}
@@ -307,7 +310,7 @@ function TrackingEventDetailModal({
           </section>
         </div>
 
-        <footer className="border-t border-slate-700 bg-slate-950 p-4">
+        <footer className="border-t border-slate-300 bg-white p-4">
           <button type="button" className="btn-primary h-12 w-full justify-center text-base" onClick={onClose}>Cerrar detalle</button>
         </footer>
       </div>
@@ -326,24 +329,24 @@ function detectMimeType(attachment: NoteAttachment) {
 
 function InfoPill({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl bg-slate-900/80 p-3 backdrop-blur-sm">
-      <p className="text-[11px] font-medium uppercase tracking-wide text-slate-400">{label}</p>
-      <p className="mt-1 text-sm font-semibold text-slate-100">{value}</p>
+    <div className="rounded-xl border border-slate-200 bg-white p-3">
+      <p className="text-[11px] font-medium uppercase tracking-wide text-slate-600">{label}</p>
+      <p className="mt-1 text-sm font-semibold text-slate-900">{value}</p>
     </div>
   );
 }
 
 function MoneyPill({ label, value, emphasized = false }: { label: string; value: number; emphasized?: boolean }) {
   return (
-    <div className={`rounded-xl p-3 backdrop-blur-sm ${emphasized ? 'bg-amber-500/15 text-amber-100 border border-amber-500/30' : 'bg-slate-900/80'}`}>
-      <p className={`text-[11px] font-medium uppercase tracking-wide ${emphasized ? 'text-amber-200' : 'text-slate-400'}`}>{label}</p>
-      <p className={`mt-1 text-base font-bold ${emphasized ? 'text-amber-100' : 'text-slate-100'}`}>{currency(value)}</p>
+    <div className={`rounded-xl border p-3 ${emphasized ? 'border-amber-300 bg-amber-50' : 'border-slate-200 bg-white'}`}>
+      <p className={`text-[11px] font-medium uppercase tracking-wide ${emphasized ? 'text-amber-700' : 'text-slate-600'}`}>{label}</p>
+      <p className={`mt-1 text-base font-bold ${emphasized ? 'text-amber-800' : 'text-slate-900'}`}>{currency(value)}</p>
     </div>
   );
 }
 
 function getStatusColors(statusColor?: string | null) {
-  if (!statusColor) return { container: 'border-slate-200 bg-white', badge: 'bg-slate-700 text-slate-100', customColor: null };
+  if (!statusColor) return { container: 'border-slate-200 bg-white', badge: 'bg-slate-100 text-slate-800', customColor: null };
   return {
     container: 'border-slate-200 bg-white',
     badge: '',
@@ -352,8 +355,8 @@ function getStatusColors(statusColor?: string | null) {
 }
 
 function getSoftGradient(color?: string | null) {
-  if (!color) return 'linear-gradient(135deg, #111827 0%, #0f172a 50%, #1f2937 100%)';
-  return `linear-gradient(135deg, ${color}30 0%, #0f172a 55%, #111827 100%)`;
+  if (!color) return 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)';
+  return `linear-gradient(135deg, ${color}22 0%, #f8fafc 100%)`;
 }
 
 function toNumberSafe(value: unknown) {
@@ -498,7 +501,7 @@ function PublicAttachmentPreview({
   if (mimeType.startsWith('image/')) {
     return (
       <div className="space-y-1">
-        {withName ? <p className="truncate text-xs font-medium text-slate-300">{label}</p> : null}
+        {withName ? <p className="truncate text-xs font-medium text-slate-700">{label}</p> : null}
         <button type="button" onClick={open} className="w-full text-left"><img src={url} alt={attachment.originalName || 'adjunto'} className="h-28 w-full rounded object-cover" /></button>
       </div>
     );
@@ -507,9 +510,9 @@ function PublicAttachmentPreview({
   if (mimeType.startsWith('video/')) {
     return (
       <div className="space-y-1">
-        {withName ? <p className="truncate text-xs font-medium text-slate-300">{label}</p> : null}
+        {withName ? <p className="truncate text-xs font-medium text-slate-700">{label}</p> : null}
         {inlinePlayable ? <video src={url} controls className="h-36 w-full rounded object-cover" /> : null}
-        <button type="button" onClick={open} className="rounded border border-slate-600 px-2 py-1 text-xs text-slate-200">Ver video</button>
+        <button type="button" onClick={open} className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700">Ver video</button>
       </div>
     );
   }
@@ -517,15 +520,15 @@ function PublicAttachmentPreview({
   if (mimeType.startsWith('audio/')) {
     return (
       <div className="space-y-1">
-        {withName ? <p className="truncate text-xs font-medium text-slate-300">{label}</p> : null}
+        {withName ? <p className="truncate text-xs font-medium text-slate-700">{label}</p> : null}
         {inlinePlayable ? <audio src={url} controls className="w-full" /> : null}
-        <button type="button" onClick={open} className="rounded border border-slate-600 px-2 py-1 text-xs text-slate-200">Escuchar nota</button>
+        <button type="button" onClick={open} className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700">Escuchar nota</button>
       </div>
     );
   }
 
   return (
-    <button type="button" onClick={open} className="rounded border border-slate-600 px-2 py-1 text-xs text-slate-200">
+    <button type="button" onClick={open} className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700">
       Abrir archivo: {label}
     </button>
   );
