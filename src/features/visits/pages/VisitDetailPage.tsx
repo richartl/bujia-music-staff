@@ -3,7 +3,7 @@ import { useIsFetching, useIsMutating, useMutation, useQuery, useQueryClient } f
 import { useSearchParams, useParams } from 'react-router-dom';
 import { authStore } from '@/stores/auth-store';
 import { currency, dateTime } from '@/lib/utils';
-import { notifyError, notifyInfo } from '@/lib/notify';
+import { notifyError, notifyInfo, notifySuccess } from '@/lib/notify';
 import { getIntakeLookups } from '@/features/intakes/api/get-intake-lookups';
 import { filesApi } from '@/features/intakes/api/filesApi';
 import type { LookupOption } from '@/features/intakes/types';
@@ -13,6 +13,7 @@ import { VisitServiceStatusChip } from '@/features/visits/components/VisitServic
 import { VisitServiceStatusSheet } from '@/features/visits/components/VisitServiceStatusSheet';
 import { VisitPaymentsSection } from '@/features/visits/components/VisitPaymentsSection';
 import { VisitPartsSection } from '@/features/visits/components/VisitPartsSection';
+import { useVisitParts } from '@/features/visits/hooks/useVisitParts';
 import { parseEvidenceMarkerFromNotes } from '@/features/visits/utils/paymentEvidence';
 import { getTimelineEventIcon, getTimelineEventTone } from '@/features/visits/utils/timelineEventIcon';
 import { PaymentAttachmentGallery } from '@/features/visits/components/PaymentAttachmentGallery';
@@ -130,6 +131,7 @@ export function VisitDetailPage() {
     queryFn: () => getVisitServices(visitId),
     enabled: !!visitId,
   });
+  const partsQuery = useVisitParts(visitId);
 
   const timelineQuery = useQuery({
     queryKey: ['visit-timeline', visitId],
@@ -164,6 +166,7 @@ export function VisitDetailPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['visit-detail', workshopId, instrumentId, visitId] });
+      notifySuccess('Visita actualizada', 'Los cambios se guardaron correctamente.');
     },
   });
   const createNoteMutation = useMutation({
@@ -186,6 +189,7 @@ export function VisitDetailPage() {
       setInitialServiceNote('');
       setInitialServiceNoteIsInternal(false);
       setInitialServiceNoteFiles([]);
+      notifySuccess('Servicio agregado');
     },
   });
 
@@ -354,6 +358,25 @@ export function VisitDetailPage() {
     () => lookupsQuery.data?.paymentMethods || [],
     [lookupsQuery.data?.paymentMethods],
   );
+  const servicesTotal = useMemo(
+    () =>
+      (servicesQuery.data || []).reduce(
+        (sum, service) => sum + Number(service.price || 0) * Number(service.quantity || 1),
+        0,
+      ),
+    [servicesQuery.data],
+  );
+  const partsTotal = useMemo(
+    () =>
+      (partsQuery.data || []).reduce(
+        (sum, part) => sum + Number(part.subtotal || Number(part.quantity || 0) * Number(part.unitPrice || 0)),
+        0,
+      ),
+    [partsQuery.data],
+  );
+  const totalVisit = Number(visit?.total || servicesTotal + partsTotal);
+  const discountValue = Number(visit?.discount || 0);
+  const paidTotal = Number(((visit as unknown as Record<string, unknown>).paidAmount as number | string | undefined) || 0);
   async function addCatalogService(service: WorkshopServiceLookup) {
     if (
       service.isAdjust &&
@@ -419,6 +442,7 @@ export function VisitDetailPage() {
           notes: existingAdjustService.notes || undefined,
         });
         await queryClient.invalidateQueries({ queryKey: ['visit-services', visitId] });
+        notifySuccess('Ajuste actualizado', 'Se cambió el servicio de ajuste.');
         setIsAdjustSwitchModalOpen(false);
       },
     });
@@ -435,6 +459,7 @@ export function VisitDetailPage() {
     }
     await deleteVisitService(visitId, deleteServiceModal.serviceId);
     await queryClient.invalidateQueries({ queryKey: ['visit-services', visitId] });
+    notifySuccess('Servicio eliminado');
     setDeleteServiceModal(null);
   }
 
@@ -451,6 +476,7 @@ export function VisitDetailPage() {
     }
     await queryClient.invalidateQueries({ queryKey: ['service-notes-batch'] });
     await queryClient.invalidateQueries({ queryKey: ['service-note-attachments-batch'] });
+    notifySuccess('Nota guardada');
     setNoteModalServiceId(null);
     setNoteModalText('');
     setNoteModalIsInternal(true);
@@ -531,12 +557,20 @@ export function VisitDetailPage() {
         </div>
       ) : null}
       <section className="card p-4">
-        <p className="text-xs font-semibold text-slate-500">{visit.folio}</p>
-        <h1 className="mt-1 text-lg font-semibold text-slate-900">{visit.instrument?.name || 'Detalle de visita'}</h1>
-        <p className="text-sm text-slate-500">
-          {visit.client?.fullName || 'Cliente'} · {visit.client?.phone || 'Sin teléfono'} · {currentStatus}
-        </p>
-        <div className="mt-2 flex gap-2">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{visit.folio}</p>
+            <h1 className="mt-1 text-lg font-semibold text-slate-900">{visit.instrument?.name || 'Detalle de visita'}</h1>
+            <p className="truncate text-sm text-slate-500">{visit.client?.fullName || 'Cliente'} · {visit.client?.phone || 'Sin teléfono'}</p>
+          </div>
+          <span
+            className="shrink-0 rounded-full px-3 py-1 text-xs font-semibold text-white shadow-sm"
+            style={{ backgroundColor: visit.status?.color || '#334155' }}
+          >
+            {currentStatus}
+          </span>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2">
           <button type="button" className="btn-secondary h-8 px-3 text-xs" onClick={() => setIsStatusModalOpen(true)}>
             Cambiar estado
           </button>
@@ -550,18 +584,28 @@ export function VisitDetailPage() {
           <button
             type="button"
             className="btn-secondary mt-2 h-8 px-3"
-            onClick={() => navigator.clipboard.writeText(resolvedTrackingUrl)}
+            onClick={async () => {
+              if (!resolvedTrackingUrl) return;
+              try {
+                await navigator.clipboard.writeText(resolvedTrackingUrl);
+                notifySuccess('Liga de seguimiento copiada');
+              } catch {
+                notifyError('No se pudo copiar la liga');
+              }
+            }}
             disabled={!resolvedTrackingUrl}
           >
             Copiar URL completa
           </button>
         </div>
 
-        <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
-          <p className="text-slate-500">Total</p>
-          <p className="text-right font-semibold text-slate-900">{currency(Number(visit.total || 0))}</p>
-          <p className="text-slate-500">Abierta</p>
-          <p className="text-right text-slate-700">{visit.openedAt ? dateTime(visit.openedAt) : '-'}</p>
+        <div className="mt-3 grid grid-cols-2 gap-2 text-sm sm:grid-cols-3">
+          <MetricHeader label="Servicios" value={currency(servicesTotal)} />
+          <MetricHeader label="Refacciones" value={currency(partsTotal)} />
+          <MetricHeader label="Descuento" value={currency(discountValue)} />
+          <MetricHeader label="Total visita" value={currency(totalVisit)} emphasized />
+          <MetricHeader label="Abonos" value={currency(paidTotal)} />
+          <MetricHeader label="Saldo pendiente" value={currency(Math.max(0, totalVisit - paidTotal))} emphasized />
         </div>
       </section>
 
@@ -683,13 +727,19 @@ export function VisitDetailPage() {
 
       {tab === 'services' ? (
         <section className="card space-y-3 p-4">
-          <button
-            type="button"
-            className="btn-primary h-10 w-full justify-center"
-            onClick={() => setIsServiceModalOpen(true)}
-          >
-            Agregar servicio
-          </button>
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-sm font-semibold text-slate-900">Agregados</h3>
+              <button
+                type="button"
+                className="btn-primary h-10 px-3"
+                onClick={() => setIsServiceModalOpen(true)}
+              >
+                Agregar servicio
+              </button>
+            </div>
+            <p className="mt-1 text-xs text-slate-500">Aquí administras servicios y refacciones de la visita.</p>
+          </div>
           {adjustService ? (
             <article className="rounded-xl border border-indigo-300 bg-indigo-50 p-3" onDoubleClick={() => setServiceDetailModalId(adjustService.id)}>
               <p className="text-xs font-semibold uppercase text-indigo-700">Servicio de ajuste</p>
@@ -715,7 +765,7 @@ export function VisitDetailPage() {
               <p className="mt-1 text-xs text-indigo-700">
                 Notas: {(serviceNotesQuery.data?.[adjustService.id] || []).length} (doble click para detalle)
               </p>
-              <div className="mt-2 flex gap-2">
+              <div className="mt-2 flex flex-wrap gap-2">
                 <button
                   type="button"
                   className="btn-secondary h-8 px-3"
@@ -757,7 +807,7 @@ export function VisitDetailPage() {
                 </div>
                 <p className="mt-1 text-xs text-slate-600">Notas: {(serviceNotesQuery.data?.[service.id] || []).length} (doble click para detalle)</p>
               </div>
-              <div className="mt-2 flex gap-2">
+              <div className="mt-2 flex flex-wrap gap-2">
                 <button
                   type="button"
                   className="btn-secondary h-8 px-3"
@@ -781,6 +831,11 @@ export function VisitDetailPage() {
               </div>
             </article>
           ))}
+          <VisitPartsSection
+            visitId={visitId}
+            workshopId={workshopId}
+            services={servicesQuery.data || []}
+          />
         </section>
       ) : null}
 
@@ -791,11 +846,6 @@ export function VisitDetailPage() {
             paymentMethods={paymentMethods}
             fallbackVisitTotal={Number(visit.total || 0)}
           />
-          <VisitPartsSection
-            visitId={visitId}
-            workshopId={workshopId}
-            services={servicesQuery.data || []}
-          />
         </>
       ) : null}
 
@@ -805,7 +855,22 @@ export function VisitDetailPage() {
             <h3 className="text-sm font-semibold text-slate-800">Tracking interno</h3>
             <p className="mt-1 break-all text-xs text-sky-700">{resolvedTrackingUrl || 'No disponible'}</p>
             <div className="mt-2 flex gap-2">
-              <button type="button" className="btn-secondary h-9 px-3" onClick={() => navigator.clipboard.writeText(resolvedTrackingUrl)} disabled={!resolvedTrackingUrl}>Copiar</button>
+              <button
+                type="button"
+                className="btn-secondary h-9 px-3"
+                onClick={async () => {
+                  if (!resolvedTrackingUrl) return;
+                  try {
+                    await navigator.clipboard.writeText(resolvedTrackingUrl);
+                    notifySuccess('Liga de seguimiento copiada');
+                  } catch {
+                    notifyError('No se pudo copiar la liga');
+                  }
+                }}
+                disabled={!resolvedTrackingUrl}
+              >
+                Copiar
+              </button>
               <button type="button" className="btn-primary h-9 px-3" onClick={() => setIsRegenerateModalOpen(true)}>Regenerar</button>
             </div>
           </div>
@@ -949,19 +1014,23 @@ export function VisitDetailPage() {
         <div className="fixed inset-0 z-50 flex items-end bg-black/40 p-3">
           <div className="w-full rounded-2xl bg-white p-4">
             <h4 className="text-sm font-semibold text-slate-900">Cambiar estado de la visita</h4>
+            <p className="mt-1 text-xs text-slate-500">Estado actual: <span className="font-semibold">{currentStatus}</span></p>
             <div className="mt-2 space-y-2">
               {(statusesQuery.data || []).map((status) => (
                 <button
                   key={status.id}
                   type="button"
-                  className="w-full rounded-lg border border-slate-200 p-2 text-left"
+                  className={`w-full rounded-lg border p-2 text-left ${status.id === visit.statusId ? 'border-sky-300 bg-sky-50' : 'border-slate-200'}`}
                   onClick={() => {
                     setEditPayload((current) => ({ ...current, statusId: status.id }));
                     updateVisitMutation.mutate();
                     setIsStatusModalOpen(false);
                   }}
                 >
-                  {status.name}
+                  <span className="inline-flex items-center gap-2 text-sm font-medium text-slate-800">
+                    <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: status.color || '#64748B' }} />
+                    {status.name}
+                  </span>
                 </button>
               ))}
             </div>
@@ -1196,12 +1265,21 @@ export function VisitDetailPage() {
 
       {selectedServiceDetail ? (
         <div className="fixed inset-0 z-50 bg-slate-950/50 p-0 sm:p-4">
-          <div className="h-full w-full overflow-y-auto bg-white p-4 sm:mx-auto sm:h-auto sm:max-h-[92vh] sm:max-w-3xl sm:rounded-2xl">
-            <h4 className="text-base font-semibold text-slate-900">{selectedServiceDetail.name || 'Detalle de servicio'}</h4>
-            <p className="mt-1 text-xs text-slate-500">
-              Cantidad: {selectedServiceDetail.quantity || 1} · Precio: {currency(Number(selectedServiceDetail.price || 0))}
-            </p>
-            <div className="mt-3 space-y-3">
+          <div className="h-full w-full overflow-y-auto bg-white sm:mx-auto sm:h-auto sm:max-h-[92vh] sm:max-w-3xl sm:rounded-2xl">
+            <header className="sticky top-0 z-20 border-b border-slate-200 bg-white p-4">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <h4 className="text-base font-semibold text-slate-900">{selectedServiceDetail.name || 'Detalle de servicio'}</h4>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Cantidad: {selectedServiceDetail.quantity || 1} · Precio: {currency(Number(selectedServiceDetail.price || 0))}
+                  </p>
+                </div>
+                <button type="button" className="btn-secondary h-9 px-3" onClick={() => setServiceDetailModalId(null)}>
+                  Cerrar
+                </button>
+              </div>
+            </header>
+            <div className="space-y-3 p-4">
               {(serviceNotesQuery.data?.[selectedServiceDetail.id] || [])
                 .slice()
                 .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
@@ -1244,9 +1322,6 @@ export function VisitDetailPage() {
                 </div>
               ))}
             </div>
-            <button type="button" className="btn-secondary mt-3 h-10 w-full justify-center" onClick={() => setServiceDetailModalId(null)}>
-              Cerrar detalle
-            </button>
           </div>
         </div>
       ) : null}
@@ -1317,6 +1392,15 @@ function QuickNoteForm({ onSubmit, isPending }: { onSubmit: (payload: { note: st
 
 function Spinner() {
   return <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />;
+}
+
+function MetricHeader({ label, value, emphasized = false }: { label: string; value: string; emphasized?: boolean }) {
+  return (
+    <div className={`rounded-lg border p-2 ${emphasized ? 'border-amber-200 bg-amber-50' : 'border-slate-200 bg-white'}`}>
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</p>
+      <p className={`mt-1 text-sm font-semibold ${emphasized ? 'text-amber-700' : 'text-slate-900'}`}>{value}</p>
+    </div>
+  );
 }
 
 function AvatarImage({ imageUrl, fallback, sizeClassName = 'h-8 w-8' }: { imageUrl?: string | null; fallback: string; sizeClassName?: string }) {

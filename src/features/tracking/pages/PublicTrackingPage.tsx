@@ -14,6 +14,7 @@ export function PublicTrackingPage() {
   const { token = '' } = useParams();
   const [preview, setPreview] = useState<{ url: string; mimeType: string; name: string } | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<VisitTimelineEvent | null>(null);
+  const [expandedTimeline, setExpandedTimeline] = useState(false);
 
   const trackingQuery = useQuery({
     queryKey: ['public-tracking', token],
@@ -50,6 +51,7 @@ export function PublicTrackingPage() {
   const timeline = (data.timeline || [])
     .filter((event) => shouldDisplayInPublicTimeline(event))
     .sort((a, b) => new Date(b.occurredAt || 0).getTime() - new Date(a.occurredAt || 0).getTime());
+  const visibleTimeline = expandedTimeline ? timeline : timeline.slice(0, 3);
 
   const clientName =
     data.client?.displayName ||
@@ -88,9 +90,12 @@ export function PublicTrackingPage() {
             </div>
           </div>
 
-          <div className="mt-2 grid grid-cols-1 gap-2 text-sm sm:grid-cols-3">
+          <div className="mt-2 grid grid-cols-2 gap-2 text-sm sm:grid-cols-3">
             <MoneyPill label="Total servicios" value={totals.servicesTotal} />
-            <MoneyPill label="Abonos" value={totals.paymentsTotal} />
+            <MoneyPill label="Total refacciones" value={totals.partsTotal} />
+            <MoneyPill label="Descuento" value={totals.discountTotal} />
+            <MoneyPill label="Abonado" value={totals.paymentsTotal} />
+            <MoneyPill label="Saldo pendiente" value={totals.pendingTotal} emphasized={totals.pendingTotal > 0} />
             <MoneyPill label="Total orden" value={totals.visitTotal} emphasized />
           </div>
         </div>
@@ -104,7 +109,7 @@ export function PublicTrackingPage() {
           </div>
         ) : (
           <div className="mt-3 space-y-3">
-            {timeline.map((event) => {
+            {visibleTimeline.map((event) => {
               const eventType = event.eventType || '';
               const paymentData =
                 ((event.payment as Record<string, unknown> | undefined) ||
@@ -200,6 +205,15 @@ export function PublicTrackingPage() {
             })}
           </div>
         )}
+        {timeline.length > 3 ? (
+          <button
+            type="button"
+            className="btn-secondary mt-3 h-10 w-full justify-center"
+            onClick={() => setExpandedTimeline((value) => !value)}
+          >
+            {expandedTimeline ? 'Ver solo los recientes' : 'Ver todos los eventos'}
+          </button>
+        ) : null}
       </section>
 
       <section className="rounded-2xl border border-slate-300 bg-white p-4 shadow-sm">
@@ -368,7 +382,7 @@ function toNumberSafe(value: unknown) {
   return 0;
 }
 
-function getFinancialSummary(data: TrackingResponse) {
+export function getFinancialSummary(data: TrackingResponse) {
   const servicesTotal = (data.services || []).reduce((acc, service) => {
     if (isServiceCancelled(service.status)) return acc;
     const qty = toNumberSafe(service.quantity || 1) || 1;
@@ -398,8 +412,18 @@ function getFinancialSummary(data: TrackingResponse) {
         : 0);
 
   const visitTotal = toNumberSafe(paymentsSummary.visitTotal) || toNumberSafe(data.visit?.total) || servicesTotal;
+  const visitRecord = (data.visit || {}) as Record<string, unknown>;
+  const partsTotal =
+    toNumberSafe(visitRecord.partsTotal) ||
+    toNumberSafe(visitRecord.totalParts) ||
+    toNumberSafe(visitRecord.partsSubtotal) ||
+    0;
+  const discountTotal = toNumberSafe(visitRecord.discount);
+  const pendingTotal =
+    toNumberSafe(paymentsSummary.pendingAmount) ||
+    Math.max(0, visitTotal - paymentsTotal);
 
-  return { servicesTotal, paymentsTotal, visitTotal };
+  return { servicesTotal, partsTotal, discountTotal, paymentsTotal, pendingTotal, visitTotal };
 }
 
 function isServiceCancelled(status: TrackingService['status']) {

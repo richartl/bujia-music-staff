@@ -133,7 +133,7 @@ export function VisitsBoardPage() {
       }
       const aDate = new Date(a.openedAt || a.closedAt || 0).getTime();
       const bDate = new Date(b.openedAt || b.closedAt || 0).getTime();
-      return bDate - aDate;
+      return aDate - bDate;
     });
   }, [visitsQuery.data]);
 

@@ -1,5 +1,8 @@
+import { useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { cn, currency, dateTime } from '@/lib/utils';
+import { filesApi } from '@/features/intakes/api/filesApi';
 import { normalizeVisit } from '../utils/visitAdapter';
 import type { VisitResponse } from '../api/types';
 import { resolveStatusTone, VisitStatusBadge } from './VisitStatusBadge';
@@ -12,6 +15,24 @@ export function VisitCard({ visit }: VisitCardProps) {
   const normalized = normalizeVisit(visit);
   const tone = resolveStatusTone(normalized.status.name, normalized.isActive);
   const accent = normalized.status.color || tone.accent;
+  const mediaIds = useMemo(
+    () => (((visit as unknown as Record<string, unknown>).visitMediaIds as string[] | undefined) || []).slice(0, 3),
+    [visit],
+  );
+  const mediaPreviewQuery = useQuery({
+    queryKey: ['visit-media-preview', visit.id, mediaIds.join(',')],
+    queryFn: async () => {
+      const results = await Promise.all(
+        mediaIds.map(async (mediaId) => {
+          const payload = await filesApi.getDownloadUrl(mediaId);
+          return { mediaId, url: payload.url };
+        }),
+      );
+      return results;
+    },
+    enabled: mediaIds.length > 0,
+    staleTime: 1000 * 60 * 3,
+  });
 
   return (
     <Link
@@ -53,6 +74,17 @@ export function VisitCard({ visit }: VisitCardProps) {
       </div>
 
       <p className="mt-3 line-clamp-2 text-xs text-slate-600">{normalized.summary}</p>
+      {mediaIds.length ? (
+        <div className="mt-2 rounded-xl border border-slate-200 bg-white p-2">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Fotos intake</p>
+          <div className="mt-2 flex gap-2">
+            {(mediaPreviewQuery.data || []).map((item) => (
+              <img key={item.mediaId} src={item.url} alt="Preview intake" className="h-14 w-14 rounded-lg object-cover" />
+            ))}
+            {mediaPreviewQuery.isLoading ? <div className="h-14 w-14 animate-pulse rounded-lg bg-slate-100" /> : null}
+          </div>
+        </div>
+      ) : null}
 
       <div className="mt-4 grid grid-cols-2 gap-3 rounded-xl border border-slate-200 bg-white p-3 text-sm">
         <div>
