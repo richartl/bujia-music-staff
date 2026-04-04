@@ -31,9 +31,11 @@ import {
   createWorkshopColor,
   createWorkshopTuning,
 } from '@/features/catalogs/api/create-catalog-items';
+import { useWorkshopParts } from '@/features/visits/hooks/useVisitParts';
 import type {
   ClientInstrument,
   CreateIntakePayload,
+  IntakePartLine,
   IntakeServiceLine,
   WorkshopServiceLookup,
 } from '../types';
@@ -140,6 +142,19 @@ function createManualServiceLine(): IntakeServiceLine {
   };
 }
 
+function createManualPartLine(): IntakePartLine {
+  return {
+    id: crypto.randomUUID(),
+    source: 'MANUAL',
+    name: '',
+    quantity: 1,
+    unitPrice: 0,
+    unitCost: 0,
+    notes: '',
+    visitServiceId: '',
+  };
+}
+
 function createEmptyPaymentLine(): IntakePaymentLine {
   const now = new Date();
   const day = String(now.getDate()).padStart(2, '0');
@@ -173,6 +188,7 @@ export function IntakesPage() {
   const [clientForm, setClientForm] = useState(EMPTY_CLIENT_FORM);
   const [instrumentForm, setInstrumentForm] = useState(EMPTY_INSTRUMENT_FORM);
   const [serviceLines, setServiceLines] = useState<IntakeServiceLine[]>([]);
+  const [partLines, setPartLines] = useState<IntakePartLine[]>([]);
 
   const [branchId, setBranchId] = useState('');
   const [intakeNotes, setIntakeNotes] = useState('');
@@ -308,6 +324,7 @@ export function IntakesPage() {
     () => serviceLines.reduce((sum, line) => sum + line.quantity * line.unitPrice, 0),
     [serviceLines],
   );
+  const partsCatalogQuery = useWorkshopParts(workshopId, true);
 
   const canMoveToInstrument =
     !!selectedClient || (isNewClientMode && !!clientForm.fullName.trim() && !!clientForm.phone.trim());
@@ -553,6 +570,17 @@ export function IntakesPage() {
       if (invalidService) {
         throw new Error('Revisa servicios: nombre, cantidad y precio son obligatorios.');
       }
+      const invalidPart = partLines.find(
+        (line) =>
+          (!line.workshopPartId && !line.name.trim()) ||
+          line.quantity <= 0 ||
+          Number.isNaN(line.unitPrice) ||
+          line.unitPrice < 0 ||
+          (line.unitCost != null && line.unitCost < 0),
+      );
+      if (invalidPart) {
+        throw new Error('Revisa refacciones: nombre/catálogo, cantidad y precios son obligatorios.');
+      }
 
       const discountNumber = Number(estimatedDiscount || 0);
       const payload: CreateIntakePayload = {
@@ -628,6 +656,17 @@ export function IntakesPage() {
           notes: line.notes?.trim() || undefined,
         })),
         visitMediaIds: uploadedMediaIds.length ? uploadedMediaIds : undefined,
+        parts: partLines.length
+          ? partLines.map((line) => ({
+              workshopPartId: line.workshopPartId || undefined,
+              name: line.workshopPartId ? undefined : line.name.trim() || undefined,
+              quantity: line.quantity,
+              unitPrice: line.unitPrice,
+              unitCost: line.unitCost,
+              notes: line.notes?.trim() || undefined,
+              visitServiceId: undefined,
+            }))
+          : undefined,
       };
 
       return createIntake(workshopId, payload);
@@ -660,6 +699,7 @@ export function IntakesPage() {
       setUploadedMediaIds([]);
       setHasBlockingMediaUploads(false);
       setExpandedServiceIds([]);
+      setPartLines([]);
       setShowConfirmIntakeModal(false);
       setActiveStep('client');
       setShowSuccessOverlay(true);
@@ -1231,8 +1271,8 @@ export function IntakesPage() {
                 </div>
                 {!paymentLines.length ? (
                   <p className="text-sm text-slate-500">Aún no registras abonos.</p>
-                ) : (
-                  <div className="space-y-2">
+              ) : (
+                <div className="space-y-2">
                     {paymentLines.map((line) => (
                       <div key={line.id} className="rounded-xl border border-slate-200 p-3">
                         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -1435,6 +1475,75 @@ export function IntakesPage() {
                   ))}
                 </div>
               )}
+              <div className="mt-4 rounded-xl border border-slate-200 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="text-sm font-semibold text-slate-900">Refacciones iniciales (opcional)</h3>
+                  <button type="button" className="btn-secondary h-8 px-3" onClick={() => setPartLines((current) => [...current, createManualPartLine()])}>
+                    <PlusCircle className="h-4 w-4" />
+                    Agregar
+                  </button>
+                </div>
+                {!partLines.length ? <p className="mt-2 text-xs text-slate-500">Sin refacciones iniciales.</p> : null}
+                <div className="mt-2 space-y-2">
+                  {partLines.map((line) => (
+                    <article key={line.id} className="rounded-lg border border-slate-200 p-2">
+                      <select
+                        className="input h-10"
+                        value={line.workshopPartId || ''}
+                        onChange={(event) => {
+                          const selected = partsCatalogQuery.data?.find((part) => part.id === event.target.value);
+                          setPartLines((current) =>
+                            current.map((item) =>
+                              item.id === line.id
+                                ? {
+                                    ...item,
+                                    workshopPartId: event.target.value || undefined,
+                                    source: event.target.value ? 'CATALOG' : 'MANUAL',
+                                    name: event.target.value ? '' : item.name,
+                                    unitPrice: event.target.value ? Number(selected?.publicPrice || 0) : item.unitPrice,
+                                  }
+                                : item,
+                            ),
+                          );
+                        }}
+                      >
+                        <option value="">Manual</option>
+                        {(partsCatalogQuery.data || []).map((part) => (
+                          <option key={part.id} value={part.id}>{part.name}</option>
+                        ))}
+                      </select>
+                      {!line.workshopPartId ? (
+                        <input
+                          className="input mt-2 h-10"
+                          placeholder="Nombre de refacción"
+                          value={line.name}
+                          onChange={(event) =>
+                            setPartLines((current) =>
+                              current.map((item) => (item.id === line.id ? { ...item, name: event.target.value } : item)),
+                            )
+                          }
+                        />
+                      ) : null}
+                      <div className="mt-2 grid grid-cols-2 gap-2">
+                        <InputField label="Cantidad" inputMode="decimal" value={String(line.quantity)} onChange={(event) => setPartLines((current) => current.map((item) => item.id === line.id ? { ...item, quantity: Number(event.target.value || 0) } : item))} />
+                        <InputField label="Precio unitario" inputMode="decimal" value={String(line.unitPrice)} onChange={(event) => setPartLines((current) => current.map((item) => item.id === line.id ? { ...item, unitPrice: Number(event.target.value || 0) } : item))} />
+                      </div>
+                      <InputField label="Costo unitario" inputMode="decimal" value={String(line.unitCost ?? 0)} onChange={(event) => setPartLines((current) => current.map((item) => item.id === line.id ? { ...item, unitCost: Number(event.target.value || 0) } : item))} />
+                      <select className="input mt-2 h-10" value={line.visitServiceId || ''} onChange={(event) => setPartLines((current) => current.map((item) => item.id === line.id ? { ...item, visitServiceId: event.target.value } : item))}>
+                        <option value="">Sin servicio asociado</option>
+                        {serviceLines.filter((service) => service.catalogServiceId).map((service) => (
+                          <option key={service.id} value={service.catalogServiceId}>{service.name || 'Servicio manual'}</option>
+                        ))}
+                      </select>
+                      <textarea className="input mt-2 min-h-16" placeholder="Notas" value={line.notes || ''} onChange={(event) => setPartLines((current) => current.map((item) => item.id === line.id ? { ...item, notes: event.target.value } : item))} />
+                      <button type="button" className="btn-secondary mt-2 h-8 w-full justify-center text-red-600" onClick={() => setPartLines((current) => current.filter((item) => item.id !== line.id))}>
+                        <Trash2 className="h-4 w-4" />
+                        Quitar
+                      </button>
+                    </article>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
 

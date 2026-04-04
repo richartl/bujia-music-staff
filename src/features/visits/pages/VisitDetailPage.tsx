@@ -12,6 +12,7 @@ import { useUpdateVisitServiceStatus } from '@/features/visits/hooks/useUpdateVi
 import { VisitServiceStatusChip } from '@/features/visits/components/VisitServiceStatusChip';
 import { VisitServiceStatusSheet } from '@/features/visits/components/VisitServiceStatusSheet';
 import { VisitPaymentsSection } from '@/features/visits/components/VisitPaymentsSection';
+import { VisitPartsSection } from '@/features/visits/components/VisitPartsSection';
 import { parseEvidenceMarkerFromNotes } from '@/features/visits/utils/paymentEvidence';
 import { getTimelineEventIcon, getTimelineEventTone } from '@/features/visits/utils/timelineEventIcon';
 import { PaymentAttachmentGallery } from '@/features/visits/components/PaymentAttachmentGallery';
@@ -784,11 +785,18 @@ export function VisitDetailPage() {
       ) : null}
 
       {tab === 'finance' ? (
-        <VisitPaymentsSection
-          visitId={visitId}
-          paymentMethods={paymentMethods}
-          fallbackVisitTotal={Number(visit.total || 0)}
-        />
+        <>
+          <VisitPaymentsSection
+            visitId={visitId}
+            paymentMethods={paymentMethods}
+            fallbackVisitTotal={Number(visit.total || 0)}
+          />
+          <VisitPartsSection
+            visitId={visitId}
+            workshopId={workshopId}
+            services={servicesQuery.data || []}
+          />
+        </>
       ) : null}
 
       {tab === 'tracking' ? (
