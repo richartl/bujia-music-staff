@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useIsFetching, useIsMutating, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams, useParams } from 'react-router-dom';
 import { authStore } from '@/stores/auth-store';
@@ -18,6 +18,7 @@ import { parseEvidenceMarkerFromNotes } from '@/features/visits/utils/paymentEvi
 import { getTimelineEventIcon, getTimelineEventTone } from '@/features/visits/utils/timelineEventIcon';
 import { PaymentAttachmentGallery } from '@/features/visits/components/PaymentAttachmentGallery';
 import { getTimelinePaymentAttachments } from '@/features/visits/utils/paymentAttachments';
+import { VisitAttachmentsGallery } from '@/features/visits/components/VisitAttachmentsGallery';
 import type { WorkshopServiceLookup } from '@/features/intakes/types';
 import { 
   createVisitNote,
@@ -144,6 +145,15 @@ export function VisitDetailPage() {
     queryFn: () => getVisitTrackingLink(visitId),
     enabled: !!visitId,
   });
+
+  useEffect(() => {
+    if (!mediaPreview) return;
+    const onEsc = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMediaPreview(null);
+    };
+    window.addEventListener('keydown', onEsc);
+    return () => window.removeEventListener('keydown', onEsc);
+  }, [mediaPreview]);
 
   const [editPayload, setEditPayload] = useState<UpdateVisitPayload>({});
   const serviceStatusesQuery = useServiceStatuses(workshopId);
@@ -651,16 +661,10 @@ export function VisitDetailPage() {
             </p>
           </div>
           <div className="rounded-lg border border-slate-200 p-2">
-            <p className="text-xs font-semibold uppercase text-slate-500">Adjuntos de registro</p>
-            {(noteAttachmentsQueries.data?.[((notesQuery.data || [])[0] || { id: '' }).id] || []).length ? (
-              (noteAttachmentsQueries.data?.[((notesQuery.data || [])[0] || { id: '' }).id] || []).map((attachment) => (
-                <div key={attachment.id} className="mt-1">
-                  <AttachmentPreview attachment={attachment} onOpen={setMediaPreview} />
-                </div>
-              ))
-            ) : (
-              <p className="mt-1 text-xs text-slate-500">Sin adjuntos de registro.</p>
-            )}
+            <VisitAttachmentsGallery
+              visit={visit}
+              onOpen={setMediaPreview}
+            />
           </div>
           <h3 className="pt-2 text-sm font-semibold text-slate-800">Notas generales de la visita</h3>
           <QuickNoteForm onSubmit={(payload) => createNoteMutation.mutate(payload)} isPending={createNoteMutation.isPending} />
@@ -1329,8 +1333,8 @@ export function VisitDetailPage() {
       ) : null}
 
       {mediaPreview ? (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-3">
-          <div className="w-full max-w-md rounded-2xl bg-white p-3">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-3" onClick={() => setMediaPreview(null)}>
+          <div className="w-full max-w-md rounded-2xl bg-white p-3" onClick={(event) => event.stopPropagation()}>
             <p className="truncate text-sm font-medium text-slate-800">{mediaPreview.name}</p>
             <div className="mt-2">
               {mediaPreview.mimeType.startsWith('image/') ? (
