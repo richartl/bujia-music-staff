@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { cn, currency, dateTime } from '@/lib/utils';
 import { normalizeVisit } from '../utils/visitAdapter';
-import { getVisitCoverAttachment } from '../utils/visitAttachments';
+import { getVisitCoverImage } from '../utils/visitAttachments';
 import type { VisitResponse } from '../api/types';
 import { resolveStatusTone, VisitStatusBadge } from './VisitStatusBadge';
 
@@ -14,7 +14,7 @@ export function VisitCard({ visit }: VisitCardProps) {
   const normalized = normalizeVisit(visit);
   const tone = resolveStatusTone(normalized.status.name, normalized.isActive);
   const accent = normalized.status.color || tone.accent;
-  const cover = getVisitCoverAttachment(visit);
+  const cover = useMemo(() => getVisitCoverImage(visit), [visit]);
   const [imageError, setImageError] = useState(false);
   const servicesCount = Array.isArray((visit as Record<string, unknown>).services)
     ? ((visit as Record<string, unknown>).services as unknown[]).length

@@ -11,21 +11,27 @@ function isImageByExtension(fileName?: string) {
   return /\.(png|jpe?g|webp|gif|bmp|svg)$/i.test(fileName);
 }
 
-export function getVisitCoverAttachment(visit: VisitResponse): VisitAttachment | null {
+function hasValidPublicUrl(publicUrl?: string) {
+  return typeof publicUrl === 'string' && publicUrl.trim().length > 0;
+}
+
+export function getVisitCoverImage(visit: VisitResponse): VisitAttachment | null {
   const attachments = Array.isArray(visit.attachments) ? visit.attachments : [];
   const candidate = attachments.find(
     (attachment) =>
-      !!attachment.publicUrl &&
+      hasValidPublicUrl(attachment.publicUrl) &&
       (isImageMime(attachment.mimeType) || isImageByExtension(attachment.originalName)),
   );
   return candidate || null;
 }
 
+export const getVisitCoverAttachment = getVisitCoverImage;
+
 export function getImageAttachments(visit: VisitResponse): VisitAttachment[] {
   const attachments = Array.isArray(visit.attachments) ? visit.attachments : [];
   return attachments.filter(
     (attachment) =>
-      !!attachment.publicUrl &&
+      hasValidPublicUrl(attachment.publicUrl) &&
       (isImageMime(attachment.mimeType) || isImageByExtension(attachment.originalName)),
   );
 }

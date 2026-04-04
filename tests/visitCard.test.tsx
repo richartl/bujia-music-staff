@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
 import { VisitCard } from '../src/features/visits/components/VisitCard';
@@ -51,6 +51,31 @@ describe('VisitCard', () => {
       </MemoryRouter>,
     );
 
+    expect(screen.getByText('Sin foto')).toBeTruthy();
+  });
+
+  it('si falla la imagen, vuelve al placeholder', () => {
+    render(
+      <MemoryRouter>
+        <VisitCard
+          visit={{
+            id: 'v3',
+            instrumentId: 'i1',
+            clientId: 'c1',
+            branchId: 'b1',
+            workshopId: 'w1',
+            folio: 'OT-3',
+            isActive: true,
+            status: { id: 'st1', name: 'Activa' },
+            client: { id: 'c1', fullName: 'Luis', phone: '555' },
+            instrument: { id: 'i1', model: 'Tele' },
+            attachments: [{ id: 'a1', mimeType: 'image/jpeg', publicUrl: 'https://cdn.test/cover.jpg' }],
+          }}
+        />
+      </MemoryRouter>,
+    );
+
+    fireEvent.error(screen.getByRole('img'));
     expect(screen.getByText('Sin foto')).toBeTruthy();
   });
 });

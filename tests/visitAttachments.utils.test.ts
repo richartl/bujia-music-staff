@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { getVisitCoverAttachment } from '../src/features/visits/utils/visitAttachments';
+import { getVisitCoverImage } from '../src/features/visits/utils/visitAttachments';
 
-describe('getVisitCoverAttachment', () => {
+describe('getVisitCoverImage', () => {
   it('usa la primera imagen válida', () => {
-    const attachment = getVisitCoverAttachment({
+    const attachment = getVisitCoverImage({
       id: 'v1',
       workshopId: 'w1',
       clientId: 'c1',
@@ -20,7 +20,7 @@ describe('getVisitCoverAttachment', () => {
   });
 
   it('ignora attachments sin publicUrl', () => {
-    const attachment = getVisitCoverAttachment({
+    const attachment = getVisitCoverImage({
       id: 'v1',
       workshopId: 'w1',
       clientId: 'c1',
@@ -34,7 +34,7 @@ describe('getVisitCoverAttachment', () => {
   });
 
   it('regresa null sin imagen válida', () => {
-    const attachment = getVisitCoverAttachment({
+    const attachment = getVisitCoverImage({
       id: 'v1',
       workshopId: 'w1',
       clientId: 'c1',
@@ -45,5 +45,23 @@ describe('getVisitCoverAttachment', () => {
     } as never);
 
     expect(attachment).toBeNull();
+  });
+
+  it('regresa el primer attachment válido en mezcla de inválidos/válidos', () => {
+    const attachment = getVisitCoverImage({
+      id: 'v1',
+      workshopId: 'w1',
+      clientId: 'c1',
+      instrumentId: 'i1',
+      branchId: 'b1',
+      folio: 'OT-1',
+      attachments: [
+        { id: 'a1', mimeType: 'image/jpeg', publicUrl: '' },
+        { id: 'a2', mimeType: 'application/pdf', publicUrl: 'https://x/pdf' },
+        { id: 'a3', mimeType: 'image/png', publicUrl: 'https://x/image.png' },
+      ],
+    } as never);
+
+    expect(attachment?.id).toBe('a3');
   });
 });
