@@ -17,6 +17,7 @@ import { useVisitParts } from '@/features/visits/hooks/useVisitParts';
 import { parseEvidenceMarkerFromNotes } from '@/features/visits/utils/paymentEvidence';
 import { getTimelineEventIcon, getTimelineEventTone } from '@/features/visits/utils/timelineEventIcon';
 import { PaymentAttachmentGallery } from '@/features/visits/components/PaymentAttachmentGallery';
+import { EvidenceUploader, type EvidenceUploaderItem } from '@/features/visits/components/EvidenceUploader';
 import { getTimelinePaymentAttachments } from '@/features/visits/utils/paymentAttachments';
 import { VisitAttachmentsGallery } from '@/features/visits/components/VisitAttachmentsGallery';
 import { useIntakeMediaUpload } from '@/features/intakes/hooks/useIntakeMediaUpload';
@@ -87,7 +88,7 @@ export function VisitDetailPage() {
   const [noteModalServiceId, setNoteModalServiceId] = useState<string | null>(null);
   const [noteModalText, setNoteModalText] = useState('');
   const [noteModalIsInternal, setNoteModalIsInternal] = useState(true);
-  const [noteModalFile, setNoteModalFile] = useState<File | null>(null);
+  const [noteModalFiles, setNoteModalFiles] = useState<EvidenceUploaderItem[]>([]);
   const [confirmModal, setConfirmModal] = useState<{
     title: string;
     message: string;
@@ -509,22 +510,43 @@ export function VisitDetailPage() {
 
   async function submitServiceNoteModal() {
     if (!noteModalServiceId || !noteModalText.trim()) return;
-    const createdNote = await createVisitServiceNote(noteModalServiceId, {
-      note: noteModalText.trim(),
-      isInternal: noteModalIsInternal,
-    });
-    if (noteModalFile) {
-      await withUploading(async () => {
-        await uploadVisitServiceNoteAttachment(createdNote.id, noteModalFile);
+    try {
+      const createdNote = await createVisitServiceNote(noteModalServiceId, {
+        note: noteModalText.trim(),
+        isInternal: noteModalIsInternal,
       });
+      if (noteModalFiles.length) {
+        for (const item of noteModalFiles) {
+          setNoteModalFiles((current) =>
+            current.map((entry) => (entry.id === item.id ? { ...entry, status: 'uploading', errorMessage: null } : entry)),
+          );
+          try {
+            await withUploading(async () => {
+              await uploadVisitServiceNoteAttachment(createdNote.id, item.file);
+            });
+            setNoteModalFiles((current) =>
+              current.map((entry) => (entry.id === item.id ? { ...entry, status: 'done', errorMessage: null } : entry)),
+            );
+          } catch (error) {
+            const message = getErrorMessage(error);
+            setNoteModalFiles((current) =>
+              current.map((entry) => (entry.id === item.id ? { ...entry, status: 'error', errorMessage: message } : entry)),
+            );
+            notifyError(message);
+            return;
+          }
+        }
+      }
+      await queryClient.invalidateQueries({ queryKey: ['service-notes-batch'] });
+      await queryClient.invalidateQueries({ queryKey: ['service-note-attachments-batch'] });
+      notifySuccess('Nota guardada');
+      setNoteModalServiceId(null);
+      setNoteModalText('');
+      setNoteModalIsInternal(true);
+      setNoteModalFiles([]);
+    } catch (error) {
+      notifyError(getErrorMessage(error));
     }
-    await queryClient.invalidateQueries({ queryKey: ['service-notes-batch'] });
-    await queryClient.invalidateQueries({ queryKey: ['service-note-attachments-batch'] });
-    notifySuccess('Nota guardada');
-    setNoteModalServiceId(null);
-    setNoteModalText('');
-    setNoteModalIsInternal(true);
-    setNoteModalFile(null);
   }
 
   async function submitVisitStatusChange() {
@@ -845,7 +867,7 @@ export function VisitDetailPage() {
                     setNoteModalServiceId(adjustService.id);
                     setNoteModalIsInternal(true);
                     setNoteModalText('');
-                    setNoteModalFile(null);
+                    setNoteModalFiles([]);
                   }}
                 >
                   Agregar nota
@@ -887,7 +909,7 @@ export function VisitDetailPage() {
                     setNoteModalServiceId(service.id);
                     setNoteModalIsInternal(true);
                     setNoteModalText('');
-                    setNoteModalFile(null);
+                    setNoteModalFiles([]);
                   }}
                 >
                   Agregar nota
@@ -1315,11 +1337,48 @@ export function VisitDetailPage() {
             >
               {noteModalIsInternal ? '🔒 Interna (oculta en tracking)' : '🌍 Pública (visible en tracking)'}
             </button>
-            <MediaQuickAttach onSelect={(file) => setNoteModalFile(file)} />
-            {noteModalFile ? <p className="mt-1 text-xs text-slate-500">{noteModalFile.name}</p> : null}
+            <EvidenceUploader
+              items={noteModalFiles}
+              maxFiles={4}
+              onAddFiles={(files) =>
+                setNoteModalFiles((current) => {
+                  const slotsLeft = Math.max(0, 4 - current.length);
+                  if (!slotsLeft) return current;
+                  const nextFiles = files.slice(0, slotsLeft).map((file) => ({
+                    id: crypto.randomUUID(),
+                    file,
+                    status: 'queued' as const,
+                    errorMessage: null,
+                  }));
+                  return [...current, ...nextFiles];
+                })
+              }
+              onRetry={(itemId) =>
+                setNoteModalFiles((current) =>
+                  current.map((item) => (item.id === itemId ? { ...item, status: 'queued', errorMessage: null } : item)),
+                )
+              }
+              onRemove={(itemId) => setNoteModalFiles((current) => current.filter((item) => item.id !== itemId))}
+            />
             <div className="mt-3 grid grid-cols-2 gap-2">
-              <button type="button" className="btn-secondary h-10 justify-center" onClick={() => setNoteModalServiceId(null)}>Cancelar</button>
-              <button type="button" className="btn-primary h-10 justify-center" onClick={() => void submitServiceNoteModal()} disabled={!noteModalText.trim()}>Guardar</button>
+              <button
+                type="button"
+                className="btn-secondary h-10 justify-center"
+                onClick={() => {
+                  setNoteModalServiceId(null);
+                  setNoteModalFiles([]);
+                }}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="btn-primary h-10 justify-center"
+                onClick={() => void submitServiceNoteModal()}
+                disabled={!noteModalText.trim() || noteModalFiles.some((item) => item.status === 'uploading' || item.status === 'completing')}
+              >
+                Guardar
+              </button>
             </div>
           </div>
         </div>
