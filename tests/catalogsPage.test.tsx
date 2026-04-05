@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { CatalogsPage } from '../src/features/catalogs/pages/CatalogsPage';
 import { authStore } from '../src/stores/auth-store';
+import * as notify from '../src/lib/notify';
 
 vi.mock('../src/features/catalogs/hooks/useCatalogs', () => {
   const query = (data: unknown[] = []) => ({ data, isLoading: false, isError: false });
@@ -75,8 +76,30 @@ describe('CatalogsPage UI', () => {
   it('parts usa toggle isActive y no delete', () => {
     render(<CatalogsPage />);
     fireEvent.click(screen.getByRole('button', { name: 'Refacciones' }));
-    expect(screen.getByText('Toggle')).toBeTruthy();
-    const deleteButtons = screen.getAllByRole('button').filter((btn) => btn.className.includes('rose-50'));
+    fireEvent.click(screen.getAllByRole('button').find((btn) => btn.className.includes('btn-secondary h-8 px-2'))!);
+    expect(screen.getByText('Activar / desactivar')).toBeTruthy();
+    const deleteButtons = screen.queryAllByText('Eliminar');
     expect(deleteButtons.length).toBe(0);
+  });
+
+  it('botón agregar abre modal y editar precarga formulario', () => {
+    render(<CatalogsPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Agregar' }));
+    expect(screen.getByText('Agregar Colores')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+
+    fireEvent.click(screen.getAllByRole('button').find((btn) => btn.className.includes('btn-secondary h-8 px-2'))!);
+    fireEvent.click(screen.getByText('Editar'));
+    expect(screen.getByDisplayValue('Rojo Global')).toBeTruthy();
+  });
+
+  it('muestra feedback de éxito al guardar', async () => {
+    const successSpy = vi.spyOn(notify, 'notifySuccess');
+    render(<CatalogsPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Agregar' }));
+    fireEvent.change(screen.getByLabelText('Nombre'), { target: { value: 'Nuevo color' } });
+    fireEvent.change(screen.getByLabelText('Slug'), { target: { value: 'nuevo-color' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+    expect(successSpy).toHaveBeenCalled();
   });
 });
