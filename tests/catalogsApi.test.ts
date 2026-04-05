@@ -10,6 +10,7 @@ import {
   createWorkshopColor,
   createWorkshopPart,
   createWorkshopService,
+  createWorkshopUser,
   createWorkshopServiceStatus,
   createWorkshopVisitStatus,
   deleteAffiliate,
@@ -42,6 +43,8 @@ import {
   getWorkshopServices,
   getWorkshopServiceStatusById,
   getWorkshopServiceStatuses,
+  getWorkshopUserById,
+  getWorkshopUsers,
   getWorkshopVisitStatusById,
   getWorkshopVisitStatuses,
   updateAffiliate,
@@ -55,6 +58,7 @@ import {
   updateWorkshopPart,
   updateWorkshopService,
   updateWorkshopServiceStatus,
+  updateWorkshopUser,
   updateWorkshopVisitStatus,
 } from '../src/features/catalogs/api/catalogsApi';
 
@@ -167,6 +171,10 @@ describe('catalogsApi endpoints', () => {
     await deleteAffiliate('w1', 'a1');
 
     await updateUserProfileImage('u1', { mediaId: 'media-1' });
+    await getWorkshopUsers('w1', { page: 1, limit: 20, search: 'maria', role: 'STAFF' });
+    await getWorkshopUserById('w1', 'u1');
+    await createWorkshopUser('w1', { name: 'María Pérez', email: 'maria@bujia.com', password: '12345678', role: 'STAFF' });
+    await updateWorkshopUser('w1', 'u1', { name: 'María P.', email: 'maria.p@bujia.com', role: 'ADMIN' });
 
     expect(http.get).toHaveBeenCalledWith('/workshops/w1/workshop-visit-statuses');
     expect(http.get).toHaveBeenCalledWith('/workshops/w1/service-statuses');
@@ -176,5 +184,9 @@ describe('catalogsApi endpoints', () => {
     expect(http.get).toHaveBeenCalledWith('/workshops/w1/string-gauges');
     expect(http.get).toHaveBeenCalledWith('/workshops/w1/affiliates');
     expect(http.patch).toHaveBeenCalledWith('/users/u1/profile-image', { mediaId: 'media-1' });
+    expect(http.get).toHaveBeenCalledWith('/workshops/w1/users', { params: { page: 1, limit: 20, search: 'maria', role: 'STAFF' } });
+    expect(http.get).toHaveBeenCalledWith('/workshops/w1/users/u1');
+    expect(http.post).toHaveBeenCalledWith('/workshops/w1/users', { name: 'María Pérez', email: 'maria@bujia.com', password: '12345678', role: 'STAFF' });
+    expect(http.patch).toHaveBeenCalledWith('/workshops/w1/users/u1', { name: 'María P.', email: 'maria.p@bujia.com', role: 'ADMIN' });
   });
 });

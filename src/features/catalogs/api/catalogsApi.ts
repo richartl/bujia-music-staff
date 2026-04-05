@@ -27,11 +27,16 @@ import type {
   UpdateVisitStatusPayload,
   UpdateWorkshopPartPayload,
   UpdateWorkshopServicePayload,
+  UpdateWorkshopUserPayload,
   UserProfileImage,
   VisitStatus,
   WorkshopPartCatalog,
   WorkshopPartListFilters,
   WorkshopServiceCatalog,
+  WorkshopUser,
+  WorkshopUsersListParams,
+  WorkshopUsersListResponse,
+  CreateWorkshopUserPayload,
 } from '@/features/catalogs/types/catalogs';
 
 export async function getWorkshopColors(workshopId: string) {
@@ -255,5 +260,24 @@ export async function deleteAffiliate(workshopId: string, id: string) {
 
 export async function updateUserProfileImage(userId: string, payload: UpdateUserProfileImagePayload) {
   const { data } = await http.patch<UserProfileImage>(`/users/${userId}/profile-image`, payload);
+  return data;
+}
+
+export async function getWorkshopUsers(workshopId: string, params?: WorkshopUsersListParams) {
+  const { data } = await http.get<WorkshopUsersListResponse>(`/workshops/${workshopId}/users`, {
+    params,
+  });
+  return data;
+}
+export async function getWorkshopUserById(workshopId: string, userId: string) {
+  const { data } = await http.get<WorkshopUser>(`/workshops/${workshopId}/users/${userId}`);
+  return data;
+}
+export async function createWorkshopUser(workshopId: string, payload: CreateWorkshopUserPayload) {
+  const { data } = await http.post<WorkshopUser>(`/workshops/${workshopId}/users`, payload);
+  return data;
+}
+export async function updateWorkshopUser(workshopId: string, userId: string, payload: UpdateWorkshopUserPayload) {
+  const { data } = await http.patch<WorkshopUser>(`/workshops/${workshopId}/users/${userId}`, payload);
   return data;
 }

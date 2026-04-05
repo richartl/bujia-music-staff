@@ -58,6 +58,23 @@ export const catalogsQueryKeys = {
     detail: (workshopId: string, id: string) => ['catalogs', 'affiliates', workshopId, 'detail', id] as const,
   },
   users: {
+    workshopBase: (workshopId: string) => ['catalogs', 'users', 'workshop', workshopId] as const,
+    workshopList: (
+      workshopId: string,
+      params: { page?: number; limit?: number; search?: string; role?: 'ADMIN' | 'STAFF' } = {},
+    ) =>
+      [
+        'catalogs',
+        'users',
+        'workshop',
+        workshopId,
+        'list',
+        params.page ?? 1,
+        params.limit ?? 20,
+        params.search ?? '',
+        params.role ?? 'all',
+      ] as const,
+    workshopDetail: (workshopId: string, userId: string) => ['catalogs', 'users', 'workshop', workshopId, 'detail', userId] as const,
     profileImage: (userId: string) => ['catalogs', 'users', userId, 'profile-image'] as const,
   },
 } as const;

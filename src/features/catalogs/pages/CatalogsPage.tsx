@@ -1,9 +1,12 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { authStore } from '@/stores/auth-store';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { notifyError, notifySuccess } from '@/lib/notify';
 import { currency, dateTime } from '@/lib/utils';
 import { SearchInput } from '@/components/ui/SearchInput';
+import { OverlayPortal } from '@/components/ui/OverlayPortal';
+import { UserAvatar } from '@/components/avatars/UserAvatar';
 import { CatalogEntitySection, type CatalogFieldDefinition } from '@/features/catalogs/components/CatalogEntitySection';
 import {
   useAffiliates,
@@ -15,6 +18,7 @@ import {
   useCreateWorkshopPart,
   useCreateWorkshopService,
   useCreateWorkshopServiceStatus,
+  useCreateWorkshopUser,
   useCreateWorkshopVisitStatus,
   useDeleteAffiliate,
   useDeleteStringGauge,
@@ -34,12 +38,14 @@ import {
   useUpdateWorkshopPart,
   useUpdateWorkshopService,
   useUpdateWorkshopServiceStatus,
+  useUpdateWorkshopUser,
   useUpdateWorkshopVisitStatus,
   useWorkshopBrands,
   useWorkshopColors,
   useWorkshopParts,
   useWorkshopServiceStatuses,
   useWorkshopServices,
+  useWorkshopUsers,
   useWorkshopVisitStatuses,
 } from '@/features/catalogs/hooks/useCatalogs';
 import type {
@@ -52,6 +58,8 @@ import type {
   VisitStatus,
   WorkshopPartCatalog,
   WorkshopServiceCatalog,
+  WorkshopUser,
+  WorkshopUserRole,
 } from '@/features/catalogs/types/catalogs';
 
 type CatalogSectionKey =
@@ -139,7 +147,6 @@ const AFFILIATE_FIELDS: CatalogFieldDefinition[] = [
   { name: 'notes', label: 'Notas', type: 'textarea' },
   { name: 'isActive', label: 'Activo', type: 'checkbox' },
 ];
-
 function SectionBadge({ children, tone = 'slate' }: { children: string; tone?: 'slate' | 'amber' | 'emerald' | 'sky' }) {
   const colorMap = {
     slate: 'bg-slate-100 text-slate-700',
@@ -155,6 +162,19 @@ export function CatalogsPage() {
   const { catalogKey } = useParams<{ catalogKey?: CatalogSectionKey }>();
   const workshopId = authStore((state) => state.workshopId);
   const [search, setSearch] = useState('');
+  const [usersPage, setUsersPage] = useState(1);
+  const [usersLimit] = useState(20);
+  const [usersRoleFilter, setUsersRoleFilter] = useState<'ALL' | WorkshopUserRole>('ALL');
+  const [isUserFormOpen, setIsUserFormOpen] = useState(false);
+  const [editingUser, setEditingUser] = useState<WorkshopUser | null>(null);
+  const [userFormError, setUserFormError] = useState('');
+  const [userFormValues, setUserFormValues] = useState({
+    name: '',
+    email: '',
+    password: '',
+    role: 'STAFF' as WorkshopUserRole,
+  });
+  const debouncedSearch = useDebouncedValue(search, 300);
   const activeSection = (catalogKey || '') as CatalogSectionKey;
   const isHub = !catalogKey;
 
@@ -167,6 +187,17 @@ export function CatalogsPage() {
   const tuningsQuery = useTunings(activeSection === 'tunings' ? workshopId : null);
   const gaugesQuery = useStringGauges(activeSection === 'string-gauges' ? workshopId : null);
   const affiliatesQuery = useAffiliates(activeSection === 'affiliates' ? workshopId : null);
+  const workshopUsersQuery = useWorkshopUsers(
+    activeSection === 'users' ? workshopId : null,
+    activeSection === 'users'
+      ? {
+          page: usersPage,
+          limit: usersLimit,
+          search: debouncedSearch.trim() || undefined,
+          role: usersRoleFilter === 'ALL' ? undefined : usersRoleFilter,
+        }
+      : undefined,
+  );
 
   const createColor = useCreateWorkshopColor(workshopId);
   const updateColor = useUpdateWorkshopColor(workshopId);
@@ -194,6 +225,8 @@ export function CatalogsPage() {
   const createAffiliate = useCreateAffiliate(workshopId);
   const updateAffiliate = useUpdateAffiliate(workshopId);
   const deleteAffiliate = useDeleteAffiliate(workshopId);
+  const createWorkshopUser = useCreateWorkshopUser(workshopId);
+  const updateWorkshopUser = useUpdateWorkshopUser(workshopId);
 
   const canMutateCatalogItem = (item: { isGlobal?: boolean; workshopId?: string | null }) => !item.isGlobal && item.workshopId === workshopId;
 
@@ -211,6 +244,96 @@ export function CatalogsPage() {
     const term = search.trim().toLowerCase();
     if (!term) return items;
     return items.filter((item) => JSON.stringify(item).toLowerCase().includes(term));
+  };
+
+  useEffect(() => {
+    if (activeSection === 'users') {
+      setUsersPage(1);
+    }
+  }, [debouncedSearch, usersRoleFilter, activeSection]);
+
+  const isSavingUser = createWorkshopUser.isPending || updateWorkshopUser.isPending;
+  const userItems = workshopUsersQuery.data?.items || [];
+  const usersTotal = workshopUsersQuery.data?.total || 0;
+  const usersTotalPages = Math.max(1, Math.ceil(usersTotal / usersLimit));
+
+  const openCreateUserModal = () => {
+    setEditingUser(null);
+    setUserFormError('');
+    setUserFormValues({ name: '', email: '', password: '', role: 'STAFF' });
+    setIsUserFormOpen(true);
+  };
+
+  const openEditUserModal = (user: WorkshopUser) => {
+    setEditingUser(user);
+    setUserFormError('');
+    setUserFormValues({ name: user.name, email: user.email, password: '', role: user.role });
+    setIsUserFormOpen(true);
+  };
+
+  const closeUserModal = () => {
+    if (isSavingUser) return;
+    setIsUserFormOpen(false);
+    setEditingUser(null);
+    setUserFormError('');
+  };
+
+  const handleUserFormValue = (name: 'name' | 'email' | 'password' | 'role', value: string) => {
+    if (name === 'role') {
+      setUserFormValues((prev) => ({ ...prev, role: value as WorkshopUserRole }));
+      return;
+    }
+    setUserFormValues((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const submitUserForm = async () => {
+    const name = userFormValues.name.trim();
+    const email = userFormValues.email.trim();
+    const password = userFormValues.password.trim();
+
+    if (!editingUser && (!name || !email || !password || !userFormValues.role)) {
+      setUserFormError('Completa nombre, correo, contraseña y rol.');
+      return;
+    }
+
+    if (editingUser) {
+      const payload: {
+        name?: string;
+        email?: string;
+        role?: WorkshopUserRole;
+        password?: string;
+      } = {};
+      if (name !== editingUser.name) payload.name = name;
+      if (email !== editingUser.email) payload.email = email;
+      if (userFormValues.role !== editingUser.role) payload.role = userFormValues.role;
+      if (password) payload.password = password;
+
+      if (Object.keys(payload).length === 0) {
+        closeUserModal();
+        return;
+      }
+
+      await handleMutation(
+        () => updateWorkshopUser.mutateAsync({ userId: editingUser.id, payload }),
+        'Usuario actualizado',
+        'No se pudo actualizar el usuario',
+      );
+      setIsUserFormOpen(false);
+      return;
+    }
+
+    await handleMutation(
+      () =>
+        createWorkshopUser.mutateAsync({
+          name,
+          email,
+          password,
+          role: userFormValues.role,
+        }),
+      'Usuario creado',
+      'No se pudo crear el usuario',
+    );
+    setIsUserFormOpen(false);
   };
 
   if (!workshopId) {
@@ -250,12 +373,156 @@ export function CatalogsPage() {
 
   if (activeSection === 'users') {
     return (
-      <section className="card p-4 space-y-3">
-        <button type="button" className="btn-secondary h-9 px-3" onClick={() => navigate('/app/catalogs')}>← Volver</button>
-        <h1 className="text-lg font-semibold text-slate-900">Usuarios del taller</h1>
-        <p className="text-sm text-slate-500">No hay CRUD de usuarios en Catálogos. Gestiona la imagen de perfil desde Ajustes.</p>
-        <Link to="/app/settings" className="btn-primary h-10 px-3 inline-flex items-center">Ir a Ajustes</Link>
-      </section>
+      <div className="space-y-4">
+        <section className="card p-4">
+          <button type="button" className="btn-secondary h-9 px-3" onClick={() => navigate('/app/catalogs')}>
+            ← Catálogos
+          </button>
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h1 className="text-lg font-semibold text-slate-900">Usuarios del taller</h1>
+              <p className="mt-1 text-sm text-slate-500">Administra cuentas STAFF y ADMIN del taller activo.</p>
+            </div>
+            <button type="button" className="btn-primary h-10 px-3" onClick={openCreateUserModal}>
+              Agregar usuario
+            </button>
+          </div>
+          <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
+            <SearchInput value={search} onChange={setSearch} placeholder="Buscar por nombre o correo" loading={workshopUsersQuery.isFetching} />
+            <select
+              className="input h-12"
+              value={usersRoleFilter}
+              onChange={(event) => setUsersRoleFilter(event.target.value as 'ALL' | WorkshopUserRole)}
+            >
+              <option value="ALL">Todos los roles</option>
+              <option value="ADMIN">ADMIN</option>
+              <option value="STAFF">STAFF</option>
+            </select>
+          </div>
+        </section>
+
+        <section className="card p-4">
+          {workshopUsersQuery.isLoading ? (
+            <div className="space-y-2">
+              {[0, 1, 2].map((item) => (
+                <div key={item} className="h-20 animate-pulse rounded-xl bg-slate-100" />
+              ))}
+            </div>
+          ) : null}
+          {workshopUsersQuery.isError ? <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">No se pudo cargar usuarios del taller.</p> : null}
+          {!workshopUsersQuery.isLoading && !workshopUsersQuery.isError && userItems.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-center">
+              <p className="text-sm text-slate-600">No hay usuarios en esta página.</p>
+              <button type="button" className="btn-secondary mt-3 h-9 px-3" onClick={openCreateUserModal}>
+                Agregar primero
+              </button>
+            </div>
+          ) : null}
+
+          <div className="grid gap-2">
+            {userItems.map((user) => (
+              <article key={user.id} className="rounded-xl border border-slate-200 bg-white p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex min-w-0 items-start gap-3">
+                    <UserAvatar name={user.name} email={user.email} profileImageUrl={user.profileImageUrl} size="md" />
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-slate-900">{user.name}</p>
+                      <p className="truncate text-xs text-slate-500">{user.email}</p>
+                      <p className="mt-1 text-[11px] text-slate-500">Actualizado {dateTime(user.updatedAt)}</p>
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        <SectionBadge tone={user.role === 'ADMIN' ? 'amber' : 'sky'}>{user.role}</SectionBadge>
+                        <SectionBadge tone="slate">{user.workshopRole}</SectionBadge>
+                      </div>
+                    </div>
+                  </div>
+                  <button type="button" className="btn-secondary h-8 px-3 text-xs" onClick={() => openEditUserModal(user)}>
+                    Editar
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+
+          <div className="mt-3 flex items-center justify-between gap-2">
+            <p className="text-xs text-slate-500">
+              Página {workshopUsersQuery.data?.page || usersPage} · Mostrando {userItems.length} de {usersTotal}
+            </p>
+            <div className="flex gap-2">
+              <button type="button" className="btn-secondary h-9 px-3 text-xs" disabled={usersPage <= 1} onClick={() => setUsersPage((prev) => Math.max(1, prev - 1))}>
+                Anterior
+              </button>
+              <button
+                type="button"
+                className="btn-secondary h-9 px-3 text-xs"
+                disabled={usersPage >= usersTotalPages}
+                onClick={() => setUsersPage((prev) => Math.min(usersTotalPages, prev + 1))}
+              >
+                Siguiente
+              </button>
+            </div>
+          </div>
+        </section>
+
+        {isUserFormOpen ? (
+          <OverlayPortal>
+            <div className="fixed inset-0 z-[140] flex items-end bg-black/50 sm:items-center sm:justify-center sm:p-4" onClick={closeUserModal}>
+              <section
+                className="w-full rounded-t-2xl border border-slate-700 bg-slate-900 p-4 text-slate-100 shadow-xl sm:max-w-lg sm:rounded-2xl"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <h3 className="text-base font-semibold">{editingUser ? 'Editar usuario' : 'Agregar usuario'}</h3>
+                <p className="mt-1 text-xs text-slate-300">Rol permitido: STAFF o ADMIN.</p>
+                <div className="mt-3 grid gap-2">
+                  <label className="text-xs font-medium text-slate-300">
+                    Nombre
+                    <input
+                      className="input mt-1 h-11 bg-slate-800 text-slate-100"
+                      value={userFormValues.name}
+                      onChange={(event) => handleUserFormValue('name', event.target.value)}
+                    />
+                  </label>
+                  <label className="text-xs font-medium text-slate-300">
+                    Correo
+                    <input
+                      className="input mt-1 h-11 bg-slate-800 text-slate-100"
+                      value={userFormValues.email}
+                      onChange={(event) => handleUserFormValue('email', event.target.value)}
+                    />
+                  </label>
+                  <label className="text-xs font-medium text-slate-300">
+                    {editingUser ? 'Nueva contraseña (opcional)' : 'Contraseña'}
+                    <input
+                      className="input mt-1 h-11 bg-slate-800 text-slate-100"
+                      value={userFormValues.password}
+                      onChange={(event) => handleUserFormValue('password', event.target.value)}
+                    />
+                  </label>
+                  <label className="text-xs font-medium text-slate-300">
+                    Rol
+                    <select
+                      className="input mt-1 h-11 bg-slate-800 text-slate-100"
+                      value={userFormValues.role}
+                      onChange={(event) => handleUserFormValue('role', event.target.value)}
+                    >
+                      <option value="STAFF">STAFF</option>
+                      <option value="ADMIN">ADMIN</option>
+                    </select>
+                  </label>
+                </div>
+                {userFormError ? <p className="mt-2 text-xs text-rose-300">{userFormError}</p> : null}
+                <div className="mt-4 grid grid-cols-2 gap-2">
+                  <button type="button" className="btn-secondary h-10 justify-center" onClick={closeUserModal}>
+                    Cancelar
+                  </button>
+                  <button type="button" className="btn-primary h-10 justify-center" onClick={() => void submitUserForm()} disabled={isSavingUser}>
+                    {isSavingUser ? 'Guardando...' : 'Guardar'}
+                  </button>
+                </div>
+              </section>
+            </div>
+          </OverlayPortal>
+        ) : null}
+      </div>
     );
   }
 

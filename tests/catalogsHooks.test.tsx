@@ -4,10 +4,13 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as catalogsApi from '../src/features/catalogs/api/catalogsApi';
 import {
+  useCreateWorkshopUser,
   useCreateWorkshopPart,
   useCreateWorkshopService,
+  useUpdateWorkshopUser,
   useUpdateUserProfileImage,
   useWorkshopColors,
+  useWorkshopUsers,
 } from '../src/features/catalogs/hooks/useCatalogs';
 import { catalogsQueryKeys } from '../src/features/catalogs/queryKeys';
 
@@ -79,8 +82,32 @@ describe('catalogs hooks', () => {
 
     expect(catalogsApi.updateUserProfileImage).toHaveBeenCalledWith('u1', { mediaId: 'media-1' });
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: catalogsQueryKeys.users.profileImage('u1') });
-    expect((catalogsApi as unknown as Record<string, unknown>).getUsers).toBeUndefined();
-    expect((catalogsApi as unknown as Record<string, unknown>).createUser).toBeUndefined();
-    expect((catalogsApi as unknown as Record<string, unknown>).deleteUser).toBeUndefined();
+  });
+
+  it('users hooks consultan lista y mutan invalidando list + detail', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const invalidateSpy = vi.spyOn(client, 'invalidateQueries');
+    vi.mocked(catalogsApi.getWorkshopUsers).mockResolvedValue({ items: [], page: 1, limit: 20, total: 0 } as never);
+    vi.mocked(catalogsApi.createWorkshopUser).mockResolvedValue({ id: 'u1' } as never);
+    vi.mocked(catalogsApi.updateWorkshopUser).mockResolvedValue({ id: 'u1' } as never);
+
+    const listHook = renderHook(() => useWorkshopUsers('w1', { page: 1, limit: 20, search: 'maria', role: 'STAFF' }), { wrapper: createWrapper(client) });
+    await waitFor(() => {
+      expect(listHook.result.current.data?.page).toBe(1);
+    });
+    expect(catalogsApi.getWorkshopUsers).toHaveBeenCalledWith('w1', { page: 1, limit: 20, search: 'maria', role: 'STAFF' });
+
+    const createHook = renderHook(() => useCreateWorkshopUser('w1'), { wrapper: createWrapper(client) });
+    await act(async () => {
+      await createHook.result.current.mutateAsync({ name: 'María', email: 'maria@bujia.com', password: '12345678', role: 'STAFF' });
+    });
+
+    const updateHook = renderHook(() => useUpdateWorkshopUser('w1'), { wrapper: createWrapper(client) });
+    await act(async () => {
+      await updateHook.result.current.mutateAsync({ userId: 'u1', payload: { role: 'ADMIN' } });
+    });
+
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: catalogsQueryKeys.users.workshopBase('w1') });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: catalogsQueryKeys.users.workshopDetail('w1', 'u1') });
   });
 });
