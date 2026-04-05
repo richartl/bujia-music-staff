@@ -22,7 +22,7 @@ const EMPTY_FILTERS: VisitFilters = {
   openedTo: '',
 };
 
-const QUICK_FILTERS = [
+const BASE_QUICK_FILTERS = [
   { label: 'Activas', value: 'active' },
   { label: 'Hoy', value: 'today' },
   { label: 'Pendientes', value: 'pending' },
@@ -47,13 +47,22 @@ function getEndOfTodayIso() {
   return today.toISOString();
 }
 
+function toUrlSearchParams(filters: VisitFilters) {
+  const entries = Object.entries(filters).filter(([, value]) => value !== '');
+  return new URLSearchParams(entries as Array<[string, string]>);
+}
+
 function detectQuickFilter(filters: VisitFilters, statuses: VisitStatusCatalog[]) {
   if (filters.isActive === 'true' && !filters.statusId && !filters.openedFrom && !filters.openedTo) return 'active';
   if (!filters.isActive && !filters.statusId && !filters.openedFrom && !filters.openedTo) return 'all';
 
-  const selectedStatus = statuses.find((status) => status.id === filters.statusId)?.name?.toLowerCase();
-  if (selectedStatus?.includes('entreg')) return 'delivered';
-  if (selectedStatus?.includes('pend')) return 'pending';
+  const selectedStatus = statuses.find((status) => status.id === filters.statusId);
+  if (selectedStatus) {
+    const lowered = selectedStatus.name.toLowerCase();
+    if (lowered.includes('entreg')) return 'delivered';
+    if (lowered.includes('pend')) return 'pending';
+    return `status:${selectedStatus.id}`;
+  }
 
   const todayStart = getStartOfTodayIso().slice(0, 10);
   const todayEnd = getEndOfTodayIso().slice(0, 10);
@@ -78,22 +87,13 @@ export function VisitsBoardPage() {
     openedTo: searchParams.get('openedTo') || '',
   };
 
-  const [draftFilters, setDraftFilters] = useState<VisitFilters>(urlFilters);
+  const [filters, setFilters] = useState<VisitFilters>(urlFilters);
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
-
-  const debouncedSearch = useDebouncedValue(draftFilters.search.trim(), 350);
+  const debouncedSearch = useDebouncedValue(filters.search.trim(), 300);
 
   useEffect(() => {
-    setDraftFilters(urlFilters);
+    setFilters(urlFilters);
   }, [searchParams]);
-
-  useEffect(() => {
-    if (debouncedSearch === (urlFilters.search || '').trim()) return;
-
-    const nextFilters = { ...urlFilters, search: debouncedSearch };
-    const entries = Object.entries(nextFilters).filter(([, value]) => value !== '');
-    setSearchParams(new URLSearchParams(entries as Array<[string, string]>));
-  }, [debouncedSearch]);
 
   const visitsQuery = useQuery({
     queryKey: ['workshop-visits', workshopId, urlFilters],
@@ -114,16 +114,27 @@ export function VisitsBoardPage() {
   });
 
   const clientsQuery = useQuery({
-    queryKey: ['visit-clients', workshopId, draftFilters.search],
-    queryFn: () => getWorkshopClients(workshopId!, { search: draftFilters.search, page: 1, limit: 30, isActive: true }),
+    queryKey: ['visit-clients', workshopId, filters.search],
+    queryFn: () => getWorkshopClients(workshopId!, { search: filters.search, page: 1, limit: 30, isActive: true }),
     enabled: !!workshopId,
   });
 
   const instrumentsQuery = useQuery({
-    queryKey: ['visit-client-instruments-filter', workshopId, draftFilters.clientId],
-    queryFn: () => getClientInstruments(workshopId!, draftFilters.clientId),
-    enabled: !!workshopId && !!draftFilters.clientId,
+    queryKey: ['visit-client-instruments-filter', workshopId, filters.clientId],
+    queryFn: () => getClientInstruments(workshopId!, filters.clientId),
+    enabled: !!workshopId && !!filters.clientId,
   });
+
+  const quickFilterItems = useMemo(
+    () => [
+      ...BASE_QUICK_FILTERS,
+      ...(statusesQuery.data || []).map((status) => ({
+        label: status.name,
+        value: `status:${status.id}`,
+      })),
+    ],
+    [statusesQuery.data],
+  );
 
   const sortedVisits = useMemo(() => {
     const visits = visitsQuery.data || [];
@@ -147,14 +158,27 @@ export function VisitsBoardPage() {
     [visitsQuery.data],
   );
 
-  function applyFilters(nextFilters = draftFilters) {
-    const entries = Object.entries(nextFilters).filter(([, value]) => value !== '');
-    setSearchParams(new URLSearchParams(entries as Array<[string, string]>));
+  function applyImmediate(next: VisitFilters) {
+    setFilters(next);
+    setSearchParams(toUrlSearchParams(next));
   }
 
+  function updateImmediate<K extends keyof VisitFilters>(key: K, value: VisitFilters[K]) {
+    const next = { ...filters, [key]: value };
+    applyImmediate(next);
+  }
+
+  useEffect(() => {
+    const current = (urlFilters.search || '').trim();
+    if (debouncedSearch === current) return;
+    const next = { ...filters, search: debouncedSearch };
+    setSearchParams(toUrlSearchParams(next));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedSearch]);
+
   function clearFilters() {
-    setDraftFilters(EMPTY_FILTERS);
-    setSearchParams(new URLSearchParams({ isActive: 'true' }));
+    const next = { ...EMPTY_FILTERS, isActive: 'true' as const };
+    applyImmediate(next);
   }
 
   function findStatusIdByKeyword(keyword: 'pend' | 'entreg') {
@@ -162,7 +186,7 @@ export function VisitsBoardPage() {
   }
 
   function handleQuickFilter(value: string) {
-    const next = { ...draftFilters };
+    const next = { ...filters };
 
     if (value === 'active') {
       next.isActive = 'true';
@@ -189,10 +213,14 @@ export function VisitsBoardPage() {
       next.statusId = findStatusIdByKeyword('entreg');
       next.openedFrom = '';
       next.openedTo = '';
+    } else if (value.startsWith('status:')) {
+      next.isActive = '';
+      next.statusId = value.replace('status:', '');
+      next.openedFrom = '';
+      next.openedTo = '';
     }
 
-    setDraftFilters(next);
-    applyFilters(next);
+    applyImmediate(next);
   }
 
   return (
@@ -209,23 +237,23 @@ export function VisitsBoardPage() {
         </div>
 
         <div className="mt-3">
-          <QuickFilterChips items={QUICK_FILTERS} selected={quickFilter} onChange={handleQuickFilter} />
+          <QuickFilterChips items={quickFilterItems} selected={quickFilter} onChange={handleQuickFilter} />
         </div>
 
         <div className="mt-3 space-y-2">
           <input
             className="input h-11"
-            value={draftFilters.search}
+            value={filters.search}
             placeholder="Buscar folio, cliente, teléfono, modelo o color"
-            onChange={(event) => setDraftFilters((current) => ({ ...current, search: event.target.value }))}
+            onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))}
           />
 
           <div className="grid grid-cols-2 gap-2">
-            <select className="input h-11" value={draftFilters.statusId} onChange={(event) => setDraftFilters((current) => ({ ...current, statusId: event.target.value }))}>
+            <select className="input h-11" value={filters.statusId} onChange={(event) => updateImmediate('statusId', event.target.value)}>
               <option value="">Estatus</option>
               {(statusesQuery.data || []).map((status) => <option key={status.id} value={status.id}>{status.name}</option>)}
             </select>
-            <select className="input h-11" value={draftFilters.isActive} onChange={(event) => setDraftFilters((current) => ({ ...current, isActive: event.target.value as VisitFilters['isActive'] }))}>
+            <select className="input h-11" value={filters.isActive} onChange={(event) => updateImmediate('isActive', event.target.value as VisitFilters['isActive'])}>
               <option value="true">Activas</option>
               <option value="">Todas</option>
               <option value="false">Inactivas</option>
@@ -238,32 +266,31 @@ export function VisitsBoardPage() {
 
           {showAdvancedFilters ? (
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <select className="input h-11" value={draftFilters.branchId} onChange={(event) => setDraftFilters((current) => ({ ...current, branchId: event.target.value }))}>
+              <select className="input h-11" value={filters.branchId} onChange={(event) => updateImmediate('branchId', event.target.value)}>
                 <option value="">Sucursal</option>
                 {(branchesQuery.data || []).map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
               </select>
 
-              <select className="input h-11" value={draftFilters.clientId} onChange={(event) => setDraftFilters((current) => ({ ...current, clientId: event.target.value, instrumentId: '' }))}>
+              <select className="input h-11" value={filters.clientId} onChange={(event) => applyImmediate({ ...filters, clientId: event.target.value, instrumentId: '' })}>
                 <option value="">Cliente</option>
                 {(clientsQuery.data || []).map((client) => <option key={client.id} value={client.id}>{client.fullName || `${client.firstName || ''} ${client.lastName || ''}`.trim() || client.phone || client.id}</option>)}
               </select>
 
-              <select className="input h-11" value={draftFilters.instrumentId} onChange={(event) => setDraftFilters((current) => ({ ...current, instrumentId: event.target.value }))}>
+              <select className="input h-11" value={filters.instrumentId} onChange={(event) => updateImmediate('instrumentId', event.target.value)}>
                 <option value="">Instrumento</option>
                 {(instrumentsQuery.data || []).map((instrument) => <option key={instrument.id} value={instrument.id}>{instrument.name || instrument.model || instrument.id}</option>)}
               </select>
 
-              <input className="input h-11" placeholder="Creado por userId" value={draftFilters.createdByUserId} onChange={(event) => setDraftFilters((current) => ({ ...current, createdByUserId: event.target.value }))} />
+              <input className="input h-11" placeholder="Creado por userId" value={filters.createdByUserId} onChange={(event) => updateImmediate('createdByUserId', event.target.value)} />
 
-              <input className="input h-11" type="date" value={toInputDate(draftFilters.openedFrom)} onChange={(event) => setDraftFilters((current) => ({ ...current, openedFrom: event.target.value ? `${event.target.value}T00:00:00.000Z` : '' }))} />
+              <input className="input h-11" type="date" value={toInputDate(filters.openedFrom)} onChange={(event) => updateImmediate('openedFrom', event.target.value ? `${event.target.value}T00:00:00.000Z` : '')} />
 
-              <input className="input h-11" type="date" value={toInputDate(draftFilters.openedTo)} onChange={(event) => setDraftFilters((current) => ({ ...current, openedTo: event.target.value ? `${event.target.value}T23:59:59.999Z` : '' }))} />
+              <input className="input h-11" type="date" value={toInputDate(filters.openedTo)} onChange={(event) => updateImmediate('openedTo', event.target.value ? `${event.target.value}T23:59:59.999Z` : '')} />
             </div>
           ) : null}
 
-          <div className="grid grid-cols-2 gap-2">
-            <button type="button" className="btn-primary h-11 justify-center" onClick={() => applyFilters()}>Aplicar filtros</button>
-            <button type="button" className="btn-secondary h-11 justify-center" onClick={clearFilters}>Limpiar</button>
+          <div className="grid grid-cols-1 gap-2">
+            <button type="button" className="btn-secondary h-11 justify-center" onClick={clearFilters}>Limpiar filtros</button>
           </div>
         </div>
       </section>
