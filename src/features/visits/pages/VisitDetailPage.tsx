@@ -3,7 +3,9 @@ import { useIsFetching, useIsMutating, useMutation, useQuery, useQueryClient } f
 import { useSearchParams, useParams } from 'react-router-dom';
 import { authStore } from '@/stores/auth-store';
 import { currency, dateTime } from '@/lib/utils';
+import { copyTextToClipboard } from '@/lib/clipboard';
 import { notifyError, notifyInfo, notifySuccess } from '@/lib/notify';
+import { VisitClientPhoneCopy } from '@/features/visits/components/VisitClientPhoneCopy';
 import { getIntakeLookups } from '@/features/intakes/api/get-intake-lookups';
 import { filesApi } from '@/features/intakes/api/filesApi';
 import type { LookupOption } from '@/features/intakes/types';
@@ -622,6 +624,20 @@ export function VisitDetailPage() {
     timelineQuery.isFetching ||
     serviceStatusesQuery.isFetching;
 
+  const copyWithToast = async (text: string, successMessage: string, errorMessage: string) => {
+    try {
+      await copyTextToClipboard(text);
+      notifySuccess(successMessage);
+    } catch {
+      notifyError(errorMessage);
+    }
+  };
+
+  const handleCopyTrackingUrl = async () => {
+    if (!resolvedTrackingUrl) return;
+    await copyWithToast(resolvedTrackingUrl, 'Liga de seguimiento copiada', 'No se pudo copiar la liga');
+  };
+
   return (
     <div className="space-y-3">
       {isBusy ? (
@@ -637,7 +653,7 @@ export function VisitDetailPage() {
           <div className="min-w-0">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{visit.folio}</p>
             <h1 className="mt-1 text-lg font-semibold text-slate-900">{visit.instrument?.name || 'Detalle de visita'}</h1>
-            <p className="truncate text-sm text-slate-500">{visit.client?.fullName || 'Cliente'} · {visit.client?.phone || 'Sin teléfono'}</p>
+            <VisitClientPhoneCopy clientName={visit.client?.fullName} phone={visit.client?.phone} />
           </div>
           <div className="flex flex-col items-end gap-2">
             <span
@@ -684,15 +700,7 @@ export function VisitDetailPage() {
           <button
             type="button"
             className="btn-secondary mt-2 h-8 px-3"
-            onClick={async () => {
-              if (!resolvedTrackingUrl) return;
-              try {
-                await navigator.clipboard.writeText(resolvedTrackingUrl);
-                notifySuccess('Liga de seguimiento copiada');
-              } catch {
-                notifyError('No se pudo copiar la liga');
-              }
-            }}
+            onClick={handleCopyTrackingUrl}
             disabled={!resolvedTrackingUrl}
           >
             Copiar URL completa
@@ -952,15 +960,7 @@ export function VisitDetailPage() {
               <button
                 type="button"
                 className="btn-secondary h-9 px-3"
-                onClick={async () => {
-                  if (!resolvedTrackingUrl) return;
-                  try {
-                    await navigator.clipboard.writeText(resolvedTrackingUrl);
-                    notifySuccess('Liga de seguimiento copiada');
-                  } catch {
-                    notifyError('No se pudo copiar la liga');
-                  }
-                }}
+                onClick={handleCopyTrackingUrl}
                 disabled={!resolvedTrackingUrl}
               >
                 Copiar

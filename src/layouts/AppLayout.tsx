@@ -13,7 +13,6 @@ import { AppHeader } from '@/components/layout/AppHeader';
 const ROUTE_COPY: Record<string, { title: string; subtitle: string }> = {
   '/app/intakes': { title: 'Recepción', subtitle: 'Registro y control de entrada' },
   '/app/visits': { title: 'Órdenes', subtitle: 'Seguimiento de instrumentos en taller' },
-  '/app/dashboard': { title: 'Resumen', subtitle: 'Estado operativo del día' },
   '/app/catalogs': { title: 'Catálogos', subtitle: 'Servicios, marcas y configuraciones' },
   '/app/settings': { title: 'Ajustes', subtitle: 'Usuarios, sesión y preferencias' },
 };
