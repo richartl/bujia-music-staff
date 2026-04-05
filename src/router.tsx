@@ -37,6 +37,14 @@ export const router = createBrowserRouter([
           </CatalogAdminRoute>
         ),
       },
+      {
+        path: 'catalogs/:catalogKey',
+        element: (
+          <CatalogAdminRoute>
+            <CatalogsPage />
+          </CatalogAdminRoute>
+        ),
+      },
       { path: 'settings', element: <SettingsPage /> },
     ],
   },

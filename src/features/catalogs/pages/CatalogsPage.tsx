@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { authStore } from '@/stores/auth-store';
 import { notifyError, notifySuccess } from '@/lib/notify';
 import { currency, dateTime } from '@/lib/utils';
+import { SearchInput } from '@/components/ui/SearchInput';
 import { CatalogEntitySection, type CatalogFieldDefinition } from '@/features/catalogs/components/CatalogEntitySection';
 import {
   useAffiliates,
@@ -61,7 +63,8 @@ type CatalogSectionKey =
   | 'services'
   | 'tunings'
   | 'string-gauges'
-  | 'affiliates';
+  | 'affiliates'
+  | 'users';
 
 const HUB_ITEMS: Array<{ key: CatalogSectionKey; label: string; description: string }> = [
   { key: 'colors', label: 'Colores', description: 'Paleta para acabados y apariencia.' },
@@ -73,6 +76,7 @@ const HUB_ITEMS: Array<{ key: CatalogSectionKey; label: string; description: str
   { key: 'tunings', label: 'Afinaciones', description: 'Afinaciones disponibles en intake.' },
   { key: 'string-gauges', label: 'Calibres de cuerdas', description: 'Calibres por familia de instrumento.' },
   { key: 'affiliates', label: 'Afiliados', description: 'Convenios bandas y negocios.' },
+  { key: 'users', label: 'Usuarios', description: 'Gestión de imagen de perfil desde Ajustes.' },
 ];
 
 const COLOR_FIELDS: CatalogFieldDefinition[] = [
@@ -147,8 +151,12 @@ function SectionBadge({ children, tone = 'slate' }: { children: string; tone?: '
 }
 
 export function CatalogsPage() {
+  const navigate = useNavigate();
+  const { catalogKey } = useParams<{ catalogKey?: CatalogSectionKey }>();
   const workshopId = authStore((state) => state.workshopId);
-  const [activeSection, setActiveSection] = useState<CatalogSectionKey>('colors');
+  const [search, setSearch] = useState('');
+  const activeSection = (catalogKey || '') as CatalogSectionKey;
+  const isHub = !catalogKey;
 
   const colorsQuery = useWorkshopColors(activeSection === 'colors' ? workshopId : null);
   const brandsQuery = useWorkshopBrands(activeSection === 'brands' ? workshopId : null);
@@ -199,28 +207,66 @@ export function CatalogsPage() {
   };
 
   const headerSubtitle = useMemo(() => HUB_ITEMS.find((item) => item.key === activeSection)?.description || '', [activeSection]);
+  const filteredItems = <T extends object>(items: T[]) => {
+    const term = search.trim().toLowerCase();
+    if (!term) return items;
+    return items.filter((item) => JSON.stringify(item).toLowerCase().includes(term));
+  };
 
   if (!workshopId) {
     return <section className="card p-4 text-sm text-amber-700">Selecciona un taller para gestionar catálogos.</section>;
   }
 
+  if (isHub) {
+    return (
+      <div className="space-y-4">
+        <section className="card p-4">
+          <h1 className="text-lg font-semibold text-slate-900">Catálogos</h1>
+          <p className="mt-1 text-sm text-slate-500">Selecciona un catálogo para abrir su pantalla dedicada.</p>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {HUB_ITEMS.map((item) => (
+              <Link
+                key={item.key}
+                to={`/app/catalogs/${item.key}`}
+                className="rounded-xl border border-slate-200 bg-white p-3 text-left transition hover:border-amber-400 hover:bg-amber-50"
+              >
+                <p className="text-sm font-semibold text-slate-900">{item.label}</p>
+                <p className="mt-1 text-xs text-slate-500">{item.description}</p>
+              </Link>
+            ))}
+          </div>
+        </section>
+      </div>
+    );
+  }
+
+  if (!HUB_ITEMS.some((item) => item.key === activeSection)) {
+    return (
+      <section className="card p-4 text-sm text-amber-700">
+        Catálogo no encontrado.
+      </section>
+    );
+  }
+
+  if (activeSection === 'users') {
+    return (
+      <section className="card p-4 space-y-3">
+        <button type="button" className="btn-secondary h-9 px-3" onClick={() => navigate('/app/catalogs')}>← Volver</button>
+        <h1 className="text-lg font-semibold text-slate-900">Usuarios del taller</h1>
+        <p className="text-sm text-slate-500">No hay CRUD de usuarios en Catálogos. Gestiona la imagen de perfil desde Ajustes.</p>
+        <Link to="/app/settings" className="btn-primary h-10 px-3 inline-flex items-center">Ir a Ajustes</Link>
+      </section>
+    );
+  }
+
   return (
     <div className="space-y-4">
       <section className="card p-4">
-        <h1 className="text-lg font-semibold text-slate-900">Catálogos</h1>
+        <button type="button" className="btn-secondary h-9 px-3" onClick={() => navigate('/app/catalogs')}>← Catálogos</button>
+        <h1 className="mt-3 text-lg font-semibold text-slate-900">{HUB_ITEMS.find((item) => item.key === activeSection)?.label || 'Catálogo'}</h1>
         <p className="mt-1 text-sm text-slate-500">{headerSubtitle || 'Configuración operativa del taller.'}</p>
-        <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {HUB_ITEMS.map((item) => (
-            <button
-              key={item.key}
-              type="button"
-              onClick={() => setActiveSection(item.key)}
-              className={`rounded-xl border p-3 text-left transition ${activeSection === item.key ? 'border-amber-400 bg-amber-50' : 'border-slate-200 bg-white hover:border-slate-300'}`}
-            >
-              <p className="text-sm font-semibold text-slate-900">{item.label}</p>
-              <p className="mt-1 text-xs text-slate-500">{item.description}</p>
-            </button>
-          ))}
+        <div className="mt-3">
+          <SearchInput value={search} onChange={setSearch} placeholder={`Buscar en ${HUB_ITEMS.find((item) => item.key === activeSection)?.label || 'catálogo'}`} />
         </div>
       </section>
 
@@ -230,7 +276,7 @@ export function CatalogsPage() {
           description="Lista combinada (global + taller)."
           createContextHint="Los nuevos colores se agregan al catálogo del taller activo."
           fields={COLOR_FIELDS}
-          items={colorsQuery.data || []}
+          items={filteredItems(colorsQuery.data || [])}
           isLoading={colorsQuery.isLoading}
           isError={colorsQuery.isError}
           emptyMessage="Aún no hay colores."
@@ -266,7 +312,7 @@ export function CatalogsPage() {
           description="Lista combinada (global + taller)."
           createContextHint="Las nuevas marcas se agregan al catálogo del taller activo."
           fields={BRAND_FIELDS}
-          items={brandsQuery.data || []}
+          items={filteredItems(brandsQuery.data || [])}
           isLoading={brandsQuery.isLoading}
           isError={brandsQuery.isError}
           emptyMessage="Aún no hay marcas."
@@ -302,7 +348,7 @@ export function CatalogsPage() {
           description="Orden y control de flujo de visitas."
           createContextHint="Los nuevos status de visita se agregan al catálogo del taller activo."
           fields={STATUS_FIELDS}
-          items={visitStatusesQuery.data || []}
+          items={filteredItems(visitStatusesQuery.data || [])}
           isLoading={visitStatusesQuery.isLoading}
           isError={visitStatusesQuery.isError}
           emptyMessage="Aún no hay status de visita."
@@ -335,7 +381,7 @@ export function CatalogsPage() {
           description="Estado operacional por servicio."
           createContextHint="Los nuevos status de servicio se agregan al catálogo del taller activo."
           fields={STATUS_FIELDS}
-          items={serviceStatusesQuery.data || []}
+          items={filteredItems(serviceStatusesQuery.data || [])}
           isLoading={serviceStatusesQuery.isLoading}
           isError={serviceStatusesQuery.isError}
           emptyMessage="Aún no hay status de servicio."
@@ -368,7 +414,7 @@ export function CatalogsPage() {
           description="Sin delete: activar/desactivar vía toggle."
           createContextHint="Las nuevas refacciones se agregan al catálogo del taller activo."
           fields={PART_FIELDS}
-          items={partsQuery.data || []}
+          items={filteredItems(partsQuery.data || [])}
           isLoading={partsQuery.isLoading}
           isError={partsQuery.isError}
           emptyMessage="Aún no hay refacciones."
@@ -402,7 +448,7 @@ export function CatalogsPage() {
           description="Catálogo de servicios del taller."
           createContextHint="Los nuevos servicios se agregan al catálogo del taller activo."
           fields={SERVICE_FIELDS}
-          items={servicesQuery.data || []}
+          items={filteredItems(servicesQuery.data || [])}
           isLoading={servicesQuery.isLoading}
           isError={servicesQuery.isError}
           emptyMessage="Aún no hay servicios."
@@ -435,7 +481,7 @@ export function CatalogsPage() {
           description="Afinaciones disponibles."
           createContextHint="Las nuevas afinaciones se agregan al catálogo del taller activo."
           fields={TUNING_FIELDS}
-          items={tuningsQuery.data || []}
+          items={filteredItems(tuningsQuery.data || [])}
           isLoading={tuningsQuery.isLoading}
           isError={tuningsQuery.isError}
           emptyMessage="Aún no hay afinaciones."
@@ -455,7 +501,7 @@ export function CatalogsPage() {
           description="Calibres por familia de instrumento."
           createContextHint="Los nuevos calibres se agregan al catálogo del taller activo."
           fields={STRING_GAUGE_FIELDS}
-          items={gaugesQuery.data || []}
+          items={filteredItems(gaugesQuery.data || [])}
           isLoading={gaugesQuery.isLoading}
           isError={gaugesQuery.isError}
           emptyMessage="Aún no hay calibres."
@@ -482,7 +528,7 @@ export function CatalogsPage() {
           description="Convenios de taller (BAND/BUSINESS)."
           createContextHint="Los nuevos afiliados se agregan al catálogo del taller activo."
           fields={AFFILIATE_FIELDS}
-          items={affiliatesQuery.data || []}
+          items={filteredItems(affiliatesQuery.data || [])}
           isLoading={affiliatesQuery.isLoading}
           isError={affiliatesQuery.isError}
           emptyMessage="Aún no hay afiliados."
