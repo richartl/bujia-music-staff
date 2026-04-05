@@ -8,8 +8,8 @@ import { env } from '@/config/env';
 export function LoginPage() {
   const navigate = useNavigate();
   const setSession = authStore((state) => state.setSession);
-  const [email, setEmail] = useState('ricardo@bujia.com');
-  const [password, setPassword] = useState('12345678');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -53,13 +53,28 @@ export function LoginPage() {
 
           <div className="mt-6 space-y-4">
             <div>
-              <label className="mb-2 block text-sm font-medium">Correo</label>
-              <input className="input" value={email} onChange={(e) => setEmail(e.target.value)} />
+              <label htmlFor="email" className="mb-2 block text-sm font-medium">Correo</label>
+              <input
+                id="email"
+                name="email"
+                autoComplete="username"
+                className="input"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
             </div>
 
             <div>
-              <label className="mb-2 block text-sm font-medium">Contraseña</label>
-              <input className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+              <label htmlFor="password" className="mb-2 block text-sm font-medium">Contraseña</label>
+              <input
+                id="password"
+                name="password"
+                autoComplete="current-password"
+                className="input"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
             </div>
 
             {error ? <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
