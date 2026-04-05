@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Eye, EyeOff } from 'lucide-react';
 import { authStore } from '@/stores/auth-store';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { notifyError, notifySuccess } from '@/lib/notify';
@@ -174,8 +175,11 @@ export function CatalogsPage() {
     name: '',
     email: '',
     password: '',
+    confirmPassword: '',
     role: 'STAFF' as WorkshopUserRole,
   });
+  const [showUserPassword, setShowUserPassword] = useState(false);
+  const [showUserConfirmPassword, setShowUserConfirmPassword] = useState(false);
   const debouncedSearch = useDebouncedValue(search, 300);
   const activeSection = (catalogKey || '') as CatalogSectionKey;
   const isHub = !catalogKey;
@@ -264,14 +268,18 @@ export function CatalogsPage() {
   const openCreateUserModal = () => {
     setEditingUser(null);
     setUserFormError('');
-    setUserFormValues({ name: '', email: '', password: '', role: 'STAFF' });
+    setUserFormValues({ name: '', email: '', password: '', confirmPassword: '', role: 'STAFF' });
+    setShowUserPassword(false);
+    setShowUserConfirmPassword(false);
     setIsUserFormOpen(true);
   };
 
   const openEditUserModal = (user: WorkshopUser) => {
     setEditingUser(user);
     setUserFormError('');
-    setUserFormValues({ name: user.name, email: user.email, password: '', role: user.role });
+    setUserFormValues({ name: user.name, email: user.email, password: '', confirmPassword: '', role: user.role });
+    setShowUserPassword(false);
+    setShowUserConfirmPassword(false);
     setIsUserFormOpen(true);
   };
 
@@ -282,7 +290,7 @@ export function CatalogsPage() {
     setUserFormError('');
   };
 
-  const handleUserFormValue = (name: 'name' | 'email' | 'password' | 'role', value: string) => {
+  const handleUserFormValue = (name: 'name' | 'email' | 'password' | 'confirmPassword' | 'role', value: string) => {
     if (name === 'role') {
       setUserFormValues((prev) => ({ ...prev, role: value as WorkshopUserRole }));
       return;
@@ -294,9 +302,14 @@ export function CatalogsPage() {
     const name = userFormValues.name.trim();
     const email = userFormValues.email.trim();
     const password = userFormValues.password.trim();
+    const confirmPassword = userFormValues.confirmPassword.trim();
 
-    if (!editingUser && (!name || !email || !password || !userFormValues.role)) {
-      setUserFormError('Completa nombre, correo, contraseña y rol.');
+    if (!editingUser && (!name || !email || !password || !confirmPassword || !userFormValues.role)) {
+      setUserFormError('Completa nombre, correo, contraseña, confirmación y rol.');
+      return;
+    }
+    if (!editingUser && password !== confirmPassword) {
+      setUserFormError('La confirmación de contraseña no coincide.');
       return;
     }
 
@@ -310,7 +323,17 @@ export function CatalogsPage() {
       if (name !== editingUser.name) payload.name = name;
       if (email !== editingUser.email) payload.email = email;
       if (userFormValues.role !== editingUser.role) payload.role = userFormValues.role;
-      if (password) payload.password = password;
+      if (password) {
+        if (!confirmPassword) {
+          setUserFormError('Confirma la nueva contraseña para continuar.');
+          return;
+        }
+        if (password !== confirmPassword) {
+          setUserFormError('La confirmación de contraseña no coincide.');
+          return;
+        }
+        payload.password = password;
+      }
 
       if (Object.keys(payload).length === 0) {
         closeUserModal();
@@ -516,13 +539,47 @@ export function CatalogsPage() {
                   </label>
                   <label className="text-xs font-medium text-slate-300">
                     {editingUser ? 'Nueva contraseña (opcional)' : 'Contraseña'}
-                    <input
-                      className="input mt-1 h-11 bg-slate-800 text-slate-100"
-                      value={userFormValues.password}
-                      type="password"
-                      data-text-normalization="off"
-                      onChange={(event) => handleUserFormValue('password', event.target.value)}
-                    />
+                    <div className="relative mt-1">
+                      <input
+                        className="input h-11 bg-slate-800 pr-12 text-slate-100"
+                        value={userFormValues.password}
+                        type={showUserPassword ? 'text' : 'password'}
+                        data-text-normalization="off"
+                        onChange={(event) => handleUserFormValue('password', event.target.value)}
+                      />
+                      <button
+                        type="button"
+                        className="absolute inset-y-1 right-1 inline-flex min-h-9 min-w-9 items-center justify-center rounded-lg text-slate-300 transition hover:bg-slate-700 hover:text-slate-100"
+                        aria-label={showUserPassword ? 'Ocultar contraseña usuario' : 'Mostrar contraseña usuario'}
+                        onClick={() => setShowUserPassword((prev) => !prev)}
+                      >
+                        {showUserPassword ? <EyeOff className="h-4 w-4" aria-hidden="true" /> : <Eye className="h-4 w-4" aria-hidden="true" />}
+                      </button>
+                    </div>
+                  </label>
+                  <label className="text-xs font-medium text-slate-300">
+                    {editingUser ? 'Confirmar nueva contraseña' : 'Confirmar contraseña'}
+                    <div className="relative mt-1">
+                      <input
+                        className="input h-11 bg-slate-800 pr-12 text-slate-100"
+                        value={userFormValues.confirmPassword}
+                        type={showUserConfirmPassword ? 'text' : 'password'}
+                        data-text-normalization="off"
+                        onChange={(event) => handleUserFormValue('confirmPassword', event.target.value)}
+                      />
+                      <button
+                        type="button"
+                        className="absolute inset-y-1 right-1 inline-flex min-h-9 min-w-9 items-center justify-center rounded-lg text-slate-300 transition hover:bg-slate-700 hover:text-slate-100"
+                        aria-label={showUserConfirmPassword ? 'Ocultar confirmación usuario' : 'Mostrar confirmación usuario'}
+                        onClick={() => setShowUserConfirmPassword((prev) => !prev)}
+                      >
+                        {showUserConfirmPassword ? (
+                          <EyeOff className="h-4 w-4" aria-hidden="true" />
+                        ) : (
+                          <Eye className="h-4 w-4" aria-hidden="true" />
+                        )}
+                      </button>
+                    </div>
                   </label>
                   <label className="text-xs font-medium text-slate-300">
                     Rol

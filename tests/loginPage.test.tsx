@@ -41,6 +41,17 @@ describe('LoginPage', () => {
     expect(screen.getByRole('button', { name: 'Iniciar sesión' })).toBeDisabled();
   });
 
+  it('mantiene login limpio sin leyendas promocionales innecesarias', () => {
+    render(
+      <MemoryRouter>
+        <LoginPage />
+      </MemoryRouter>,
+    );
+
+    expect(screen.queryByText('Staff Platform')).toBeNull();
+    expect(screen.queryByText('Gestión centralizada para staff.')).toBeNull();
+  });
+
   it('permite mostrar y ocultar la contraseña', () => {
     render(
       <MemoryRouter>

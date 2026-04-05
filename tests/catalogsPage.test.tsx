@@ -192,8 +192,12 @@ describe('CatalogsPage UI', () => {
     expect(emailInput.dataset.textNormalization).toBe('off');
     expect(passwordInput.type).toBe('password');
     expect(passwordInput.dataset.textNormalization).toBe('off');
+    const confirmInput = screen.getByLabelText('Confirmar contraseña') as HTMLInputElement;
+    expect(confirmInput.type).toBe('password');
+    expect(confirmInput.dataset.textNormalization).toBe('off');
     fireEvent.change(emailInput, { target: { value: 'luis@bujia.com' } });
     fireEvent.change(passwordInput, { target: { value: '12345678' } });
+    fireEvent.change(confirmInput, { target: { value: '12345678' } });
     fireEvent.change(screen.getByLabelText('Rol'), { target: { value: 'ADMIN' } });
 
     fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
@@ -228,6 +232,53 @@ describe('CatalogsPage UI', () => {
       expect(updateWorkshopUserMutate).toHaveBeenCalledWith({
         userId: 'u1',
         payload: { name: 'María P.' },
+      });
+    });
+  });
+
+  it('usuarios valida confirmación de contraseña en create y toggle show/hide', async () => {
+    renderCatalogs('/app/catalogs/users');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Agregar usuario' }));
+    const passwordInput = screen.getByLabelText('Contraseña') as HTMLInputElement;
+    const confirmInput = screen.getByLabelText('Confirmar contraseña') as HTMLInputElement;
+
+    fireEvent.click(screen.getByRole('button', { name: 'Mostrar contraseña usuario' }));
+    expect(passwordInput.type).toBe('text');
+    fireEvent.click(screen.getByRole('button', { name: 'Ocultar contraseña usuario' }));
+    expect(passwordInput.type).toBe('password');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Mostrar confirmación usuario' }));
+    expect(confirmInput.type).toBe('text');
+
+    fireEvent.change(screen.getByLabelText('Nombre'), { target: { value: 'Luis V' } });
+    fireEvent.change(screen.getByLabelText('Correo'), { target: { value: 'luis@bujia.com' } });
+    fireEvent.change(passwordInput, { target: { value: '12345678' } });
+    fireEvent.change(confirmInput, { target: { value: '87654321' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+
+    expect(screen.getByText('La confirmación de contraseña no coincide.')).toBeTruthy();
+    await waitFor(() => {
+      expect(createWorkshopUserMutate).not.toHaveBeenCalled();
+    });
+  });
+
+  it('usuarios edit pide confirmación solo cuando cambia password', async () => {
+    renderCatalogs('/app/catalogs/users');
+    fireEvent.click(screen.getByRole('button', { name: 'Editar' }));
+
+    const passwordInput = screen.getByLabelText('Nueva contraseña (opcional)') as HTMLInputElement;
+    fireEvent.change(passwordInput, { target: { value: 'nueva123' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+    expect(screen.getByText('Confirma la nueva contraseña para continuar.')).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText('Confirmar nueva contraseña'), { target: { value: 'nueva123' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+
+    await waitFor(() => {
+      expect(updateWorkshopUserMutate).toHaveBeenCalledWith({
+        userId: 'u1',
+        payload: { password: 'nueva123' },
       });
     });
   });

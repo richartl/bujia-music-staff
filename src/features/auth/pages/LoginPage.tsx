@@ -42,17 +42,8 @@ export function LoginPage() {
           <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-amber-500/40 bg-amber-500/10 text-amber-300">
             <Guitar className="h-6 w-6" aria-hidden="true" />
           </div>
-          <p className="mt-5 text-xs font-semibold uppercase tracking-[0.24em] text-amber-300/90">Staff Platform</p>
           <h1 className="mt-3 text-3xl font-semibold leading-tight text-white sm:text-4xl">{env.appName}</h1>
-          <p className="mt-4 max-w-xl text-sm leading-6 text-slate-300 sm:text-base">
-            Opera tu taller con enfoque profesional: recepción ágil, seguimiento claro y menos fricción para el equipo de
-            mostrador.
-          </p>
-          <ul className="mt-8 space-y-3 text-sm text-slate-200">
-            <li className="rounded-xl border border-slate-700/80 bg-slate-900/60 px-4 py-3">Gestión centralizada para staff.</li>
-            <li className="rounded-xl border border-slate-700/80 bg-slate-900/60 px-4 py-3">Flujos rápidos para instrumentos y órdenes.</li>
-            <li className="rounded-xl border border-slate-700/80 bg-slate-900/60 px-4 py-3">Interfaz clara para trabajar desde móvil o desktop.</li>
-          </ul>
+          <p className="mt-4 max-w-xl text-sm leading-6 text-slate-300 sm:text-base">Accede con tu cuenta del taller.</p>
         </section>
 
         <section className="flex items-center justify-center">
