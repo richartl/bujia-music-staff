@@ -25,7 +25,7 @@ describe('CatalogEntitySection', () => {
         emptyMessage="Sin datos"
       />,
     );
-    expect(screen.getByText('Cargando…')).toBeTruthy();
+    expect(document.querySelector('.animate-pulse')).toBeTruthy();
 
     rerender(
       <CatalogEntitySection
@@ -67,5 +67,21 @@ describe('CatalogEntitySection', () => {
     fireEvent.click(screen.getAllByRole('button').find((btn) => btn.className.includes('btn-secondary h-8 px-2'))!);
     fireEvent.click(screen.getByText('Editar'));
     expect(screen.getByDisplayValue('Rojo')).toBeTruthy();
+  });
+
+  it('si item es solo lectura no muestra botón de acciones', () => {
+    render(
+      <CatalogEntitySection
+        {...baseProps}
+        items={[{ id: '1', name: 'Global Rojo' }]}
+        isLoading={false}
+        isError={false}
+        emptyMessage="Sin datos"
+        getReadonlyReason={() => 'Registro global'}
+      />,
+    );
+
+    expect(screen.getByText('Solo lectura · Registro global')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Editar' })).toBeNull();
   });
 });

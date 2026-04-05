@@ -228,6 +228,7 @@ export function CatalogsPage() {
         <CatalogEntitySection<Color>
           title="Colores"
           description="Lista combinada (global + taller)."
+          createContextHint="Los nuevos colores se agregan al catálogo del taller activo."
           fields={COLOR_FIELDS}
           items={colorsQuery.data || []}
           isLoading={colorsQuery.isLoading}
@@ -243,10 +244,19 @@ export function CatalogsPage() {
           )}
           canEdit={canMutateCatalogItem}
           canDelete={canMutateCatalogItem}
+          getReadonlyReason={(item) => (canMutateCatalogItem(item) ? null : 'Registro global')}
           toFormValues={(item) => ({ name: item?.name || '', slug: item?.slug || '', hex: item?.hex || '#000000', isActive: item?.isActive ?? true })}
           onCreate={(payload) => handleMutation(() => createColor.mutateAsync(payload as never), 'Color creado', 'No se pudo crear el color')}
-          onUpdate={(item, payload) => handleMutation(() => updateColor.mutateAsync({ id: item.id, payload: payload as never }), 'Color actualizado', 'No se pudo actualizar el color')}
-          onDelete={(item) => handleMutation(() => deleteColor.mutateAsync({ id: item.id } as never), 'Color eliminado', 'No se pudo eliminar el color')}
+          onUpdate={(item, payload) =>
+            canMutateCatalogItem(item)
+              ? handleMutation(() => updateColor.mutateAsync({ id: item.id, payload: payload as never }), 'Color actualizado', 'No se pudo actualizar el color')
+              : Promise.resolve()
+          }
+          onDelete={(item) =>
+            canMutateCatalogItem(item)
+              ? handleMutation(() => deleteColor.mutateAsync({ id: item.id } as never), 'Color eliminado', 'No se pudo eliminar el color')
+              : Promise.resolve()
+          }
         />
       ) : null}
 
@@ -254,6 +264,7 @@ export function CatalogsPage() {
         <CatalogEntitySection<Brand>
           title="Marcas"
           description="Lista combinada (global + taller)."
+          createContextHint="Las nuevas marcas se agregan al catálogo del taller activo."
           fields={BRAND_FIELDS}
           items={brandsQuery.data || []}
           isLoading={brandsQuery.isLoading}
@@ -269,10 +280,19 @@ export function CatalogsPage() {
           )}
           canEdit={canMutateCatalogItem}
           canDelete={canMutateCatalogItem}
+          getReadonlyReason={(item) => (canMutateCatalogItem(item) ? null : 'Registro global')}
           toFormValues={(item) => ({ name: item?.name || '', slug: item?.slug || '', isActive: item?.isActive ?? true })}
           onCreate={(payload) => handleMutation(() => createBrand.mutateAsync(payload as never), 'Marca creada', 'No se pudo crear la marca')}
-          onUpdate={(item, payload) => handleMutation(() => updateBrand.mutateAsync({ id: item.id, payload: payload as never }), 'Marca actualizada', 'No se pudo actualizar la marca')}
-          onDelete={(item) => handleMutation(() => deleteBrand.mutateAsync({ id: item.id } as never), 'Marca eliminada', 'No se pudo eliminar la marca')}
+          onUpdate={(item, payload) =>
+            canMutateCatalogItem(item)
+              ? handleMutation(() => updateBrand.mutateAsync({ id: item.id, payload: payload as never }), 'Marca actualizada', 'No se pudo actualizar la marca')
+              : Promise.resolve()
+          }
+          onDelete={(item) =>
+            canMutateCatalogItem(item)
+              ? handleMutation(() => deleteBrand.mutateAsync({ id: item.id } as never), 'Marca eliminada', 'No se pudo eliminar la marca')
+              : Promise.resolve()
+          }
         />
       ) : null}
 
@@ -280,6 +300,7 @@ export function CatalogsPage() {
         <CatalogEntitySection<VisitStatus>
           title="Status de visita"
           description="Orden y control de flujo de visitas."
+          createContextHint="Los nuevos status de visita se agregan al catálogo del taller activo."
           fields={STATUS_FIELDS}
           items={visitStatusesQuery.data || []}
           isLoading={visitStatusesQuery.isLoading}
@@ -312,6 +333,7 @@ export function CatalogsPage() {
         <CatalogEntitySection<ServiceStatus>
           title="Status de servicio"
           description="Estado operacional por servicio."
+          createContextHint="Los nuevos status de servicio se agregan al catálogo del taller activo."
           fields={STATUS_FIELDS}
           items={serviceStatusesQuery.data || []}
           isLoading={serviceStatusesQuery.isLoading}
@@ -344,6 +366,7 @@ export function CatalogsPage() {
         <CatalogEntitySection<WorkshopPartCatalog>
           title="Refacciones"
           description="Sin delete: activar/desactivar vía toggle."
+          createContextHint="Las nuevas refacciones se agregan al catálogo del taller activo."
           fields={PART_FIELDS}
           items={partsQuery.data || []}
           isLoading={partsQuery.isLoading}
@@ -377,6 +400,7 @@ export function CatalogsPage() {
         <CatalogEntitySection<WorkshopServiceCatalog>
           title="Servicios"
           description="Catálogo de servicios del taller."
+          createContextHint="Los nuevos servicios se agregan al catálogo del taller activo."
           fields={SERVICE_FIELDS}
           items={servicesQuery.data || []}
           isLoading={servicesQuery.isLoading}
@@ -409,6 +433,7 @@ export function CatalogsPage() {
         <CatalogEntitySection<Tuning>
           title="Afinaciones"
           description="Afinaciones disponibles."
+          createContextHint="Las nuevas afinaciones se agregan al catálogo del taller activo."
           fields={TUNING_FIELDS}
           items={tuningsQuery.data || []}
           isLoading={tuningsQuery.isLoading}
@@ -428,6 +453,7 @@ export function CatalogsPage() {
         <CatalogEntitySection<StringGauge>
           title="Calibres de cuerdas"
           description="Calibres por familia de instrumento."
+          createContextHint="Los nuevos calibres se agregan al catálogo del taller activo."
           fields={STRING_GAUGE_FIELDS}
           items={gaugesQuery.data || []}
           isLoading={gaugesQuery.isLoading}
@@ -454,6 +480,7 @@ export function CatalogsPage() {
         <CatalogEntitySection<Affiliate>
           title="Afiliados"
           description="Convenios de taller (BAND/BUSINESS)."
+          createContextHint="Los nuevos afiliados se agregan al catálogo del taller activo."
           fields={AFFILIATE_FIELDS}
           items={affiliatesQuery.data || []}
           isLoading={affiliatesQuery.isLoading}

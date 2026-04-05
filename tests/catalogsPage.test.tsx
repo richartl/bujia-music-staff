@@ -4,6 +4,8 @@ import { CatalogsPage } from '../src/features/catalogs/pages/CatalogsPage';
 import { authStore } from '../src/stores/auth-store';
 import * as notify from '../src/lib/notify';
 
+const createColorMutate = vi.fn(async () => ({}));
+
 vi.mock('../src/features/catalogs/hooks/useCatalogs', () => {
   const query = (data: unknown[] = []) => ({ data, isLoading: false, isError: false });
   const mutation = () => ({ mutateAsync: vi.fn(async () => ({})) });
@@ -17,7 +19,7 @@ vi.mock('../src/features/catalogs/hooks/useCatalogs', () => {
     useTunings: vi.fn(() => query([])),
     useStringGauges: vi.fn(() => query([])),
     useAffiliates: vi.fn(() => query([])),
-    useCreateWorkshopColor: vi.fn(mutation),
+    useCreateWorkshopColor: vi.fn(() => ({ mutateAsync: createColorMutate })),
     useUpdateWorkshopColor: vi.fn(mutation),
     useDeleteWorkshopColor: vi.fn(mutation),
     useCreateWorkshopBrand: vi.fn(mutation),
@@ -49,6 +51,7 @@ vi.mock('../src/features/catalogs/hooks/useCatalogs', () => {
 describe('CatalogsPage UI', () => {
   beforeEach(() => {
     authStore.setState({ workshopId: 'w1' as never });
+    createColorMutate.mockClear();
   });
 
   it('renderiza el hub principal con todos los catálogos', () => {
@@ -64,13 +67,13 @@ describe('CatalogsPage UI', () => {
     expect(screen.getByText('Afiliados')).toBeTruthy();
   });
 
-  it('colors distingue global vs taller y bloquea acciones indebidas para globales', () => {
+  it('colors distingue global vs taller y globales quedan en solo lectura', () => {
     render(<CatalogsPage />);
     expect(screen.getByText('Global')).toBeTruthy();
     expect(screen.getByText('Taller')).toBeTruthy();
-
-    const deleteButtons = screen.getAllByRole('button').filter((btn) => btn.className.includes('rose-50'));
-    expect(deleteButtons.length).toBe(1);
+    expect(screen.getByText('Solo lectura · Registro global')).toBeTruthy();
+    const actionButtons = screen.getAllByRole('button').filter((btn) => btn.className.includes('btn-secondary h-8 px-2'));
+    expect(actionButtons.length).toBe(1);
   });
 
   it('parts usa toggle isActive y no delete', () => {
@@ -93,13 +96,15 @@ describe('CatalogsPage UI', () => {
     expect(screen.getByDisplayValue('Rojo Global')).toBeTruthy();
   });
 
-  it('muestra feedback de éxito al guardar', async () => {
+  it('crear usa contexto de taller y muestra feedback de éxito', async () => {
     const successSpy = vi.spyOn(notify, 'notifySuccess');
     render(<CatalogsPage />);
+    expect(screen.getByText('Los nuevos colores se agregan al catálogo del taller activo.')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Agregar' }));
     fireEvent.change(screen.getByLabelText('Nombre'), { target: { value: 'Nuevo color' } });
     fireEvent.change(screen.getByLabelText('Slug'), { target: { value: 'nuevo-color' } });
     fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+    expect(createColorMutate).toHaveBeenCalled();
     expect(successSpy).toHaveBeenCalled();
   });
 });

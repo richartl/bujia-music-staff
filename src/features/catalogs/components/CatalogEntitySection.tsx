@@ -38,6 +38,8 @@ export type CatalogEntitySectionProps<TItem extends { id: string }> = {
   onToggleActive?: (item: TItem) => Promise<unknown>;
   canEdit?: (item: TItem) => boolean;
   canDelete?: (item: TItem) => boolean;
+  getReadonlyReason?: (item: TItem) => string | null;
+  createContextHint?: string;
 };
 
 function buildPayloadFromFields(fields: CatalogFieldDefinition[], values: Record<string, string | boolean>) {
@@ -231,6 +233,8 @@ export function CatalogEntitySection<TItem extends { id: string }>(props: Catalo
     onToggleActive,
     canEdit,
     canDelete,
+    getReadonlyReason,
+    createContextHint,
   } = props;
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<TItem | null>(null);
@@ -297,6 +301,7 @@ export function CatalogEntitySection<TItem extends { id: string }>(props: Catalo
           Agregar
         </button>
       </div>
+      {createContextHint ? <p className="mt-1 text-[11px] font-medium text-sky-700">{createContextHint}</p> : null}
 
       {isLoading ? (
         <div className="mt-3 space-y-2">
@@ -319,6 +324,7 @@ export function CatalogEntitySection<TItem extends { id: string }>(props: Catalo
         {items.map((item) => {
           const editable = canEdit ? canEdit(item) : true;
           const deletable = canDelete ? canDelete(item) : true;
+          const readonlyReason = getReadonlyReason ? getReadonlyReason(item) : null;
           const isPending = pendingActionId === item.id;
           return (
             <article key={item.id} className="rounded-xl border border-slate-200 bg-white p-3">
@@ -327,13 +333,20 @@ export function CatalogEntitySection<TItem extends { id: string }>(props: Catalo
                   <p className="truncate text-sm font-semibold text-slate-900">{getItemTitle(item)}</p>
                   {getItemMeta ? <p className="mt-1 text-xs text-slate-500">{getItemMeta(item)}</p> : null}
                   {renderBadges ? <div className="mt-2 flex flex-wrap gap-1">{renderBadges(item)}</div> : null}
+                  {readonlyReason ? (
+                    <p className="mt-2 inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
+                      Solo lectura · {readonlyReason}
+                    </p>
+                  ) : null}
                 </div>
 
                 <div className="relative shrink-0">
+                  {readonlyReason ? null : (
                   <button type="button" className="btn-secondary h-8 px-2" onClick={() => setMenuItemId((current) => (current === item.id ? null : item.id))}>
                     {isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <MoreVertical className="h-3.5 w-3.5" />}
                   </button>
-                  {menuItemId === item.id ? (
+                  )}
+                  {menuItemId === item.id && !readonlyReason ? (
                     <div className="absolute right-0 z-20 mt-1 min-w-36 rounded-xl border border-slate-200 bg-white p-1 shadow-lg">
                       {editable ? (
                         <button type="button" className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-xs hover:bg-slate-100" onClick={() => openEdit(item)}>
