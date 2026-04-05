@@ -21,6 +21,7 @@ import {
   useCreateWorkshopUser,
   useCreateWorkshopVisitStatus,
   useDeleteAffiliate,
+  useDeleteWorkshopUser,
   useDeleteStringGauge,
   useDeleteTuning,
   useDeleteWorkshopBrand,
@@ -168,6 +169,7 @@ export function CatalogsPage() {
   const [isUserFormOpen, setIsUserFormOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<WorkshopUser | null>(null);
   const [userFormError, setUserFormError] = useState('');
+  const [confirmDeleteUser, setConfirmDeleteUser] = useState<WorkshopUser | null>(null);
   const [userFormValues, setUserFormValues] = useState({
     name: '',
     email: '',
@@ -227,6 +229,7 @@ export function CatalogsPage() {
   const deleteAffiliate = useDeleteAffiliate(workshopId);
   const createWorkshopUser = useCreateWorkshopUser(workshopId);
   const updateWorkshopUser = useUpdateWorkshopUser(workshopId);
+  const deleteWorkshopUser = useDeleteWorkshopUser(workshopId);
 
   const canMutateCatalogItem = (item: { isGlobal?: boolean; workshopId?: string | null }) => !item.isGlobal && item.workshopId === workshopId;
 
@@ -253,6 +256,7 @@ export function CatalogsPage() {
   }, [debouncedSearch, usersRoleFilter, activeSection]);
 
   const isSavingUser = createWorkshopUser.isPending || updateWorkshopUser.isPending;
+  const isDeletingUser = deleteWorkshopUser.isPending;
   const userItems = workshopUsersQuery.data?.items || [];
   const usersTotal = workshopUsersQuery.data?.total || 0;
   const usersTotalPages = Math.max(1, Math.ceil(usersTotal / usersLimit));
@@ -334,6 +338,16 @@ export function CatalogsPage() {
       'No se pudo crear el usuario',
     );
     setIsUserFormOpen(false);
+  };
+
+  const handleDeleteUser = async () => {
+    if (!confirmDeleteUser) return;
+    await handleMutation(
+      () => deleteWorkshopUser.mutateAsync({ userId: confirmDeleteUser.id }),
+      'Usuario eliminado',
+      'No se pudo eliminar el usuario',
+    );
+    setConfirmDeleteUser(null);
   };
 
   if (!workshopId) {
@@ -435,9 +449,18 @@ export function CatalogsPage() {
                       </div>
                     </div>
                   </div>
-                  <button type="button" className="btn-secondary h-8 px-3 text-xs" onClick={() => openEditUserModal(user)}>
-                    Editar
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button type="button" className="btn-secondary h-8 px-3 text-xs" onClick={() => openEditUserModal(user)}>
+                      Editar
+                    </button>
+                    <button
+                      type="button"
+                      className="h-8 rounded-lg bg-rose-600 px-3 text-xs font-semibold text-white transition hover:bg-rose-500"
+                      onClick={() => setConfirmDeleteUser(user)}
+                    >
+                      Eliminar
+                    </button>
+                  </div>
                 </div>
               </article>
             ))}
@@ -516,6 +539,31 @@ export function CatalogsPage() {
                   </button>
                   <button type="button" className="btn-primary h-10 justify-center" onClick={() => void submitUserForm()} disabled={isSavingUser}>
                     {isSavingUser ? 'Guardando...' : 'Guardar'}
+                  </button>
+                </div>
+              </section>
+            </div>
+          </OverlayPortal>
+        ) : null}
+
+        {confirmDeleteUser ? (
+          <OverlayPortal>
+            <div className="fixed inset-0 z-[145] flex items-end bg-black/50 sm:items-center sm:justify-center sm:p-4" onClick={() => (isDeletingUser ? null : setConfirmDeleteUser(null))}>
+              <section
+                className="w-full rounded-t-2xl border border-slate-700 bg-slate-900 p-4 text-slate-100 shadow-xl sm:max-w-md sm:rounded-2xl"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <h3 className="text-base font-semibold">Eliminar usuario</h3>
+                <p className="mt-2 text-sm text-slate-300">
+                  Vas a eliminar a <span className="font-semibold text-white">{confirmDeleteUser.name}</span> ({confirmDeleteUser.email}).
+                </p>
+                <p className="mt-1 text-xs text-slate-400">Esta acción no se puede deshacer.</p>
+                <div className="mt-4 grid grid-cols-2 gap-2">
+                  <button type="button" className="btn-secondary h-10 justify-center" onClick={() => setConfirmDeleteUser(null)} disabled={isDeletingUser}>
+                    Cancelar
+                  </button>
+                  <button type="button" className="h-10 rounded-lg bg-rose-600 px-3 text-sm font-semibold text-white" onClick={() => void handleDeleteUser()} disabled={isDeletingUser}>
+                    {isDeletingUser ? 'Eliminando...' : 'Eliminar'}
                   </button>
                 </div>
               </section>

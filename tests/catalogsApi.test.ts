@@ -22,6 +22,7 @@ import {
   deleteWorkshopColor,
   deleteWorkshopService,
   deleteWorkshopServiceStatus,
+  deleteWorkshopUser,
   deleteWorkshopVisitStatus,
   getAffiliateById,
   getAffiliates,
@@ -175,6 +176,7 @@ describe('catalogsApi endpoints', () => {
     await getWorkshopUserById('w1', 'u1');
     await createWorkshopUser('w1', { name: 'María Pérez', email: 'maria@bujia.com', password: '12345678', role: 'STAFF' });
     await updateWorkshopUser('w1', 'u1', { name: 'María P.', email: 'maria.p@bujia.com', role: 'ADMIN' });
+    await deleteWorkshopUser('w1', 'u1');
 
     expect(http.get).toHaveBeenCalledWith('/workshops/w1/workshop-visit-statuses');
     expect(http.get).toHaveBeenCalledWith('/workshops/w1/service-statuses');
@@ -188,5 +190,6 @@ describe('catalogsApi endpoints', () => {
     expect(http.get).toHaveBeenCalledWith('/workshops/w1/users/u1');
     expect(http.post).toHaveBeenCalledWith('/workshops/w1/users', { name: 'María Pérez', email: 'maria@bujia.com', password: '12345678', role: 'STAFF' });
     expect(http.patch).toHaveBeenCalledWith('/workshops/w1/users/u1', { name: 'María P.', email: 'maria.p@bujia.com', role: 'ADMIN' });
+    expect(http.delete).toHaveBeenCalledWith('/workshops/w1/users/u1');
   });
 });

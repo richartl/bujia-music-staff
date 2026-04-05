@@ -281,3 +281,6 @@ export async function updateWorkshopUser(workshopId: string, userId: string, pay
   const { data } = await http.patch<WorkshopUser>(`/workshops/${workshopId}/users/${userId}`, payload);
   return data;
 }
+export async function deleteWorkshopUser(workshopId: string, userId: string) {
+  await http.delete(`/workshops/${workshopId}/users/${userId}`);
+}

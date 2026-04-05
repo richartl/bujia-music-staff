@@ -540,6 +540,16 @@ export function useUpdateWorkshopUser(workshopId?: string | null) {
     },
   });
 }
+export function useDeleteWorkshopUser(workshopId?: string | null) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId }: { userId: string }) => catalogsApi.deleteWorkshopUser(workshopId!, userId),
+    onSuccess: (_data, vars) => {
+      queryClient.invalidateQueries({ queryKey: catalogsQueryKeys.users.workshopBase(workshopId!) });
+      queryClient.invalidateQueries({ queryKey: catalogsQueryKeys.users.workshopDetail(workshopId!, vars.userId) });
+    },
+  });
+}
 
 export function useUpdateUserProfileImage(userId?: string | null) {
   const queryClient = useQueryClient();

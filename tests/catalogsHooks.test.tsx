@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as catalogsApi from '../src/features/catalogs/api/catalogsApi';
 import {
   useCreateWorkshopUser,
+  useDeleteWorkshopUser,
   useCreateWorkshopPart,
   useCreateWorkshopService,
   useUpdateWorkshopUser,
@@ -90,6 +91,7 @@ describe('catalogs hooks', () => {
     vi.mocked(catalogsApi.getWorkshopUsers).mockResolvedValue({ items: [], page: 1, limit: 20, total: 0 } as never);
     vi.mocked(catalogsApi.createWorkshopUser).mockResolvedValue({ id: 'u1' } as never);
     vi.mocked(catalogsApi.updateWorkshopUser).mockResolvedValue({ id: 'u1' } as never);
+    vi.mocked(catalogsApi.deleteWorkshopUser).mockResolvedValue(undefined as never);
 
     const listHook = renderHook(() => useWorkshopUsers('w1', { page: 1, limit: 20, search: 'maria', role: 'STAFF' }), { wrapper: createWrapper(client) });
     await waitFor(() => {
@@ -105,6 +107,10 @@ describe('catalogs hooks', () => {
     const updateHook = renderHook(() => useUpdateWorkshopUser('w1'), { wrapper: createWrapper(client) });
     await act(async () => {
       await updateHook.result.current.mutateAsync({ userId: 'u1', payload: { role: 'ADMIN' } });
+    });
+    const deleteHook = renderHook(() => useDeleteWorkshopUser('w1'), { wrapper: createWrapper(client) });
+    await act(async () => {
+      await deleteHook.result.current.mutateAsync({ userId: 'u1' });
     });
 
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: catalogsQueryKeys.users.workshopBase('w1') });

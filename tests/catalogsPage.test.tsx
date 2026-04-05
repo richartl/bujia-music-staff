@@ -8,6 +8,7 @@ import * as notify from '../src/lib/notify';
 const createColorMutate = vi.fn(async () => ({}));
 const createWorkshopUserMutate = vi.fn(async () => ({}));
 const updateWorkshopUserMutate = vi.fn(async () => ({}));
+const deleteWorkshopUserMutate = vi.fn(async () => ({}));
 
 const usersQueryState = {
   data: {
@@ -79,6 +80,7 @@ vi.mock('../src/features/catalogs/hooks/useCatalogs', () => {
     useDeleteAffiliate: vi.fn(mutation),
     useCreateWorkshopUser: vi.fn(() => ({ mutateAsync: createWorkshopUserMutate, isPending: false })),
     useUpdateWorkshopUser: vi.fn(() => ({ mutateAsync: updateWorkshopUserMutate, isPending: false })),
+    useDeleteWorkshopUser: vi.fn(() => ({ mutateAsync: deleteWorkshopUserMutate, isPending: false })),
   };
 });
 
@@ -100,6 +102,7 @@ describe('CatalogsPage UI', () => {
     createColorMutate.mockClear();
     createWorkshopUserMutate.mockClear();
     updateWorkshopUserMutate.mockClear();
+    deleteWorkshopUserMutate.mockClear();
     usersQueryState.isLoading = false;
     usersQueryState.isError = false;
     usersQueryState.data = {
@@ -175,7 +178,7 @@ describe('CatalogsPage UI', () => {
     expect(screen.getByText('maria@bujia.com')).toBeTruthy();
     expect(screen.getByText('STAFF')).toBeTruthy();
     expect(screen.getByText('ADMIN')).toBeTruthy();
-    expect(screen.queryByText('Eliminar')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Eliminar' })).toBeTruthy();
   });
 
   it('usuarios create llama POST con payload exacto', async () => {
@@ -246,5 +249,19 @@ describe('CatalogsPage UI', () => {
       </MemoryRouter>,
     );
     expect(screen.getByText('No se pudo cargar usuarios del taller.')).toBeTruthy();
+  });
+
+  it('usuarios delete abre confirmación y llama endpoint correcto', async () => {
+    renderCatalogs('/app/catalogs/users');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Eliminar' }));
+    expect(screen.getByText('Eliminar usuario')).toBeTruthy();
+    expect(screen.getByText(/Vas a eliminar a/)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: /^Eliminar$/ }));
+
+    await waitFor(() => {
+      expect(deleteWorkshopUserMutate).toHaveBeenCalledWith({ userId: 'u1' });
+    });
   });
 });
