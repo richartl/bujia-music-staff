@@ -55,23 +55,23 @@ export function useCreateWorkshopColor(workshopId?: string | null) {
     },
   });
 }
-export function useUpdateWorkshopColor(workshopId?: string | null, id?: string | null) {
+export function useUpdateWorkshopColor(workshopId?: string | null) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (payload: UpdateColorPayload) => catalogsApi.updateWorkshopColor(workshopId!, id!, payload),
-    onSuccess: () => {
+    mutationFn: ({ id, payload }: { id: string; payload: UpdateColorPayload }) => catalogsApi.updateWorkshopColor(workshopId!, id, payload),
+    onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: catalogsQueryKeys.colors.workshopList(workshopId!) });
-      queryClient.invalidateQueries({ queryKey: catalogsQueryKeys.colors.workshopDetail(workshopId!, id!) });
+      queryClient.invalidateQueries({ queryKey: catalogsQueryKeys.colors.workshopDetail(workshopId!, vars.id) });
     },
   });
 }
-export function useDeleteWorkshopColor(workshopId?: string | null, id?: string | null) {
+export function useDeleteWorkshopColor(workshopId?: string | null) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: () => catalogsApi.deleteWorkshopColor(workshopId!, id!),
-    onSuccess: () => {
+    mutationFn: ({ id }: { id: string }) => catalogsApi.deleteWorkshopColor(workshopId!, id),
+    onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: catalogsQueryKeys.colors.workshopList(workshopId!) });
-      queryClient.invalidateQueries({ queryKey: catalogsQueryKeys.colors.workshopDetail(workshopId!, id!) });
+      queryClient.invalidateQueries({ queryKey: catalogsQueryKeys.colors.workshopDetail(workshopId!, vars.id) });
     },
   });
 }
@@ -144,23 +144,23 @@ export function useCreateWorkshopBrand(workshopId?: string | null) {
     },
   });
 }
-export function useUpdateWorkshopBrand(workshopId?: string | null, id?: string | null) {
+export function useUpdateWorkshopBrand(workshopId?: string | null) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (payload: UpdateBrandPayload) => catalogsApi.updateWorkshopBrand(workshopId!, id!, payload),
-    onSuccess: () => {
+    mutationFn: ({ id, payload }: { id: string; payload: UpdateBrandPayload }) => catalogsApi.updateWorkshopBrand(workshopId!, id, payload),
+    onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: catalogsQueryKeys.brands.workshopList(workshopId!) });
-      queryClient.invalidateQueries({ queryKey: catalogsQueryKeys.brands.workshopDetail(workshopId!, id!) });
+      queryClient.invalidateQueries({ queryKey: catalogsQueryKeys.brands.workshopDetail(workshopId!, vars.id) });
     },
   });
 }
-export function useDeleteWorkshopBrand(workshopId?: string | null, id?: string | null) {
+export function useDeleteWorkshopBrand(workshopId?: string | null) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: () => catalogsApi.deleteWorkshopBrand(workshopId!, id!),
-    onSuccess: () => {
+    mutationFn: ({ id }: { id: string }) => catalogsApi.deleteWorkshopBrand(workshopId!, id),
+    onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: catalogsQueryKeys.brands.workshopList(workshopId!) });
-      queryClient.invalidateQueries({ queryKey: catalogsQueryKeys.brands.workshopDetail(workshopId!, id!) });
+      queryClient.invalidateQueries({ queryKey: catalogsQueryKeys.brands.workshopDetail(workshopId!, vars.id) });
     },
   });
 }
@@ -230,23 +230,23 @@ export function useCreateWorkshopVisitStatus(workshopId?: string | null) {
     },
   });
 }
-export function useUpdateWorkshopVisitStatus(workshopId?: string | null, id?: string | null) {
+export function useUpdateWorkshopVisitStatus(workshopId?: string | null) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (payload: UpdateVisitStatusPayload) => catalogsApi.updateWorkshopVisitStatus(workshopId!, id!, payload),
-    onSuccess: () => {
+    mutationFn: ({ id, payload }: { id: string; payload: UpdateVisitStatusPayload }) => catalogsApi.updateWorkshopVisitStatus(workshopId!, id, payload),
+    onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: catalogsQueryKeys.visitStatuses.list(workshopId!) });
-      queryClient.invalidateQueries({ queryKey: catalogsQueryKeys.visitStatuses.detail(workshopId!, id!) });
+      queryClient.invalidateQueries({ queryKey: catalogsQueryKeys.visitStatuses.detail(workshopId!, vars.id) });
     },
   });
 }
-export function useDeleteWorkshopVisitStatus(workshopId?: string | null, id?: string | null) {
+export function useDeleteWorkshopVisitStatus(workshopId?: string | null) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: () => catalogsApi.deleteWorkshopVisitStatus(workshopId!, id!),
-    onSuccess: () => {
+    mutationFn: ({ id }: { id: string }) => catalogsApi.deleteWorkshopVisitStatus(workshopId!, id),
+    onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: catalogsQueryKeys.visitStatuses.list(workshopId!) });
-      queryClient.invalidateQueries({ queryKey: catalogsQueryKeys.visitStatuses.detail(workshopId!, id!) });
+      queryClient.invalidateQueries({ queryKey: catalogsQueryKeys.visitStatuses.detail(workshopId!, vars.id) });
     },
   });
 }
@@ -275,23 +275,23 @@ export function useCreateWorkshopServiceStatus(workshopId?: string | null) {
     },
   });
 }
-export function useUpdateWorkshopServiceStatus(workshopId?: string | null, id?: string | null) {
+export function useUpdateWorkshopServiceStatus(workshopId?: string | null) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (payload: UpdateServiceStatusPayload) => catalogsApi.updateWorkshopServiceStatus(workshopId!, id!, payload),
-    onSuccess: () => {
+    mutationFn: ({ id, payload }: { id: string; payload: UpdateServiceStatusPayload }) => catalogsApi.updateWorkshopServiceStatus(workshopId!, id, payload),
+    onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: catalogsQueryKeys.serviceStatuses.list(workshopId!) });
-      queryClient.invalidateQueries({ queryKey: catalogsQueryKeys.serviceStatuses.detail(workshopId!, id!) });
+      queryClient.invalidateQueries({ queryKey: catalogsQueryKeys.serviceStatuses.detail(workshopId!, vars.id) });
     },
   });
 }
-export function useDeleteWorkshopServiceStatus(workshopId?: string | null, id?: string | null) {
+export function useDeleteWorkshopServiceStatus(workshopId?: string | null) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: () => catalogsApi.deleteWorkshopServiceStatus(workshopId!, id!),
-    onSuccess: () => {
+    mutationFn: ({ id }: { id: string }) => catalogsApi.deleteWorkshopServiceStatus(workshopId!, id),
+    onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: catalogsQueryKeys.serviceStatuses.list(workshopId!) });
-      queryClient.invalidateQueries({ queryKey: catalogsQueryKeys.serviceStatuses.detail(workshopId!, id!) });
+      queryClient.invalidateQueries({ queryKey: catalogsQueryKeys.serviceStatuses.detail(workshopId!, vars.id) });
     },
   });
 }
@@ -320,13 +320,13 @@ export function useCreateWorkshopPart(workshopId?: string | null) {
     },
   });
 }
-export function useUpdateWorkshopPart(workshopId?: string | null, partId?: string | null) {
+export function useUpdateWorkshopPart(workshopId?: string | null) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (payload: UpdateWorkshopPartPayload) => catalogsApi.updateWorkshopPart(workshopId!, partId!, payload),
-    onSuccess: () => {
+    mutationFn: ({ partId, payload }: { partId: string; payload: UpdateWorkshopPartPayload }) => catalogsApi.updateWorkshopPart(workshopId!, partId, payload),
+    onSuccess: (_data, vars) => {
       invalidateWorkshopPartsLists(queryClient, workshopId!);
-      queryClient.invalidateQueries({ queryKey: catalogsQueryKeys.workshopParts.detail(workshopId!, partId!) });
+      queryClient.invalidateQueries({ queryKey: catalogsQueryKeys.workshopParts.detail(workshopId!, vars.partId) });
     },
   });
 }
@@ -355,23 +355,23 @@ export function useCreateWorkshopService(workshopId?: string | null) {
     },
   });
 }
-export function useUpdateWorkshopService(workshopId?: string | null, id?: string | null) {
+export function useUpdateWorkshopService(workshopId?: string | null) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (payload: UpdateWorkshopServicePayload) => catalogsApi.updateWorkshopService(workshopId!, id!, payload),
-    onSuccess: () => {
+    mutationFn: ({ id, payload }: { id: string; payload: UpdateWorkshopServicePayload }) => catalogsApi.updateWorkshopService(workshopId!, id, payload),
+    onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: catalogsQueryKeys.workshopServices.list(workshopId!) });
-      queryClient.invalidateQueries({ queryKey: catalogsQueryKeys.workshopServices.detail(workshopId!, id!) });
+      queryClient.invalidateQueries({ queryKey: catalogsQueryKeys.workshopServices.detail(workshopId!, vars.id) });
     },
   });
 }
-export function useDeleteWorkshopService(workshopId?: string | null, id?: string | null) {
+export function useDeleteWorkshopService(workshopId?: string | null) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: () => catalogsApi.deleteWorkshopService(workshopId!, id!),
-    onSuccess: () => {
+    mutationFn: ({ id }: { id: string }) => catalogsApi.deleteWorkshopService(workshopId!, id),
+    onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: catalogsQueryKeys.workshopServices.list(workshopId!) });
-      queryClient.invalidateQueries({ queryKey: catalogsQueryKeys.workshopServices.detail(workshopId!, id!) });
+      queryClient.invalidateQueries({ queryKey: catalogsQueryKeys.workshopServices.detail(workshopId!, vars.id) });
     },
   });
 }
@@ -396,23 +396,23 @@ export function useCreateTuning(workshopId?: string | null) {
     },
   });
 }
-export function useUpdateTuning(workshopId?: string | null, id?: string | null) {
+export function useUpdateTuning(workshopId?: string | null) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (payload: UpdateTuningPayload) => catalogsApi.updateTuning(workshopId!, id!, payload),
-    onSuccess: () => {
+    mutationFn: ({ id, payload }: { id: string; payload: UpdateTuningPayload }) => catalogsApi.updateTuning(workshopId!, id, payload),
+    onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: catalogsQueryKeys.tunings.list(workshopId!) });
-      queryClient.invalidateQueries({ queryKey: catalogsQueryKeys.tunings.detail(workshopId!, id!) });
+      queryClient.invalidateQueries({ queryKey: catalogsQueryKeys.tunings.detail(workshopId!, vars.id) });
     },
   });
 }
-export function useDeleteTuning(workshopId?: string | null, id?: string | null) {
+export function useDeleteTuning(workshopId?: string | null) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: () => catalogsApi.deleteTuning(workshopId!, id!),
-    onSuccess: () => {
+    mutationFn: ({ id }: { id: string }) => catalogsApi.deleteTuning(workshopId!, id),
+    onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: catalogsQueryKeys.tunings.list(workshopId!) });
-      queryClient.invalidateQueries({ queryKey: catalogsQueryKeys.tunings.detail(workshopId!, id!) });
+      queryClient.invalidateQueries({ queryKey: catalogsQueryKeys.tunings.detail(workshopId!, vars.id) });
     },
   });
 }
@@ -437,23 +437,23 @@ export function useCreateStringGauge(workshopId?: string | null) {
     },
   });
 }
-export function useUpdateStringGauge(workshopId?: string | null, id?: string | null) {
+export function useUpdateStringGauge(workshopId?: string | null) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (payload: UpdateStringGaugePayload) => catalogsApi.updateStringGauge(workshopId!, id!, payload),
-    onSuccess: () => {
+    mutationFn: ({ id, payload }: { id: string; payload: UpdateStringGaugePayload }) => catalogsApi.updateStringGauge(workshopId!, id, payload),
+    onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: catalogsQueryKeys.stringGauges.list(workshopId!) });
-      queryClient.invalidateQueries({ queryKey: catalogsQueryKeys.stringGauges.detail(workshopId!, id!) });
+      queryClient.invalidateQueries({ queryKey: catalogsQueryKeys.stringGauges.detail(workshopId!, vars.id) });
     },
   });
 }
-export function useDeleteStringGauge(workshopId?: string | null, id?: string | null) {
+export function useDeleteStringGauge(workshopId?: string | null) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: () => catalogsApi.deleteStringGauge(workshopId!, id!),
-    onSuccess: () => {
+    mutationFn: ({ id }: { id: string }) => catalogsApi.deleteStringGauge(workshopId!, id),
+    onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: catalogsQueryKeys.stringGauges.list(workshopId!) });
-      queryClient.invalidateQueries({ queryKey: catalogsQueryKeys.stringGauges.detail(workshopId!, id!) });
+      queryClient.invalidateQueries({ queryKey: catalogsQueryKeys.stringGauges.detail(workshopId!, vars.id) });
     },
   });
 }
@@ -482,23 +482,23 @@ export function useCreateAffiliate(workshopId?: string | null) {
     },
   });
 }
-export function useUpdateAffiliate(workshopId?: string | null, id?: string | null) {
+export function useUpdateAffiliate(workshopId?: string | null) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (payload: UpdateAffiliatePayload) => catalogsApi.updateAffiliate(workshopId!, id!, payload),
-    onSuccess: () => {
+    mutationFn: ({ id, payload }: { id: string; payload: UpdateAffiliatePayload }) => catalogsApi.updateAffiliate(workshopId!, id, payload),
+    onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: catalogsQueryKeys.affiliates.list(workshopId!) });
-      queryClient.invalidateQueries({ queryKey: catalogsQueryKeys.affiliates.detail(workshopId!, id!) });
+      queryClient.invalidateQueries({ queryKey: catalogsQueryKeys.affiliates.detail(workshopId!, vars.id) });
     },
   });
 }
-export function useDeleteAffiliate(workshopId?: string | null, id?: string | null) {
+export function useDeleteAffiliate(workshopId?: string | null) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: () => catalogsApi.deleteAffiliate(workshopId!, id!),
-    onSuccess: () => {
+    mutationFn: ({ id }: { id: string }) => catalogsApi.deleteAffiliate(workshopId!, id),
+    onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: catalogsQueryKeys.affiliates.list(workshopId!) });
-      queryClient.invalidateQueries({ queryKey: catalogsQueryKeys.affiliates.detail(workshopId!, id!) });
+      queryClient.invalidateQueries({ queryKey: catalogsQueryKeys.affiliates.detail(workshopId!, vars.id) });
     },
   });
 }

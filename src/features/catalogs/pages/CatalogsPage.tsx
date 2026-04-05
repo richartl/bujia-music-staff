@@ -1,173 +1,489 @@
 import { useMemo, useState } from 'react';
-import { Loader2, Pencil, Plus } from 'lucide-react';
 import { authStore } from '@/stores/auth-store';
-import { currency, dateTime } from '@/lib/utils';
 import { notifyError, notifySuccess } from '@/lib/notify';
-import type { WorkshopPart } from '@/features/visits/api/visitPartsApi';
-import { useCreateWorkshopPart, useUpdateWorkshopPart, useWorkshopParts } from '@/features/visits/hooks/useVisitParts';
+import { currency, dateTime } from '@/lib/utils';
+import { CatalogEntitySection, type CatalogFieldDefinition } from '@/features/catalogs/components/CatalogEntitySection';
 import {
-  getFriendlyVisitPartError,
-  normalizeWorkshopPartPayload,
-  validateWorkshopPartForm,
-  type WorkshopPartFormValues,
-} from '@/features/visits/utils/visitParts';
+  useAffiliates,
+  useCreateAffiliate,
+  useCreateStringGauge,
+  useCreateTuning,
+  useCreateWorkshopBrand,
+  useCreateWorkshopColor,
+  useCreateWorkshopPart,
+  useCreateWorkshopService,
+  useCreateWorkshopServiceStatus,
+  useCreateWorkshopVisitStatus,
+  useDeleteAffiliate,
+  useDeleteStringGauge,
+  useDeleteTuning,
+  useDeleteWorkshopBrand,
+  useDeleteWorkshopColor,
+  useDeleteWorkshopService,
+  useDeleteWorkshopServiceStatus,
+  useDeleteWorkshopVisitStatus,
+  useStringGauges,
+  useTunings,
+  useUpdateAffiliate,
+  useUpdateStringGauge,
+  useUpdateTuning,
+  useUpdateWorkshopBrand,
+  useUpdateWorkshopColor,
+  useUpdateWorkshopPart,
+  useUpdateWorkshopService,
+  useUpdateWorkshopServiceStatus,
+  useUpdateWorkshopVisitStatus,
+  useWorkshopBrands,
+  useWorkshopColors,
+  useWorkshopParts,
+  useWorkshopServiceStatuses,
+  useWorkshopServices,
+  useWorkshopVisitStatuses,
+} from '@/features/catalogs/hooks/useCatalogs';
+import type {
+  Affiliate,
+  Brand,
+  Color,
+  ServiceStatus,
+  StringGauge,
+  Tuning,
+  VisitStatus,
+  WorkshopPartCatalog,
+  WorkshopServiceCatalog,
+} from '@/features/catalogs/types/catalogs';
 
-type FilterType = 'all' | 'active' | 'inactive';
+type CatalogSectionKey =
+  | 'colors'
+  | 'brands'
+  | 'visit-statuses'
+  | 'service-statuses'
+  | 'parts'
+  | 'services'
+  | 'tunings'
+  | 'string-gauges'
+  | 'affiliates';
 
-const EMPTY_FORM: WorkshopPartFormValues = {
-  name: '',
-  listPrice: '0',
-  publicPrice: '0',
-  description: '',
-  sku: '',
-  brand: '',
-  isActive: true,
-};
+const HUB_ITEMS: Array<{ key: CatalogSectionKey; label: string; description: string }> = [
+  { key: 'colors', label: 'Colores', description: 'Paleta para acabados y apariencia.' },
+  { key: 'brands', label: 'Marcas', description: 'Marcas globales y propias del taller.' },
+  { key: 'visit-statuses', label: 'Status de visita', description: 'Flujo operativo de la orden.' },
+  { key: 'service-statuses', label: 'Status de servicio', description: 'Estados internos por servicio.' },
+  { key: 'parts', label: 'Refacciones', description: 'Precios y disponibilidad por taller.' },
+  { key: 'services', label: 'Servicios', description: 'Servicios de taller y ajustes.' },
+  { key: 'tunings', label: 'Afinaciones', description: 'Afinaciones disponibles en intake.' },
+  { key: 'string-gauges', label: 'Calibres de cuerdas', description: 'Calibres por familia de instrumento.' },
+  { key: 'affiliates', label: 'Afiliados', description: 'Convenios bandas y negocios.' },
+];
+
+const COLOR_FIELDS: CatalogFieldDefinition[] = [
+  { name: 'name', label: 'Nombre', type: 'text', required: true },
+  { name: 'slug', label: 'Slug', type: 'text', required: true },
+  { name: 'hex', label: 'Hex', type: 'color' },
+  { name: 'isActive', label: 'Activo', type: 'checkbox' },
+];
+const BRAND_FIELDS: CatalogFieldDefinition[] = [
+  { name: 'name', label: 'Nombre', type: 'text', required: true },
+  { name: 'slug', label: 'Slug', type: 'text', required: true },
+  { name: 'isActive', label: 'Activa', type: 'checkbox' },
+];
+const STATUS_FIELDS: CatalogFieldDefinition[] = [
+  { name: 'code', label: 'Código', type: 'text', required: true },
+  { name: 'name', label: 'Nombre', type: 'text', required: true },
+  { name: 'description', label: 'Descripción', type: 'textarea' },
+  { name: 'color', label: 'Color', type: 'color' },
+  { name: 'sortOrder', label: 'Orden', type: 'number', step: '1' },
+  { name: 'isActive', label: 'Activo', type: 'checkbox' },
+  { name: 'isTerminal', label: 'Terminal', type: 'checkbox' },
+];
+const PART_FIELDS: CatalogFieldDefinition[] = [
+  { name: 'name', label: 'Nombre', type: 'text', required: true },
+  { name: 'listPrice', label: 'Precio lista', type: 'number', step: '0.01', required: true },
+  { name: 'publicPrice', label: 'Precio público', type: 'number', step: '0.01', required: true },
+  { name: 'description', label: 'Descripción', type: 'textarea' },
+  { name: 'sku', label: 'SKU', type: 'text' },
+  { name: 'brand', label: 'Marca', type: 'text' },
+  { name: 'isActive', label: 'Activa', type: 'checkbox' },
+];
+const SERVICE_FIELDS: CatalogFieldDefinition[] = [
+  { name: 'name', label: 'Nombre', type: 'text', required: true },
+  { name: 'slug', label: 'Slug', type: 'text', required: true },
+  { name: 'description', label: 'Descripción', type: 'textarea' },
+  { name: 'basePrice', label: 'Precio base', type: 'number', step: '0.01' },
+  { name: 'estimatedTime', label: 'Tiempo estimado (min)', type: 'number', step: '1' },
+  { name: 'isActive', label: 'Activo', type: 'checkbox' },
+  { name: 'isAdjust', label: 'Es ajuste', type: 'checkbox' },
+];
+const TUNING_FIELDS: CatalogFieldDefinition[] = [
+  { name: 'name', label: 'Nombre', type: 'text', required: true },
+  { name: 'slug', label: 'Slug', type: 'text', required: true },
+  { name: 'notes', label: 'Notas', type: 'textarea' },
+  { name: 'sortOrder', label: 'Orden', type: 'number', step: '1' },
+  { name: 'isActive', label: 'Activa', type: 'checkbox' },
+];
+const STRING_GAUGE_FIELDS: CatalogFieldDefinition[] = [
+  { name: 'name', label: 'Nombre', type: 'text', required: true },
+  { name: 'slug', label: 'Slug', type: 'text', required: true },
+  { name: 'value', label: 'Valor', type: 'text' },
+  { name: 'instrumentFamily', label: 'Familia de instrumento', type: 'text' },
+  { name: 'sortOrder', label: 'Orden', type: 'number', step: '1' },
+  { name: 'isActive', label: 'Activo', type: 'checkbox' },
+];
+const AFFILIATE_FIELDS: CatalogFieldDefinition[] = [
+  { name: 'name', label: 'Nombre', type: 'text', required: true },
+  { name: 'type', label: 'Tipo', type: 'select', options: [{ label: 'Banda', value: 'BAND' }, { label: 'Negocio', value: 'BUSINESS' }] },
+  { name: 'code', label: 'Código', type: 'text', required: true },
+  { name: 'notes', label: 'Notas', type: 'textarea' },
+  { name: 'isActive', label: 'Activo', type: 'checkbox' },
+];
+
+function SectionBadge({ children, tone = 'slate' }: { children: string; tone?: 'slate' | 'amber' | 'emerald' | 'sky' }) {
+  const colorMap = {
+    slate: 'bg-slate-100 text-slate-700',
+    amber: 'bg-amber-100 text-amber-700',
+    emerald: 'bg-emerald-100 text-emerald-700',
+    sky: 'bg-sky-100 text-sky-700',
+  };
+  return <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${colorMap[tone]}`}>{children}</span>;
+}
 
 export function CatalogsPage() {
   const workshopId = authStore((state) => state.workshopId);
-  const [filter, setFilter] = useState<FilterType>('all');
-  const [editingPart, setEditingPart] = useState<WorkshopPart | null>(null);
-  const [openForm, setOpenForm] = useState(false);
-  const [error, setError] = useState('');
-  const [form, setForm] = useState<WorkshopPartFormValues>(EMPTY_FORM);
+  const [activeSection, setActiveSection] = useState<CatalogSectionKey>('colors');
 
-  const isActiveFilter = filter === 'all' ? undefined : filter === 'active';
-  const partsQuery = useWorkshopParts(workshopId, isActiveFilter);
-  const createMutation = useCreateWorkshopPart(workshopId);
-  const updateMutation = useUpdateWorkshopPart(workshopId, editingPart?.id || '');
+  const colorsQuery = useWorkshopColors(activeSection === 'colors' ? workshopId : null);
+  const brandsQuery = useWorkshopBrands(activeSection === 'brands' ? workshopId : null);
+  const visitStatusesQuery = useWorkshopVisitStatuses(activeSection === 'visit-statuses' ? workshopId : null);
+  const serviceStatusesQuery = useWorkshopServiceStatuses(activeSection === 'service-statuses' ? workshopId : null);
+  const partsQuery = useWorkshopParts(activeSection === 'parts' ? workshopId : null);
+  const servicesQuery = useWorkshopServices(activeSection === 'services' ? workshopId : null);
+  const tuningsQuery = useTunings(activeSection === 'tunings' ? workshopId : null);
+  const gaugesQuery = useStringGauges(activeSection === 'string-gauges' ? workshopId : null);
+  const affiliatesQuery = useAffiliates(activeSection === 'affiliates' ? workshopId : null);
 
-  const cards = useMemo(
-    () => partsQuery.data || [],
-    [partsQuery.data],
-  );
+  const createColor = useCreateWorkshopColor(workshopId);
+  const updateColor = useUpdateWorkshopColor(workshopId);
+  const deleteColor = useDeleteWorkshopColor(workshopId);
+  const createBrand = useCreateWorkshopBrand(workshopId);
+  const updateBrand = useUpdateWorkshopBrand(workshopId);
+  const deleteBrand = useDeleteWorkshopBrand(workshopId);
+  const createVisitStatus = useCreateWorkshopVisitStatus(workshopId);
+  const updateVisitStatus = useUpdateWorkshopVisitStatus(workshopId);
+  const deleteVisitStatus = useDeleteWorkshopVisitStatus(workshopId);
+  const createServiceStatus = useCreateWorkshopServiceStatus(workshopId);
+  const updateServiceStatus = useUpdateWorkshopServiceStatus(workshopId);
+  const deleteServiceStatus = useDeleteWorkshopServiceStatus(workshopId);
+  const createPart = useCreateWorkshopPart(workshopId);
+  const updatePart = useUpdateWorkshopPart(workshopId);
+  const createService = useCreateWorkshopService(workshopId);
+  const updateService = useUpdateWorkshopService(workshopId);
+  const deleteService = useDeleteWorkshopService(workshopId);
+  const createTuning = useCreateTuning(workshopId);
+  const updateTuning = useUpdateTuning(workshopId);
+  const deleteTuning = useDeleteTuning(workshopId);
+  const createGauge = useCreateStringGauge(workshopId);
+  const updateGauge = useUpdateStringGauge(workshopId);
+  const deleteGauge = useDeleteStringGauge(workshopId);
+  const createAffiliate = useCreateAffiliate(workshopId);
+  const updateAffiliate = useUpdateAffiliate(workshopId);
+  const deleteAffiliate = useDeleteAffiliate(workshopId);
 
-  function handleCreate() {
-    setEditingPart(null);
-    setForm(EMPTY_FORM);
-    setError('');
-    setOpenForm(true);
-  }
+  const canMutateCatalogItem = (item: { isGlobal?: boolean; workshopId?: string | null }) => !item.isGlobal && item.workshopId === workshopId;
 
-  function handleEdit(part: WorkshopPart) {
-    setEditingPart(part);
-    setForm({
-      name: part.name || '',
-      listPrice: String(part.listPrice || 0),
-      publicPrice: String(part.publicPrice || 0),
-      description: part.description || '',
-      sku: part.sku || '',
-      brand: part.brand || '',
-      isActive: part.isActive,
-    });
-    setError('');
-    setOpenForm(true);
-  }
-
-  async function handleSave() {
-    const validation = validateWorkshopPartForm(form);
-    if (validation) {
-      setError(validation);
-      return;
-    }
-
+  const handleMutation = async (action: () => Promise<unknown>, successTitle: string, errorTitle: string) => {
     try {
-      const payload = normalizeWorkshopPartPayload(form);
-      if (editingPart) {
-        await updateMutation.mutateAsync(payload);
-        notifySuccess('Refacción actualizada');
-      } else {
-        await createMutation.mutateAsync(payload);
-        notifySuccess('Refacción creada');
-      }
-      setOpenForm(false);
-    } catch (saveError) {
-      const message = getFriendlyVisitPartError(saveError);
-      setError(message);
-      notifyError('Error de catálogo', message);
+      await action();
+      notifySuccess(successTitle);
+    } catch {
+      notifyError(errorTitle);
     }
+  };
+
+  const headerSubtitle = useMemo(() => HUB_ITEMS.find((item) => item.key === activeSection)?.description || '', [activeSection]);
+
+  if (!workshopId) {
+    return <section className="card p-4 text-sm text-amber-700">Selecciona un taller para gestionar catálogos.</section>;
   }
 
   return (
     <div className="space-y-4">
-      <article className="card p-4">
-        <div className="flex items-center justify-between gap-2">
-          <div>
-            <h1 className="section-title text-lg">Refacciones (catálogo)</h1>
-            <p className="text-sm text-slate-500">Administra precios y disponibilidad por taller.</p>
-          </div>
-          <button type="button" className="btn-primary h-10 px-3" onClick={handleCreate}>
-            <Plus className="h-4 w-4" /> Crear
-          </button>
-        </div>
-
-        <div className="mt-3 flex gap-2">
-          {[
-            { key: 'all', label: 'Todos' },
-            { key: 'active', label: 'Activos' },
-            { key: 'inactive', label: 'Inactivos' },
-          ].map((item) => (
+      <section className="card p-4">
+        <h1 className="text-lg font-semibold text-slate-900">Catálogos</h1>
+        <p className="mt-1 text-sm text-slate-500">{headerSubtitle || 'Configuración operativa del taller.'}</p>
+        <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {HUB_ITEMS.map((item) => (
             <button
               key={item.key}
               type="button"
-              className={filter === item.key ? 'btn-primary h-8 px-3' : 'btn-secondary h-8 px-3'}
-              onClick={() => setFilter(item.key as FilterType)}
+              onClick={() => setActiveSection(item.key)}
+              className={`rounded-xl border p-3 text-left transition ${activeSection === item.key ? 'border-amber-400 bg-amber-50' : 'border-slate-200 bg-white hover:border-slate-300'}`}
             >
-              {item.label}
+              <p className="text-sm font-semibold text-slate-900">{item.label}</p>
+              <p className="mt-1 text-xs text-slate-500">{item.description}</p>
             </button>
           ))}
         </div>
-      </article>
+      </section>
 
-      {partsQuery.isLoading ? <div className="card p-4 text-sm text-slate-500">Cargando catálogo...</div> : null}
-      {partsQuery.isError ? <div className="card p-4 text-sm text-red-600">No se pudo cargar el catálogo.</div> : null}
-      {!partsQuery.isLoading && !cards.length ? (
-        <div className="card p-4 text-sm text-slate-500">No hay refacciones en este filtro.</div>
+      {activeSection === 'colors' ? (
+        <CatalogEntitySection<Color>
+          title="Colores"
+          description="Lista combinada (global + taller)."
+          fields={COLOR_FIELDS}
+          items={colorsQuery.data || []}
+          isLoading={colorsQuery.isLoading}
+          isError={colorsQuery.isError}
+          emptyMessage="Aún no hay colores."
+          getItemTitle={(item) => item.name}
+          getItemMeta={(item) => `${item.slug} · ${item.hex || 'Sin HEX'} · Actualizado ${dateTime(item.updatedAt)}`}
+          renderBadges={(item) => (
+            <>
+              <SectionBadge tone={item.isGlobal ? 'amber' : 'sky'}>{item.isGlobal ? 'Global' : 'Taller'}</SectionBadge>
+              <SectionBadge tone={item.isActive ? 'emerald' : 'slate'}>{item.isActive ? 'Activo' : 'Inactivo'}</SectionBadge>
+            </>
+          )}
+          canEdit={canMutateCatalogItem}
+          canDelete={canMutateCatalogItem}
+          toFormValues={(item) => ({ name: item?.name || '', slug: item?.slug || '', hex: item?.hex || '#000000', isActive: item?.isActive ?? true })}
+          onCreate={(payload) => handleMutation(() => createColor.mutateAsync(payload as never), 'Color creado', 'No se pudo crear el color')}
+          onUpdate={(item, payload) => handleMutation(() => updateColor.mutateAsync({ id: item.id, payload: payload as never }), 'Color actualizado', 'No se pudo actualizar el color')}
+          onDelete={(item) => handleMutation(() => deleteColor.mutateAsync({ id: item.id } as never), 'Color eliminado', 'No se pudo eliminar el color')}
+        />
       ) : null}
 
-      <div className="grid gap-3">
-        {cards.map((part) => (
-          <article key={part.id} className="card p-4">
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <h3 className="text-sm font-semibold text-slate-900">{part.name}</h3>
-                <p className="text-xs text-slate-500">SKU: {part.sku || '—'} · Marca: {part.brand || '—'}</p>
-                <p className="mt-1 text-xs text-slate-600">Lista: {currency(part.listPrice)} · Público: {currency(part.publicPrice)}</p>
-                <p className="mt-1 text-xs text-slate-500">Activo: {part.isActive ? 'Sí' : 'No'} · Actualizado: {dateTime(part.updatedAt || part.createdAt || '')}</p>
-              </div>
-              <button type="button" className="btn-secondary h-8 px-2" onClick={() => handleEdit(part)}>
-                <Pencil className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          </article>
-        ))}
-      </div>
+      {activeSection === 'brands' ? (
+        <CatalogEntitySection<Brand>
+          title="Marcas"
+          description="Lista combinada (global + taller)."
+          fields={BRAND_FIELDS}
+          items={brandsQuery.data || []}
+          isLoading={brandsQuery.isLoading}
+          isError={brandsQuery.isError}
+          emptyMessage="Aún no hay marcas."
+          getItemTitle={(item) => item.name}
+          getItemMeta={(item) => `${item.slug} · Actualizado ${dateTime(item.updatedAt)}`}
+          renderBadges={(item) => (
+            <>
+              <SectionBadge tone={item.isGlobal ? 'amber' : 'sky'}>{item.isGlobal ? 'Global' : 'Taller'}</SectionBadge>
+              <SectionBadge tone={item.isActive ? 'emerald' : 'slate'}>{item.isActive ? 'Activa' : 'Inactiva'}</SectionBadge>
+            </>
+          )}
+          canEdit={canMutateCatalogItem}
+          canDelete={canMutateCatalogItem}
+          toFormValues={(item) => ({ name: item?.name || '', slug: item?.slug || '', isActive: item?.isActive ?? true })}
+          onCreate={(payload) => handleMutation(() => createBrand.mutateAsync(payload as never), 'Marca creada', 'No se pudo crear la marca')}
+          onUpdate={(item, payload) => handleMutation(() => updateBrand.mutateAsync({ id: item.id, payload: payload as never }), 'Marca actualizada', 'No se pudo actualizar la marca')}
+          onDelete={(item) => handleMutation(() => deleteBrand.mutateAsync({ id: item.id } as never), 'Marca eliminada', 'No se pudo eliminar la marca')}
+        />
+      ) : null}
 
-      {openForm ? (
-        <article className="card p-4">
-          <h2 className="text-base font-semibold text-slate-900">{editingPart ? 'Editar refacción' : 'Nueva refacción'}</h2>
-          <div className="mt-3 grid gap-2">
-            <input className="input h-11" placeholder="Nombre" value={form.name} onChange={(e) => setForm((c) => ({ ...c, name: e.target.value }))} />
-            <div className="grid grid-cols-2 gap-2">
-              <input className="input h-11" inputMode="decimal" placeholder="Precio lista" value={form.listPrice} onChange={(e) => setForm((c) => ({ ...c, listPrice: e.target.value }))} />
-              <input className="input h-11" inputMode="decimal" placeholder="Precio público" value={form.publicPrice} onChange={(e) => setForm((c) => ({ ...c, publicPrice: e.target.value }))} />
-            </div>
-            <input className="input h-11" placeholder="SKU" value={form.sku} onChange={(e) => setForm((c) => ({ ...c, sku: e.target.value }))} />
-            <input className="input h-11" placeholder="Marca" value={form.brand} onChange={(e) => setForm((c) => ({ ...c, brand: e.target.value }))} />
-            <textarea className="input min-h-20" placeholder="Descripción" value={form.description} onChange={(e) => setForm((c) => ({ ...c, description: e.target.value }))} />
-            <label className="flex items-center gap-2 text-sm text-slate-700">
-              <input type="checkbox" checked={form.isActive} onChange={(e) => setForm((c) => ({ ...c, isActive: e.target.checked }))} />
-              Refacción activa
-            </label>
-          </div>
-          {error ? <p className="mt-2 text-xs text-red-600">{error}</p> : null}
-          <div className="mt-3 grid grid-cols-2 gap-2">
-            <button type="button" className="btn-secondary h-10 justify-center" onClick={() => setOpenForm(false)}>Cancelar</button>
-            <button type="button" className="btn-primary h-10 justify-center" onClick={() => void handleSave()} disabled={createMutation.isPending || updateMutation.isPending}>
-              {createMutation.isPending || updateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Guardar'}
-            </button>
-          </div>
-        </article>
+      {activeSection === 'visit-statuses' ? (
+        <CatalogEntitySection<VisitStatus>
+          title="Status de visita"
+          description="Orden y control de flujo de visitas."
+          fields={STATUS_FIELDS}
+          items={visitStatusesQuery.data || []}
+          isLoading={visitStatusesQuery.isLoading}
+          isError={visitStatusesQuery.isError}
+          emptyMessage="Aún no hay status de visita."
+          getItemTitle={(item) => `${item.code} · ${item.name}`}
+          getItemMeta={(item) => `Orden ${item.sortOrder ?? 0} · Actualizado ${dateTime(item.updatedAt)}`}
+          renderBadges={(item) => (
+            <>
+              <SectionBadge tone={item.isActive ? 'emerald' : 'slate'}>{item.isActive ? 'Activo' : 'Inactivo'}</SectionBadge>
+              <SectionBadge tone={item.isTerminal ? 'amber' : 'sky'}>{item.isTerminal ? 'Terminal' : 'Intermedio'}</SectionBadge>
+            </>
+          )}
+          toFormValues={(item) => ({
+            code: item?.code || '',
+            name: item?.name || '',
+            description: item?.description || '',
+            color: item?.color || '#334155',
+            sortOrder: String(item?.sortOrder ?? 0),
+            isActive: item?.isActive ?? true,
+            isTerminal: item?.isTerminal ?? false,
+          })}
+          onCreate={(payload) => handleMutation(() => createVisitStatus.mutateAsync(payload as never), 'Status de visita creado', 'No se pudo crear el status de visita')}
+          onUpdate={(item, payload) => handleMutation(() => updateVisitStatus.mutateAsync({ id: item.id, payload: payload as never }), 'Status de visita actualizado', 'No se pudo actualizar el status de visita')}
+          onDelete={(item) => handleMutation(() => deleteVisitStatus.mutateAsync({ id: item.id } as never), 'Status de visita eliminado', 'No se pudo eliminar el status de visita')}
+        />
+      ) : null}
+
+      {activeSection === 'service-statuses' ? (
+        <CatalogEntitySection<ServiceStatus>
+          title="Status de servicio"
+          description="Estado operacional por servicio."
+          fields={STATUS_FIELDS}
+          items={serviceStatusesQuery.data || []}
+          isLoading={serviceStatusesQuery.isLoading}
+          isError={serviceStatusesQuery.isError}
+          emptyMessage="Aún no hay status de servicio."
+          getItemTitle={(item) => `${item.code} · ${item.name}`}
+          getItemMeta={(item) => `Orden ${item.sortOrder ?? 0} · Actualizado ${dateTime(item.updatedAt)}`}
+          renderBadges={(item) => (
+            <>
+              <SectionBadge tone={item.isActive ? 'emerald' : 'slate'}>{item.isActive ? 'Activo' : 'Inactivo'}</SectionBadge>
+              <SectionBadge tone={item.isTerminal ? 'amber' : 'sky'}>{item.isTerminal ? 'Terminal' : 'Intermedio'}</SectionBadge>
+            </>
+          )}
+          toFormValues={(item) => ({
+            code: item?.code || '',
+            name: item?.name || '',
+            description: item?.description || '',
+            color: item?.color || '#334155',
+            sortOrder: String(item?.sortOrder ?? 0),
+            isActive: item?.isActive ?? true,
+            isTerminal: item?.isTerminal ?? false,
+          })}
+          onCreate={(payload) => handleMutation(() => createServiceStatus.mutateAsync(payload as never), 'Status de servicio creado', 'No se pudo crear el status de servicio')}
+          onUpdate={(item, payload) => handleMutation(() => updateServiceStatus.mutateAsync({ id: item.id, payload: payload as never }), 'Status de servicio actualizado', 'No se pudo actualizar el status de servicio')}
+          onDelete={(item) => handleMutation(() => deleteServiceStatus.mutateAsync({ id: item.id } as never), 'Status de servicio eliminado', 'No se pudo eliminar el status de servicio')}
+        />
+      ) : null}
+
+      {activeSection === 'parts' ? (
+        <CatalogEntitySection<WorkshopPartCatalog>
+          title="Refacciones"
+          description="Sin delete: activar/desactivar vía toggle."
+          fields={PART_FIELDS}
+          items={partsQuery.data || []}
+          isLoading={partsQuery.isLoading}
+          isError={partsQuery.isError}
+          emptyMessage="Aún no hay refacciones."
+          getItemTitle={(item) => item.name}
+          getItemMeta={(item) => `${currency(item.listPrice)} lista · ${currency(item.publicPrice)} público · ${dateTime(item.updatedAt)}`}
+          renderBadges={(item) => <SectionBadge tone={item.isActive ? 'emerald' : 'slate'}>{item.isActive ? 'Activa' : 'Inactiva'}</SectionBadge>}
+          toFormValues={(item) => ({
+            name: item?.name || '',
+            listPrice: String(item?.listPrice ?? 0),
+            publicPrice: String(item?.publicPrice ?? 0),
+            description: item?.description || '',
+            sku: item?.sku || '',
+            brand: item?.brand || '',
+            isActive: item?.isActive ?? true,
+          })}
+          onCreate={(payload) => handleMutation(() => createPart.mutateAsync(payload as never), 'Refacción creada', 'No se pudo crear la refacción')}
+          onUpdate={(item, payload) => handleMutation(() => updatePart.mutateAsync({ partId: item.id, payload: payload as never }), 'Refacción actualizada', 'No se pudo actualizar la refacción')}
+          onToggleActive={(item) =>
+            handleMutation(
+              () => updatePart.mutateAsync({ partId: item.id, payload: { isActive: !item.isActive } }),
+              item.isActive ? 'Refacción desactivada' : 'Refacción activada',
+              'No se pudo cambiar estado de la refacción',
+            )
+          }
+        />
+      ) : null}
+
+      {activeSection === 'services' ? (
+        <CatalogEntitySection<WorkshopServiceCatalog>
+          title="Servicios"
+          description="Catálogo de servicios del taller."
+          fields={SERVICE_FIELDS}
+          items={servicesQuery.data || []}
+          isLoading={servicesQuery.isLoading}
+          isError={servicesQuery.isError}
+          emptyMessage="Aún no hay servicios."
+          getItemTitle={(item) => item.name}
+          getItemMeta={(item) => `${item.slug} · ${currency(item.basePrice || 0)} · ${item.estimatedTime || 0} min · ${dateTime(item.updatedAt)}`}
+          renderBadges={(item) => (
+            <>
+              <SectionBadge tone={item.isAdjust ? 'amber' : 'sky'}>{item.isAdjust ? 'Ajuste' : 'Servicio'}</SectionBadge>
+              <SectionBadge tone={item.isActive ? 'emerald' : 'slate'}>{item.isActive ? 'Activo' : 'Inactivo'}</SectionBadge>
+            </>
+          )}
+          toFormValues={(item) => ({
+            name: item?.name || '',
+            slug: item?.slug || '',
+            description: item?.description || '',
+            basePrice: String(item?.basePrice ?? 0),
+            estimatedTime: String(item?.estimatedTime ?? 0),
+            isActive: item?.isActive ?? true,
+            isAdjust: item?.isAdjust ?? false,
+          })}
+          onCreate={(payload) => handleMutation(() => createService.mutateAsync(payload as never), 'Servicio creado', 'No se pudo crear el servicio')}
+          onUpdate={(item, payload) => handleMutation(() => updateService.mutateAsync({ id: item.id, payload: payload as never }), 'Servicio actualizado', 'No se pudo actualizar el servicio')}
+          onDelete={(item) => handleMutation(() => deleteService.mutateAsync({ id: item.id } as never), 'Servicio eliminado', 'No se pudo eliminar el servicio')}
+        />
+      ) : null}
+
+      {activeSection === 'tunings' ? (
+        <CatalogEntitySection<Tuning>
+          title="Afinaciones"
+          description="Afinaciones disponibles."
+          fields={TUNING_FIELDS}
+          items={tuningsQuery.data || []}
+          isLoading={tuningsQuery.isLoading}
+          isError={tuningsQuery.isError}
+          emptyMessage="Aún no hay afinaciones."
+          getItemTitle={(item) => item.name}
+          getItemMeta={(item) => `${item.slug} · Orden ${item.sortOrder ?? 0}`}
+          renderBadges={(item) => <SectionBadge tone={item.isActive ? 'emerald' : 'slate'}>{item.isActive ? 'Activa' : 'Inactiva'}</SectionBadge>}
+          toFormValues={(item) => ({ name: item?.name || '', slug: item?.slug || '', notes: item?.notes || '', sortOrder: String(item?.sortOrder ?? 0), isActive: item?.isActive ?? true })}
+          onCreate={(payload) => handleMutation(() => createTuning.mutateAsync(payload as never), 'Afinación creada', 'No se pudo crear la afinación')}
+          onUpdate={(item, payload) => handleMutation(() => updateTuning.mutateAsync({ id: item.id, payload: payload as never }), 'Afinación actualizada', 'No se pudo actualizar la afinación')}
+          onDelete={(item) => handleMutation(() => deleteTuning.mutateAsync({ id: item.id } as never), 'Afinación eliminada', 'No se pudo eliminar la afinación')}
+        />
+      ) : null}
+
+      {activeSection === 'string-gauges' ? (
+        <CatalogEntitySection<StringGauge>
+          title="Calibres de cuerdas"
+          description="Calibres por familia de instrumento."
+          fields={STRING_GAUGE_FIELDS}
+          items={gaugesQuery.data || []}
+          isLoading={gaugesQuery.isLoading}
+          isError={gaugesQuery.isError}
+          emptyMessage="Aún no hay calibres."
+          getItemTitle={(item) => item.name}
+          getItemMeta={(item) => `${item.value || '-'} · ${item.instrumentFamily || '-'} · Orden ${item.sortOrder ?? 0}`}
+          renderBadges={(item) => <SectionBadge tone={item.isActive ? 'emerald' : 'slate'}>{item.isActive ? 'Activo' : 'Inactivo'}</SectionBadge>}
+          toFormValues={(item) => ({
+            name: item?.name || '',
+            slug: item?.slug || '',
+            value: item?.value || '',
+            instrumentFamily: item?.instrumentFamily || '',
+            sortOrder: String(item?.sortOrder ?? 0),
+            isActive: item?.isActive ?? true,
+          })}
+          onCreate={(payload) => handleMutation(() => createGauge.mutateAsync(payload as never), 'Calibre creado', 'No se pudo crear el calibre')}
+          onUpdate={(item, payload) => handleMutation(() => updateGauge.mutateAsync({ id: item.id, payload: payload as never }), 'Calibre actualizado', 'No se pudo actualizar el calibre')}
+          onDelete={(item) => handleMutation(() => deleteGauge.mutateAsync({ id: item.id } as never), 'Calibre eliminado', 'No se pudo eliminar el calibre')}
+        />
+      ) : null}
+
+      {activeSection === 'affiliates' ? (
+        <CatalogEntitySection<Affiliate>
+          title="Afiliados"
+          description="Convenios de taller (BAND/BUSINESS)."
+          fields={AFFILIATE_FIELDS}
+          items={affiliatesQuery.data || []}
+          isLoading={affiliatesQuery.isLoading}
+          isError={affiliatesQuery.isError}
+          emptyMessage="Aún no hay afiliados."
+          getItemTitle={(item) => item.name}
+          getItemMeta={(item) => `${item.code.toUpperCase()} · ${dateTime(item.updatedAt)}`}
+          renderBadges={(item) => (
+            <>
+              <SectionBadge tone="sky">{item.type}</SectionBadge>
+              <SectionBadge tone={item.isActive ? 'emerald' : 'slate'}>{item.isActive ? 'Activo' : 'Inactivo'}</SectionBadge>
+            </>
+          )}
+          toFormValues={(item) => ({ name: item?.name || '', type: item?.type || 'BAND', code: item?.code || '', notes: item?.notes || '', isActive: item?.isActive ?? true })}
+          onCreate={(payload) =>
+            handleMutation(
+              () => createAffiliate.mutateAsync({ ...(payload as object), code: String(payload.code || '').toUpperCase() } as never),
+              'Afiliado creado',
+              'No se pudo crear el afiliado',
+            )
+          }
+          onUpdate={(item, payload) =>
+            handleMutation(
+              () => updateAffiliate.mutateAsync({ id: item.id, payload: { ...(payload as object), code: String(payload.code || '').toUpperCase() } as never }),
+              'Afiliado actualizado',
+              'No se pudo actualizar el afiliado',
+            )
+          }
+          onDelete={(item) => handleMutation(() => deleteAffiliate.mutateAsync({ id: item.id } as never), 'Afiliado eliminado', 'No se pudo eliminar el afiliado')}
+        />
       ) : null}
     </div>
   );

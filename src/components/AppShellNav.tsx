@@ -1,12 +1,12 @@
-import { LayoutDashboard, ClipboardPlus, Wrench, Library, Settings } from 'lucide-react';
+import { ClipboardPlus, Wrench, Library, Settings } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 import { cn } from '@/lib/utils';
+import { authStore } from '@/stores/auth-store';
+import { canAccessCatalogs } from '@/features/auth/utils/permissions';
 
-const items = [
+const baseItems = [
   { to: '/app/intakes', label: 'Recepción', icon: ClipboardPlus },
   { to: '/app/visits', label: 'Órdenes', icon: Wrench },
-  { to: '/app/dashboard', label: 'Resumen', icon: LayoutDashboard },
-  { to: '/app/catalogs', label: 'Catálogos', icon: Library },
   { to: '/app/settings', label: 'Ajustes', icon: Settings },
 ];
 
@@ -15,8 +15,15 @@ type AppShellNavProps = {
 };
 
 export function AppShellNav({ mobile = false }: AppShellNavProps) {
+  const role = authStore((state) => state.user?.role);
+  const items = canAccessCatalogs(role)
+    ? [...baseItems.slice(0, 2), { to: '/app/catalogs', label: 'Catálogos', icon: Library }, ...baseItems.slice(2)]
+    : baseItems;
+
+  const mobileGridClass = items.length === 4 ? 'grid-cols-4 gap-1' : 'grid-cols-3 gap-1';
+
   return (
-    <nav className={cn('grid', mobile ? 'grid-cols-5 gap-1' : 'grid-cols-5 gap-1 md:grid-cols-1 md:gap-2')}>
+    <nav className={cn('grid', mobile ? mobileGridClass : 'grid-cols-4 gap-1 md:grid-cols-1 md:gap-2')}>
       {items.map(({ to, label, icon: Icon }) => (
         <NavLink
           key={to}
