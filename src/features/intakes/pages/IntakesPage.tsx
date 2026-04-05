@@ -4,7 +4,9 @@ import {
   AlertCircle,
   CheckCircle2,
   ChevronRight,
+  ChevronUp,
   Loader2,
+  PackagePlus,
   Phone,
   PlusCircle,
   Trash2,
@@ -33,6 +35,7 @@ import {
   createWorkshopTuning,
 } from '@/features/catalogs/api/create-catalog-items';
 import { useWorkshopParts } from '@/features/visits/hooks/useVisitParts';
+import { useCreateWorkshopPart } from '@/features/visits/hooks/useVisitParts';
 import { scrollToIntakeTop } from '@/features/intakes/utils/scrollToIntakeTop';
 import type {
   ClientInstrument,
@@ -190,9 +193,13 @@ export function IntakesPage() {
   const [clientForm, setClientForm] = useState(EMPTY_CLIENT_FORM);
   const [instrumentForm, setInstrumentForm] = useState(EMPTY_INSTRUMENT_FORM);
   const [serviceLines, setServiceLines] = useState<IntakeServiceLine[]>([]);
+  const [isServicePickerOpen, setIsServicePickerOpen] = useState(false);
   const [isManualServiceModalOpen, setIsManualServiceModalOpen] = useState(false);
   const [manualServiceDraft, setManualServiceDraft] = useState({ name: '', quantity: '1', unitPrice: '0', notes: '' });
   const [partLines, setPartLines] = useState<IntakePartLine[]>([]);
+  const [isPartsPickerOpen, setIsPartsPickerOpen] = useState(false);
+  const [isCreatePartModalOpen, setIsCreatePartModalOpen] = useState(false);
+  const [partsSearch, setPartsSearch] = useState('');
 
   const [branchId, setBranchId] = useState('');
   const [intakeNotes, setIntakeNotes] = useState('');
@@ -207,7 +214,9 @@ export function IntakesPage() {
   const [hasCase, setHasCase] = useState(false);
   const [expandedServiceIds, setExpandedServiceIds] = useState<string[]>([]);
   const [serviceToast, setServiceToast] = useState('');
-  const [serviceSearch, setServiceSearch] = useState('');
+  const [modalServiceSearch, setModalServiceSearch] = useState('');
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [postSaveAction, setPostSaveAction] = useState<'default' | 'addInstrument'>('default');
   const [showConfirmIntakeModal, setShowConfirmIntakeModal] = useState(false);
   const [customCatalogModal, setCustomCatalogModal] = useState<{
     kind: CatalogKind;
@@ -228,6 +237,15 @@ export function IntakesPage() {
   const [submitMessage, setSubmitMessage] = useState('');
   const [submitError, setSubmitError] = useState('');
   const intakeContainerRef = useRef<HTMLDivElement | null>(null);
+  const [newPartForm, setNewPartForm] = useState({
+    name: '',
+    listPrice: '',
+    publicPrice: '',
+    description: '',
+    sku: '',
+    brand: '',
+    isActive: true,
+  });
 
   const lookupsQuery = useQuery({
     queryKey: ['intake-lookups', workshopId],
@@ -330,6 +348,7 @@ export function IntakesPage() {
     [serviceLines],
   );
   const partsCatalogQuery = useWorkshopParts(workshopId, true);
+  const createWorkshopPartMutation = useCreateWorkshopPart(workshopId);
 
   const canMoveToInstrument =
     !!selectedClient || (isNewClientMode && !!clientForm.fullName.trim() && !!clientForm.phone.trim());
@@ -351,10 +370,19 @@ export function IntakesPage() {
     paymentLines.some((line) => Number(line.amount || 0) > 0);
   const canSubmitIntake = canMoveToVisit && !!branchId && hasVisitDetails && !hasBlockingMediaUploads;
   const filteredRegularServices = useMemo(() => {
-    const query = serviceSearch.trim().toLowerCase();
+    const query = modalServiceSearch.trim().toLowerCase();
     if (!query) return regularServices;
     return regularServices.filter((service) => service.name.toLowerCase().includes(query));
-  }, [regularServices, serviceSearch]);
+  }, [modalServiceSearch, regularServices]);
+
+  const filteredWorkshopParts = useMemo(() => {
+    const query = partsSearch.trim().toLowerCase();
+    const parts = partsCatalogQuery.data || [];
+    if (!query) return parts;
+    return parts.filter((part) =>
+      [part.name, part.sku || '', part.brand || ''].join(' ').toLowerCase().includes(query),
+    );
+  }, [partsCatalogQuery.data, partsSearch]);
 
   useEffect(() => {
     if (!serviceToast) return;
@@ -515,6 +543,105 @@ export function IntakesPage() {
 
   function removePaymentLine(id: string) {
     setPaymentLines((current) => current.filter((line) => line.id !== id));
+  }
+
+  function addPartFromCatalog(workshopPartId: string) {
+    const selected = (partsCatalogQuery.data || []).find((part) => part.id === workshopPartId);
+    if (!selected) return;
+    setPartLines((current) => [
+      ...current,
+      {
+        id: crypto.randomUUID(),
+        source: 'CATALOG',
+        workshopPartId: selected.id,
+        name: selected.name,
+        quantity: 1,
+        unitPrice: Number(selected.publicPrice || 0),
+        unitCost: Number(selected.listPrice || 0),
+        notes: '',
+        visitServiceId: '',
+      },
+    ]);
+    setServiceToast(`Refacción agregada: ${selected.name}`);
+    setIsPartsPickerOpen(false);
+    setPartsSearch('');
+  }
+
+  function addManualPartFromPicker() {
+    setPartLines((current) => [...current, createManualPartLine()]);
+    setServiceToast('Refacción manual agregada');
+    setIsPartsPickerOpen(false);
+    setPartsSearch('');
+  }
+
+  async function createWorkshopPartFromModal() {
+    const name = newPartForm.name.trim();
+    const listPrice = Number(newPartForm.listPrice);
+    const publicPrice = Number(newPartForm.publicPrice);
+    if (!name) {
+      setSubmitError('El nombre de la refacción es obligatorio.');
+      return;
+    }
+    if (!Number.isFinite(listPrice) || listPrice < 0) {
+      setSubmitError('El precio de lista debe ser mayor o igual a 0.');
+      return;
+    }
+    if (!Number.isFinite(publicPrice) || publicPrice < 0) {
+      setSubmitError('El precio público debe ser mayor o igual a 0.');
+      return;
+    }
+
+    try {
+      const created = await createWorkshopPartMutation.mutateAsync({
+        name,
+        listPrice,
+        publicPrice,
+        description: newPartForm.description.trim() || undefined,
+        sku: newPartForm.sku.trim() || undefined,
+        brand: newPartForm.brand.trim() || undefined,
+        isActive: newPartForm.isActive,
+      });
+      setServiceToast(`Refacción creada: ${created.name}`);
+      setNewPartForm({
+        name: '',
+        listPrice: '',
+        publicPrice: '',
+        description: '',
+        sku: '',
+        brand: '',
+        isActive: true,
+      });
+      setIsCreatePartModalOpen(false);
+      setIsPartsPickerOpen(true);
+      addPartFromCatalog(created.id);
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : 'No se pudo crear la refacción.');
+    }
+  }
+
+  function resetIntakeForNextInstrument() {
+    setSelectedInstrument(null);
+    setInstrumentForm(EMPTY_INSTRUMENT_FORM);
+    setIsNewInstrumentMode(true);
+    setServiceLines([]);
+    setPartLines([]);
+    setIntakeNotes('');
+    setVisitNote('');
+    setEstimatedDiscount('');
+    setCustomDesiredTuning('');
+    setHasStrap(false);
+    setHasCase(false);
+    setWantsStringChange(false);
+    setDesiredTuningId('');
+    setStringGaugeId('');
+    setCuerdaMediaNote('');
+    setAffiliateCode('');
+    setPaymentLines([]);
+    setUploadedMediaIds([]);
+    setHasBlockingMediaUploads(false);
+    setExpandedServiceIds([]);
+    setActiveStep('instrument');
+    scrollToIntakeTop(intakeContainerRef.current);
   }
 
   function openCustomCatalogModal(kind: CatalogKind) {
@@ -716,33 +843,40 @@ export function IntakesPage() {
       setSubmitError('');
       setSubmitMessage('Visita creada correctamente.');
       notifySuccess('Visita creada', 'La orden se guardó correctamente.');
+      const keepClientForNext = postSaveAction === 'addInstrument' && !!selectedClient;
       setSearchPhone('');
       setSearchResults([]);
-      setSelectedClient(null);
-      setSelectedInstrument(null);
-      setIsNewClientMode(false);
-      setIsNewInstrumentMode(false);
-      setClientForm(EMPTY_CLIENT_FORM);
-      setInstrumentForm(EMPTY_INSTRUMENT_FORM);
-      setServiceLines([]);
-      setIntakeNotes('');
-      setWantsStringChange(false);
-      setDesiredTuningId('');
-      setStringGaugeId('');
-      setCuerdaMediaNote('');
-      setVisitNote('');
-      setEstimatedDiscount('');
-      setCustomDesiredTuning('');
-      setHasStrap(false);
-      setHasCase(false);
-      setAffiliateCode('');
-      setPaymentLines([]);
-      setUploadedMediaIds([]);
-      setHasBlockingMediaUploads(false);
-      setExpandedServiceIds([]);
-      setPartLines([]);
+      if (keepClientForNext) {
+        resetIntakeForNextInstrument();
+      } else {
+        setSelectedClient(null);
+        setSelectedInstrument(null);
+        setIsNewClientMode(false);
+        setIsNewInstrumentMode(false);
+        setClientForm(EMPTY_CLIENT_FORM);
+        setInstrumentForm(EMPTY_INSTRUMENT_FORM);
+        setServiceLines([]);
+        setIntakeNotes('');
+        setWantsStringChange(false);
+        setDesiredTuningId('');
+        setStringGaugeId('');
+        setCuerdaMediaNote('');
+        setVisitNote('');
+        setEstimatedDiscount('');
+        setCustomDesiredTuning('');
+        setHasStrap(false);
+        setHasCase(false);
+        setAffiliateCode('');
+        setPaymentLines([]);
+        setUploadedMediaIds([]);
+        setHasBlockingMediaUploads(false);
+        setExpandedServiceIds([]);
+        setPartLines([]);
+        setActiveStep('client');
+      }
+      setPostSaveAction('default');
+      setShowPaymentModal(false);
       setShowConfirmIntakeModal(false);
-      setActiveStep('client');
       setShowSuccessOverlay(true);
     },
     onError: (error: Error) => {
@@ -753,7 +887,7 @@ export function IntakesPage() {
   });
 
   return (
-    <div ref={intakeContainerRef} className="mx-auto w-full max-w-3xl px-3 pb-44 pt-3 sm:px-4">
+    <div ref={intakeContainerRef} className="mx-auto w-full max-w-3xl px-3 pb-56 pt-3 sm:px-4 md:pb-52">
       <BaseCard>
         <div className="flex items-center justify-between gap-2">
           <h1 className="section-title text-lg">Intake rápido (mobile-first)</h1>
@@ -1099,34 +1233,27 @@ export function IntakesPage() {
               )}
 
               <div className="space-y-2">
-                <input
-                  className="input h-12"
-                  placeholder="Buscar servicio..."
-                  value={serviceSearch}
-                  onChange={(e) => setServiceSearch(e.target.value)}
-                />
-              </div>
-
-              <div className="grid grid-cols-1 gap-2">
-                {filteredRegularServices.map((service) => (
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   <button
-                    key={service.id}
                     type="button"
-                    onClick={() => onAddCatalogService(service)}
-                    className="min-h-14 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-left hover:bg-slate-50"
+                    className="btn-secondary h-11 w-full justify-center gap-2"
+                    onClick={() => {
+                      setModalServiceSearch('');
+                      setIsServicePickerOpen(true);
+                    }}
                   >
-                    <span className="flex min-w-0 items-center gap-2">
-                      <Wrench className="h-4 w-4 shrink-0" />
-                      <span className="truncate">{service.name}</span>
-                    </span>
-                    <span className="shrink-0 text-xs text-slate-500">{currency(service.basePrice)}</span>
+                    <PlusCircle className="h-4 w-4" />
+                    Agregar servicio
                   </button>
-                ))}
-                {!filteredRegularServices.length ? (
-                  <div className="rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-500">
-                    No se encontraron servicios con ese nombre.
-                  </div>
-                ) : null}
+                  <button
+                    type="button"
+                    className="btn-secondary h-11 w-full justify-center gap-2"
+                    onClick={() => setIsPartsPickerOpen(true)}
+                  >
+                    <PackagePlus className="h-4 w-4" />
+                    Agregar refacción
+                  </button>
+                </div>
               </div>
 
               <div className="space-y-2 rounded-xl border border-slate-200 p-3">
@@ -1184,6 +1311,57 @@ export function IntakesPage() {
                 <PlusCircle className="h-4 w-4" />
                 Agregar servicio fuera de catálogo
               </button>
+
+              <div className="rounded-xl border border-slate-200 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-semibold text-slate-800">Refacciones seleccionadas</p>
+                  <span className="text-xs text-slate-500">{partLines.length}</span>
+                </div>
+                {!partLines.length ? (
+                  <p className="mt-2 text-sm text-slate-500">Aún no agregas refacciones.</p>
+                ) : (
+                  <div className="mt-2 space-y-2">
+                    {partLines.map((line) => (
+                      <div key={line.id} className="rounded-lg border border-slate-200 p-2 text-sm">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="truncate font-medium text-slate-800">{line.name || 'Refacción manual'}</p>
+                          <button
+                            type="button"
+                            className="btn-secondary h-8 px-2"
+                            onClick={() => setPartLines((current) => current.filter((item) => item.id !== line.id))}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                        <div className="mt-1 grid grid-cols-2 gap-2">
+                          <input
+                            className="input h-10"
+                            inputMode="decimal"
+                            placeholder="Cantidad"
+                            value={line.quantity}
+                            onChange={(event) =>
+                              setPartLines((current) =>
+                                current.map((item) => (item.id === line.id ? { ...item, quantity: Number(event.target.value || 0) } : item)),
+                              )
+                            }
+                          />
+                          <input
+                            className="input h-10"
+                            inputMode="decimal"
+                            placeholder="Precio"
+                            value={line.unitPrice}
+                            onChange={(event) =>
+                              setPartLines((current) =>
+                                current.map((item) => (item.id === line.id ? { ...item, unitPrice: Number(event.target.value || 0) } : item)),
+                              )
+                            }
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
 
               {!serviceLines.length ? (
                 <div className="rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-600">
@@ -1310,59 +1488,25 @@ export function IntakesPage() {
                   <button
                     type="button"
                     className="btn-secondary h-9 px-3"
-                    onClick={addPaymentLine}
+                    onClick={() => setShowPaymentModal(true)}
                   >
                     <PlusCircle className="h-4 w-4" />
                   </button>
                 </div>
                 {!paymentLines.length ? (
                   <p className="text-sm text-slate-500">Aún no registras abonos.</p>
-              ) : (
-                <div className="space-y-2">
+                ) : (
+                  <div className="space-y-2">
                     {paymentLines.map((line) => (
-                      <div key={line.id} className="rounded-xl border border-slate-200 p-3">
-                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                          <select
-                            className="input h-11"
-                            value={line.paymentMethodId}
-                            onChange={(e) =>
-                              updatePaymentLine(line.id, { paymentMethodId: e.target.value })
-                            }
-                          >
-                            <option value="">Método de pago</option>
-                            {(lookupsQuery.data?.paymentMethods || []).map((item) => (
-                              <option key={item.id} value={item.id}>
-                                {item.name}
-                              </option>
-                            ))}
-                          </select>
-                          <input
-                            className="input h-11"
-                            inputMode="decimal"
-                            placeholder="Monto"
-                            value={line.amount}
-                            onChange={(e) => updatePaymentLine(line.id, { amount: e.target.value })}
-                          />
-                          <input
-                            className="input h-11"
-                            placeholder="Fecha (dd/mm/yyyy)"
-                            value={line.paidAt}
-                            onChange={(e) => updatePaymentLine(line.id, { paidAt: e.target.value })}
-                          />
+                      <div key={line.id} className="rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-medium text-slate-800">
+                            {(lookupsQuery.data?.paymentMethods || []).find((item) => item.id === line.paymentMethodId)?.name || 'Método sin especificar'}
+                          </span>
+                          <span className="font-semibold text-slate-900">{currency(Number(line.amount || 0))}</span>
                         </div>
-                        <textarea
-                          className="input mt-2 min-h-16"
-                          placeholder="Notas del abono (opcional)"
-                          value={line.notes}
-                          onChange={(e) => updatePaymentLine(line.id, { notes: e.target.value })}
-                        />
-                        <button
-                          type="button"
-                          className="btn-secondary mt-2 h-9 px-3"
-                          onClick={() => removePaymentLine(line.id)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
+                        <p className="text-xs text-slate-500">{line.paidAt}</p>
+                        {line.notes ? <p className="mt-1 text-xs text-slate-600">{line.notes}</p> : null}
                       </div>
                     ))}
                   </div>
@@ -1509,7 +1653,13 @@ export function IntakesPage() {
               </div>
               {!!paymentLines.length && (
                 <div className="rounded-xl border border-slate-200 p-3">
-                  <p className="text-xs uppercase text-slate-500">Abonos</p>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs uppercase text-slate-500">Abonos</p>
+                    <button type="button" className="btn-secondary h-8 px-3 text-xs" onClick={() => setShowPaymentModal(true)}>
+                      <PlusCircle className="h-3.5 w-3.5" />
+                      Agregar abono
+                    </button>
+                  </div>
                   {paymentLines.map((line) => (
                     <div key={line.id} className="mt-1 flex items-center justify-between text-sm">
                       <span>
@@ -1521,6 +1671,12 @@ export function IntakesPage() {
                   ))}
                 </div>
               )}
+              {!paymentLines.length ? (
+                <button type="button" className="btn-secondary h-10 w-full justify-center gap-2" onClick={() => setShowPaymentModal(true)}>
+                  <PlusCircle className="h-4 w-4" />
+                  Agregar abono
+                </button>
+              ) : null}
               <div className="mt-4 rounded-xl border border-slate-200 p-3">
                 <div className="flex items-center justify-between gap-2">
                   <h3 className="text-sm font-semibold text-slate-900">Refacciones iniciales (opcional)</h3>
@@ -1706,12 +1862,184 @@ export function IntakesPage() {
         </OverlayPortal>
       ) : null}
 
-      <div className="mobile-safe-bottom fixed inset-x-0 bottom-16 z-30 border-t border-slate-200 bg-white/95 px-3 py-3 shadow-[0_-8px_24px_rgba(15,23,42,0.08)] backdrop-blur">
+      {isServicePickerOpen ? (
+        <OverlayPortal>
+          <div className="fixed inset-0 z-[150] bg-black/45 p-3 sm:flex sm:items-center sm:justify-center">
+            <div className="mt-auto w-full rounded-2xl bg-white p-4 shadow-2xl sm:mt-0 sm:max-w-xl">
+              <h3 className="text-base font-semibold text-slate-900">Agregar servicio</h3>
+              <input
+                className="input mt-3 h-11"
+                placeholder="Buscar servicio..."
+                value={modalServiceSearch}
+                onChange={(event) => setModalServiceSearch(event.target.value)}
+                autoFocus
+              />
+              <div className="mt-3 max-h-[52vh] space-y-2 overflow-y-auto">
+                {filteredRegularServices.map((service) => (
+                  <button
+                    key={service.id}
+                    type="button"
+                    onClick={() => {
+                      onAddCatalogService(service);
+                      setIsServicePickerOpen(false);
+                    }}
+                    className="min-h-14 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-left hover:bg-slate-50"
+                  >
+                    <span className="flex min-w-0 items-center gap-2">
+                      <Wrench className="h-4 w-4 shrink-0" />
+                      <span className="truncate">{service.name}</span>
+                    </span>
+                    <span className="shrink-0 text-xs text-slate-500">{currency(service.basePrice)}</span>
+                  </button>
+                ))}
+                {!filteredRegularServices.length ? (
+                  <p className="rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-500">No hay servicios para ese filtro.</p>
+                ) : null}
+              </div>
+              <button type="button" className="btn-secondary mt-3 h-11 w-full justify-center" onClick={() => setIsServicePickerOpen(false)}>
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </OverlayPortal>
+      ) : null}
+
+      {isPartsPickerOpen ? (
+        <OverlayPortal>
+          <div className="fixed inset-0 z-[150] bg-black/45 p-3 sm:flex sm:items-center sm:justify-center">
+            <div className="mt-auto w-full rounded-2xl bg-white p-4 shadow-2xl sm:mt-0 sm:max-w-xl">
+              <h3 className="text-base font-semibold text-slate-900">Agregar refacción</h3>
+              <input
+                className="input mt-3 h-11"
+                placeholder="Buscar refacción por nombre, SKU o marca..."
+                value={partsSearch}
+                onChange={(event) => setPartsSearch(event.target.value)}
+                autoFocus
+              />
+              <div className="mt-3 max-h-[52vh] space-y-2 overflow-y-auto">
+                {filteredWorkshopParts.map((part) => (
+                  <button
+                    key={part.id}
+                    type="button"
+                    className="w-full rounded-xl border border-slate-200 px-3 py-2 text-left hover:bg-slate-50"
+                    onClick={() => addPartFromCatalog(part.id)}
+                  >
+                    <p className="font-medium text-slate-900">{part.name}</p>
+                    <p className="mt-1 text-xs text-slate-500">{part.brand || 'Sin marca'} · {part.sku || 'Sin SKU'}</p>
+                    <p className="text-xs text-emerald-700">Público: {currency(part.publicPrice)}</p>
+                  </button>
+                ))}
+                {!filteredWorkshopParts.length ? (
+                  <p className="rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-500">No hay refacciones para ese filtro.</p>
+                ) : null}
+              </div>
+              <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <button type="button" className="btn-secondary h-11 justify-center" onClick={addManualPartFromPicker}>
+                  Agregar manual
+                </button>
+                <button
+                  type="button"
+                  className="btn-primary h-11 justify-center"
+                  onClick={() => {
+                    setIsPartsPickerOpen(false);
+                    setIsCreatePartModalOpen(true);
+                  }}
+                >
+                  Agregar refacción que no está en catálogo
+                </button>
+              </div>
+              <button type="button" className="btn-secondary mt-2 h-10 w-full justify-center" onClick={() => setIsPartsPickerOpen(false)}>
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </OverlayPortal>
+      ) : null}
+
+      {isCreatePartModalOpen ? (
+        <OverlayPortal>
+          <div className="fixed inset-0 z-[155] bg-black/45 p-3 sm:flex sm:items-center sm:justify-center">
+            <div className="mt-auto w-full rounded-2xl bg-white p-4 shadow-2xl sm:mt-0 sm:max-w-xl">
+              <h3 className="text-base font-semibold text-slate-900">Nueva refacción</h3>
+              <div className="mt-3 space-y-2">
+                <InputField label="name" value={newPartForm.name} onChange={(event) => setNewPartForm((current) => ({ ...current, name: event.target.value }))} />
+                <div className="grid grid-cols-2 gap-2">
+                  <InputField label="listPrice" inputMode="decimal" value={newPartForm.listPrice} onChange={(event) => setNewPartForm((current) => ({ ...current, listPrice: event.target.value }))} />
+                  <InputField label="publicPrice" inputMode="decimal" value={newPartForm.publicPrice} onChange={(event) => setNewPartForm((current) => ({ ...current, publicPrice: event.target.value }))} />
+                </div>
+                <InputField label="description" as="textarea" value={newPartForm.description} onChange={(event) => setNewPartForm((current) => ({ ...current, description: event.target.value }))} />
+                <div className="grid grid-cols-2 gap-2">
+                  <InputField label="sku" value={newPartForm.sku} onChange={(event) => setNewPartForm((current) => ({ ...current, sku: event.target.value }))} />
+                  <InputField label="brand" value={newPartForm.brand} onChange={(event) => setNewPartForm((current) => ({ ...current, brand: event.target.value }))} />
+                </div>
+                <label className="flex items-center gap-2 rounded-xl border border-slate-200 p-3 text-sm">
+                  <input type="checkbox" checked={newPartForm.isActive} onChange={(event) => setNewPartForm((current) => ({ ...current, isActive: event.target.checked }))} />
+                  isActive
+                </label>
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <button type="button" className="btn-secondary h-11 justify-center" onClick={() => setIsCreatePartModalOpen(false)}>Cancelar</button>
+                <button type="button" className="btn-primary h-11 justify-center" onClick={() => void createWorkshopPartFromModal()} disabled={createWorkshopPartMutation.isPending}>
+                  {createWorkshopPartMutation.isPending ? 'Guardando...' : 'Guardar refacción'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </OverlayPortal>
+      ) : null}
+
+      {showPaymentModal ? (
+        <OverlayPortal>
+          <div className="fixed inset-0 z-[155] bg-black/45 p-3 sm:flex sm:items-center sm:justify-center">
+            <div className="mt-auto w-full rounded-2xl bg-white p-4 shadow-2xl sm:mt-0 sm:max-w-xl">
+              <div className="mb-2 flex items-center justify-between">
+                <h3 className="text-base font-semibold text-slate-900">Agregar abono</h3>
+                <button type="button" className="btn-secondary h-8 px-3" onClick={addPaymentLine}>
+                  <PlusCircle className="h-4 w-4" />
+                </button>
+              </div>
+              {!paymentLines.length ? <p className="text-sm text-slate-500">Aún no registras abonos.</p> : null}
+              <div className="max-h-[52vh] space-y-2 overflow-y-auto">
+                {paymentLines.map((line) => (
+                  <div key={line.id} className="rounded-xl border border-slate-200 p-3">
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      <select className="input h-11" value={line.paymentMethodId} onChange={(event) => updatePaymentLine(line.id, { paymentMethodId: event.target.value })}>
+                        <option value="">Método de pago</option>
+                        {(lookupsQuery.data?.paymentMethods || []).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                      </select>
+                      <input className="input h-11" inputMode="decimal" placeholder="Monto" value={line.amount} onChange={(event) => updatePaymentLine(line.id, { amount: event.target.value })} />
+                      <input className="input h-11" placeholder="Fecha (dd/mm/yyyy)" value={line.paidAt} onChange={(event) => updatePaymentLine(line.id, { paidAt: event.target.value })} />
+                    </div>
+                    <textarea className="input mt-2 min-h-16" placeholder="Notas del abono (opcional)" value={line.notes} onChange={(event) => updatePaymentLine(line.id, { notes: event.target.value })} />
+                    <button type="button" className="btn-secondary mt-2 h-9 px-3" onClick={() => removePaymentLine(line.id)}>
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <button type="button" className="btn-primary mt-3 h-11 w-full justify-center" onClick={() => setShowPaymentModal(false)}>
+                Listo
+              </button>
+            </div>
+          </div>
+        </OverlayPortal>
+      ) : null}
+
+      <button
+        type="button"
+        className="fixed bottom-28 right-4 z-30 rounded-full bg-slate-900 p-3 text-white shadow-lg md:bottom-24"
+        onClick={() => scrollToIntakeTop(intakeContainerRef.current)}
+        aria-label="Ir arriba"
+      >
+        <ChevronUp className="h-4 w-4" />
+      </button>
+
+      <div className="mobile-safe-bottom fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 px-3 py-3 shadow-[0_-8px_24px_rgba(15,23,42,0.08)] backdrop-blur">
         <div className="mx-auto max-w-3xl space-y-2">
           <div className="flex items-center justify-between rounded-xl bg-emerald-50 px-3 py-2 text-sm">
             <span className="font-medium text-emerald-800">Resumen rápido</span>
             <span className="font-semibold text-emerald-900">
-              {serviceLines.length} servicio(s) · {currency(total)}
+              {serviceLines.length} servicio(s) · {partLines.length} refacción(es) · {currency(total)}
             </span>
           </div>
           <div className="flex items-center gap-2">
@@ -1739,21 +2067,37 @@ export function IntakesPage() {
               <ChevronRight className="h-4 w-4" />
             </button>
           ) : (
-            <button
-              type="button"
-              className="btn-primary h-12 flex-1 justify-center gap-2 text-base"
-              onClick={() => setShowConfirmIntakeModal(true)}
-              disabled={createIntakeMutation.isPending || !workshopId || !canSubmitIntake}
-            >
-              {createIntakeMutation.isPending ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Guardando...
-                </>
-              ) : (
-                'Guardar intake y enviar tracking'
-              )}
-            </button>
+            <div className="flex flex-1 gap-2">
+              <button
+                type="button"
+                className="btn-secondary h-12 flex-1 justify-center text-sm"
+                onClick={() => {
+                  setPostSaveAction('addInstrument');
+                  setShowConfirmIntakeModal(true);
+                }}
+                disabled={createIntakeMutation.isPending || !workshopId || !canSubmitIntake}
+              >
+                Guardar y agregar otro instrumento
+              </button>
+              <button
+                type="button"
+                className="btn-primary h-12 flex-1 justify-center gap-2 text-base"
+                onClick={() => {
+                  setPostSaveAction('default');
+                  setShowConfirmIntakeModal(true);
+                }}
+                disabled={createIntakeMutation.isPending || !workshopId || !canSubmitIntake}
+              >
+                {createIntakeMutation.isPending ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Guardando...
+                  </>
+                ) : (
+                  'Guardar intake'
+                )}
+              </button>
+            </div>
           )}
           </div>
         </div>
