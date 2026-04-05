@@ -17,6 +17,7 @@ export type CatalogFieldDefinition = {
   placeholder?: string;
   step?: string;
   options?: FieldOption[];
+  hint?: string;
 };
 
 export type CatalogEntitySectionProps<TItem extends { id: string }> = {
@@ -40,6 +41,12 @@ export type CatalogEntitySectionProps<TItem extends { id: string }> = {
   canDelete?: (item: TItem) => boolean;
   getReadonlyReason?: (item: TItem) => string | null;
   createContextHint?: string;
+  onFieldValueChange?: (params: {
+    fieldName: string;
+    value: string | boolean;
+    values: Record<string, string | boolean>;
+    editingItem: TItem | null;
+  }) => Record<string, string | boolean>;
 };
 
 function buildPayloadFromFields(fields: CatalogFieldDefinition[], values: Record<string, string | boolean>) {
@@ -118,6 +125,7 @@ function CatalogFormModal({
                       value={String(value ?? '')}
                       onChange={(event) => onChange(field.name, event.target.value)}
                     />
+                    {field.hint ? <span className="mt-1 block text-[11px] text-slate-400">{field.hint}</span> : null}
                   </label>
                 );
               }
@@ -142,6 +150,7 @@ function CatalogFormModal({
                         </option>
                       ))}
                     </select>
+                    {field.hint ? <span className="mt-1 block text-[11px] text-slate-400">{field.hint}</span> : null}
                   </label>
                 );
               }
@@ -157,6 +166,7 @@ function CatalogFormModal({
                     value={String(value ?? '')}
                     onChange={(event) => onChange(field.name, event.target.value)}
                   />
+                  {field.hint ? <span className="mt-1 block text-[11px] text-slate-400">{field.hint}</span> : null}
                 </label>
               );
             })}
@@ -235,6 +245,7 @@ export function CatalogEntitySection<TItem extends { id: string }>(props: Catalo
     canDelete,
     getReadonlyReason,
     createContextHint,
+    onFieldValueChange,
   } = props;
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<TItem | null>(null);
@@ -287,6 +298,19 @@ export function CatalogEntitySection<TItem extends { id: string }>(props: Catalo
     } finally {
       setPendingActionId(null);
     }
+  };
+
+  const handleFieldValueChange = (fieldName: string, value: string | boolean) => {
+    setValues((current) => {
+      const nextValues = { ...current, [fieldName]: value };
+      if (!onFieldValueChange) return nextValues;
+      return onFieldValueChange({
+        fieldName,
+        value,
+        values: nextValues,
+        editingItem,
+      });
+    });
   };
 
   return (
@@ -385,7 +409,7 @@ export function CatalogEntitySection<TItem extends { id: string }>(props: Catalo
         saveLabel={saveLabel}
         onClose={() => setIsFormOpen(false)}
         onSave={() => void handleSave()}
-        onChange={(name, value) => setValues((current) => ({ ...current, [name]: value }))}
+        onChange={handleFieldValueChange}
       />
 
       <ConfirmActionModal

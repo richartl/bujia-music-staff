@@ -127,7 +127,7 @@ const PART_FIELDS: CatalogFieldDefinition[] = [
 const INSTRUMENT_TYPE_FIELDS: CatalogFieldDefinition[] = [
   { name: 'code', label: 'Código', type: 'text', required: true },
   { name: 'name', label: 'Nombre', type: 'text', required: true },
-  { name: 'slug', label: 'Slug', type: 'text', required: true },
+  { name: 'slug', label: 'Slug', type: 'text', required: true, hint: 'Se genera automáticamente, pero puedes editarlo.' },
   { name: 'family', label: 'Familia', type: 'text', required: true },
   { name: 'isActive', label: 'Activo', type: 'checkbox' },
 ];
@@ -170,6 +170,17 @@ function SectionBadge({ children, tone = 'slate' }: { children: string; tone?: '
     sky: 'bg-sky-100 text-sky-700',
   };
   return <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${colorMap[tone]}`}>{children}</span>;
+}
+
+function toSlugCandidate(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .trim()
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-');
 }
 
 export function CatalogsPage() {
@@ -860,12 +871,53 @@ export function CatalogsPage() {
             slug: item?.slug || '',
             family: item?.family || '',
             isActive: item?.isActive ?? true,
+            slugManuallyEdited: false,
           })}
-          onCreate={(payload) => handleMutation(() => createInstrumentType.mutateAsync(payload as never), 'Tipo de instrumento creado', 'No se pudo crear el tipo de instrumento')}
+          onFieldValueChange={({ fieldName, value, values }) => {
+            const nextValues = { ...values };
+            if (fieldName === 'slug') {
+              const slugValue = toSlugCandidate(String(value || ''));
+              nextValues.slug = slugValue;
+              nextValues.slugManuallyEdited = slugValue.length > 0;
+              if (!slugValue.length) {
+                nextValues.slug = toSlugCandidate(String(values.name || ''));
+                nextValues.slugManuallyEdited = false;
+              }
+              return nextValues;
+            }
+
+            if (fieldName === 'name') {
+              const slugEdited = Boolean(values.slugManuallyEdited);
+              if (!slugEdited || !String(values.slug || '').trim()) {
+                nextValues.slug = toSlugCandidate(String(value || ''));
+              }
+              return nextValues;
+            }
+
+            return nextValues;
+          }}
+          onCreate={(payload) =>
+            handleMutation(
+              () =>
+                createInstrumentType.mutateAsync({
+                  ...(payload as object),
+                  slug: toSlugCandidate(String(payload.slug || payload.name || '')),
+                } as never),
+              'Tipo de instrumento creado',
+              'No se pudo crear el tipo de instrumento',
+            )
+          }
           onUpdate={(item, payload) =>
             !item.isGlobal
               ? handleMutation(
-                  () => updateInstrumentType.mutateAsync({ id: item.id, payload: payload as never }),
+                  () =>
+                    updateInstrumentType.mutateAsync({
+                      id: item.id,
+                      payload: {
+                        ...(payload as object),
+                        slug: toSlugCandidate(String(payload.slug || payload.name || item.slug)),
+                      } as never,
+                    }),
                   'Tipo de instrumento actualizado',
                   'No se pudo actualizar el tipo de instrumento',
                 )

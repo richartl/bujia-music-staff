@@ -9,6 +9,8 @@ const createColorMutate = vi.fn(async () => ({}));
 const createWorkshopUserMutate = vi.fn(async () => ({}));
 const updateWorkshopUserMutate = vi.fn(async () => ({}));
 const deleteWorkshopUserMutate = vi.fn(async () => ({}));
+const createInstrumentTypeMutate = vi.fn(async () => ({}));
+const updateInstrumentTypeMutate = vi.fn(async () => ({}));
 
 const usersQueryState = {
   data: {
@@ -72,8 +74,8 @@ vi.mock('../src/features/catalogs/hooks/useCatalogs', () => {
     useDeleteWorkshopServiceStatus: vi.fn(mutation),
     useCreateWorkshopPart: vi.fn(mutation),
     useUpdateWorkshopPart: vi.fn(mutation),
-    useCreateWorkshopInstrumentType: vi.fn(mutation),
-    useUpdateWorkshopInstrumentType: vi.fn(mutation),
+    useCreateWorkshopInstrumentType: vi.fn(() => ({ mutateAsync: createInstrumentTypeMutate, isPending: false })),
+    useUpdateWorkshopInstrumentType: vi.fn(() => ({ mutateAsync: updateInstrumentTypeMutate, isPending: false })),
     useCreateWorkshopService: vi.fn(mutation),
     useUpdateWorkshopService: vi.fn(mutation),
     useDeleteWorkshopService: vi.fn(mutation),
@@ -111,6 +113,8 @@ describe('CatalogsPage UI', () => {
     createWorkshopUserMutate.mockClear();
     updateWorkshopUserMutate.mockClear();
     deleteWorkshopUserMutate.mockClear();
+    createInstrumentTypeMutate.mockClear();
+    updateInstrumentTypeMutate.mockClear();
     usersQueryState.isLoading = false;
     usersQueryState.isError = false;
     usersQueryState.data = {
@@ -189,6 +193,55 @@ describe('CatalogsPage UI', () => {
     fireEvent.click(screen.getAllByRole('button').find((btn) => btn.className.includes('btn-secondary h-8 px-2'))!);
     expect(screen.getByText('Activar / desactivar')).toBeTruthy();
     expect(screen.queryByText('Eliminar')).toBeNull();
+  });
+
+  it('tipos de instrumentos genera slug desde name y permite edición manual', async () => {
+    renderCatalogs('/app/catalogs/instrument-types');
+    fireEvent.click(screen.getByRole('button', { name: 'Agregar' }));
+
+    const nameInput = screen.getByLabelText('Nombre') as HTMLInputElement;
+    const slugInput = screen.getByLabelText('Slug') as HTMLInputElement;
+
+    fireEvent.change(nameInput, { target: { value: 'Bajo eléctrico 5 cuerdas' } });
+    expect(slugInput.value).toBe('bajo-electrico-5-cuerdas');
+
+    fireEvent.change(slugInput, { target: { value: 'slug-manual' } });
+    fireEvent.change(nameInput, { target: { value: 'Bajo eléctrico 6 cuerdas' } });
+    expect(slugInput.value).toBe('slug-manual');
+
+    fireEvent.change(slugInput, { target: { value: '' } });
+    expect(slugInput.value).toBe('bajo-electrico-6-cuerdas');
+
+    fireEvent.change(screen.getByLabelText('Código'), { target: { value: 'BASS_6' } });
+    fireEvent.change(screen.getByLabelText('Familia'), { target: { value: 'BASS' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+
+    await waitFor(() => {
+      expect(createInstrumentTypeMutate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          code: 'BASS_6',
+          name: 'Bajo eléctrico 6 cuerdas',
+          slug: 'bajo-electrico-6-cuerdas',
+          family: 'BASS',
+        }),
+      );
+    });
+  });
+
+  it('tipos de instrumentos edit envía slug editable sanitizado', async () => {
+    renderCatalogs('/app/catalogs/instrument-types');
+    fireEvent.click(screen.getAllByRole('button').find((btn) => btn.className.includes('btn-secondary h-8 px-2'))!);
+    fireEvent.click(screen.getByRole('button', { name: 'Editar' }));
+
+    fireEvent.change(screen.getByLabelText('Slug'), { target: { value: 'SLUG EDITABLE!!' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+
+    await waitFor(() => {
+      expect(updateInstrumentTypeMutate).toHaveBeenCalledWith({
+        id: 'it-local',
+        payload: expect.objectContaining({ slug: 'slug-editable' }),
+      });
+    });
   });
 
   it('usuarios renderiza listado con avatar fallback y roles', () => {
