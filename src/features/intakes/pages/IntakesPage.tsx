@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import {
   AlertCircle,
@@ -33,6 +33,7 @@ import {
   createWorkshopTuning,
 } from '@/features/catalogs/api/create-catalog-items';
 import { useWorkshopParts } from '@/features/visits/hooks/useVisitParts';
+import { scrollToIntakeTop } from '@/features/intakes/utils/scrollToIntakeTop';
 import type {
   ClientInstrument,
   CreateIntakePayload,
@@ -226,6 +227,7 @@ export function IntakesPage() {
 
   const [submitMessage, setSubmitMessage] = useState('');
   const [submitError, setSubmitError] = useState('');
+  const intakeContainerRef = useRef<HTMLDivElement | null>(null);
 
   const lookupsQuery = useQuery({
     queryKey: ['intake-lookups', workshopId],
@@ -385,14 +387,19 @@ export function IntakesPage() {
     if (next === 'services' && !canMoveToServices) return;
     if (next === 'visit' && !canMoveToVisit) return;
     setActiveStep(next);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    scrollToIntakeTop(intakeContainerRef.current);
   }
 
   function goPrevStep() {
     const idx = STEP_ORDER.indexOf(activeStep);
     if (idx <= 0) return;
     setActiveStep(STEP_ORDER[idx - 1]);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    scrollToIntakeTop(intakeContainerRef.current);
+  }
+
+  function onStepClick(step: IntakeStep) {
+    setActiveStep(step);
+    scrollToIntakeTop(intakeContainerRef.current);
   }
 
   function resetClientSelection() {
@@ -423,6 +430,7 @@ export function IntakesPage() {
     setSearchPhone(client.phone || '');
     setSearchResults([]);
     setActiveStep('instrument');
+    scrollToIntakeTop(intakeContainerRef.current);
   }
 
   function onAddCatalogService(service: WorkshopServiceLookup) {
@@ -745,9 +753,14 @@ export function IntakesPage() {
   });
 
   return (
-    <div className="mx-auto w-full max-w-3xl px-3 pb-44 pt-3 sm:px-4">
+    <div ref={intakeContainerRef} className="mx-auto w-full max-w-3xl px-3 pb-44 pt-3 sm:px-4">
       <BaseCard>
-        <h1 className="section-title text-lg">Intake rápido (mobile-first)</h1>
+        <div className="flex items-center justify-between gap-2">
+          <h1 className="section-title text-lg">Intake rápido (mobile-first)</h1>
+          <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-800">
+            Paso {STEP_ORDER.indexOf(activeStep) + 1} de {STEP_ORDER.length}
+          </span>
+        </div>
         <p className="mt-1 text-sm text-slate-500">
           Flujo optimizado para mostrador: mínimo de toques, máximo contexto.
         </p>
@@ -755,7 +768,7 @@ export function IntakesPage() {
           steps={STEP_ORDER}
           labels={STEP_LABEL}
           activeStep={activeStep}
-          onStepClick={setActiveStep}
+          onStepClick={onStepClick}
         />
       </BaseCard>
 
