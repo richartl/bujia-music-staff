@@ -20,6 +20,7 @@ import { SearchInput } from '@/components/ui/SearchInput';
 import { InputField } from '@/components/ui/InputField';
 import { BaseCard } from '@/components/ui/BaseCard';
 import { StepProgress } from '@/components/ui/StepProgress';
+import { OverlayPortal } from '@/components/ui/OverlayPortal';
 import { searchClientByPhone, type ClientSearchItem } from '../api/search-client';
 import { createIntake } from '../api/create-intake';
 import { getClientInstruments } from '../api/get-client-instruments';
@@ -188,6 +189,8 @@ export function IntakesPage() {
   const [clientForm, setClientForm] = useState(EMPTY_CLIENT_FORM);
   const [instrumentForm, setInstrumentForm] = useState(EMPTY_INSTRUMENT_FORM);
   const [serviceLines, setServiceLines] = useState<IntakeServiceLine[]>([]);
+  const [isManualServiceModalOpen, setIsManualServiceModalOpen] = useState(false);
+  const [manualServiceDraft, setManualServiceDraft] = useState({ name: '', quantity: '1', unitPrice: '0', notes: '' });
   const [partLines, setPartLines] = useState<IntakePartLine[]>([]);
 
   const [branchId, setBranchId] = useState('');
@@ -439,10 +442,40 @@ export function IntakesPage() {
   }
 
   function onAddManualService() {
+    setManualServiceDraft({ name: '', quantity: '1', unitPrice: '0', notes: '' });
+    setIsManualServiceModalOpen(true);
+  }
+
+  function confirmManualServiceFromModal() {
+    const name = manualServiceDraft.name.trim();
+    const quantity = Number(manualServiceDraft.quantity);
+    const unitPrice = Number(manualServiceDraft.unitPrice);
+    if (!name) {
+      setSubmitError('El nombre del servicio manual es obligatorio.');
+      return;
+    }
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      setSubmitError('La cantidad del servicio manual debe ser mayor a 0.');
+      return;
+    }
+    if (!Number.isFinite(unitPrice) || unitPrice < 0) {
+      setSubmitError('El precio del servicio manual debe ser mayor o igual a 0.');
+      return;
+    }
     const newLine = createManualServiceLine();
-    setServiceLines((current) => [...current, newLine]);
+    setServiceLines((current) => [
+      ...current,
+      {
+        ...newLine,
+        name,
+        quantity,
+        unitPrice,
+        notes: manualServiceDraft.notes.trim(),
+      },
+    ]);
     setExpandedServiceIds((current) => [...current, newLine.id]);
     setServiceToast('Servicio manual agregado');
+    setIsManualServiceModalOpen(false);
   }
 
   function onUpdateServiceLine(id: string, updates: Partial<IntakeServiceLine>) {
@@ -1569,38 +1602,95 @@ export function IntakesPage() {
         </div>
       ) : null}
 
-      {customCatalogModal ? (
-        <div className="fixed inset-0 z-50 flex items-end bg-black/40 p-3 sm:items-center sm:justify-center">
-          <div className="w-full max-w-md rounded-2xl bg-white p-4 shadow-2xl">
-            <h3 className="text-base font-semibold text-slate-900">{customCatalogModal.title}</h3>
-            <p className="mt-1 text-sm text-slate-500">
-              Esta opción se agrega para este intake y queda seleccionada.
-            </p>
-            <input
-              className="input mt-3 h-12 text-base"
-              placeholder={customCatalogModal.placeholder}
-              value={customCatalogName}
-              onChange={(e) => setCustomCatalogName(capitalizeWords(e.target.value))}
-            />
-            <div className="mt-3 flex gap-2">
-              <button
-                type="button"
-                className="btn-secondary h-11 flex-1 justify-center"
-                onClick={() => setCustomCatalogModal(null)}
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                className="btn-primary h-11 flex-1 justify-center"
-                onClick={saveCustomCatalogOption}
-                disabled={!customCatalogName.trim()}
-              >
-                Guardar opción
-              </button>
+      {isManualServiceModalOpen ? (
+        <OverlayPortal>
+          <div className="fixed inset-0 z-[145] flex items-end bg-black/45 p-3 sm:items-center sm:justify-center">
+            <div className="w-full max-w-md rounded-2xl bg-white p-4 shadow-2xl">
+              <h3 className="text-base font-semibold text-slate-900">Agregar servicio manual</h3>
+              <p className="mt-1 text-sm text-slate-500">Captura el servicio fuera de catálogo y confirma para agregarlo.</p>
+              <div className="mt-3 space-y-2">
+                <InputField
+                  autoFocus
+                  label="Nombre"
+                  value={manualServiceDraft.name}
+                  onChange={(event) => setManualServiceDraft((current) => ({ ...current, name: event.target.value }))}
+                />
+                <div className="grid grid-cols-2 gap-2">
+                  <InputField
+                    label="Cantidad"
+                    inputMode="numeric"
+                    value={manualServiceDraft.quantity}
+                    onChange={(event) => setManualServiceDraft((current) => ({ ...current, quantity: event.target.value }))}
+                  />
+                  <InputField
+                    label="Precio"
+                    inputMode="decimal"
+                    value={manualServiceDraft.unitPrice}
+                    onChange={(event) => setManualServiceDraft((current) => ({ ...current, unitPrice: event.target.value }))}
+                  />
+                </div>
+                <InputField
+                  as="textarea"
+                  label="Notas (opcional)"
+                  value={manualServiceDraft.notes}
+                  onChange={(event) => setManualServiceDraft((current) => ({ ...current, notes: event.target.value }))}
+                />
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  className="btn-secondary h-11 justify-center"
+                  onClick={() => setIsManualServiceModalOpen(false)}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  className="btn-primary h-11 justify-center"
+                  onClick={confirmManualServiceFromModal}
+                >
+                  Agregar servicio
+                </button>
+              </div>
             </div>
           </div>
-        </div>
+        </OverlayPortal>
+      ) : null}
+
+      {customCatalogModal ? (
+        <OverlayPortal>
+          <div className="fixed inset-0 z-[145] flex items-end bg-black/40 p-3 sm:items-center sm:justify-center">
+            <div className="w-full max-w-md rounded-2xl bg-white p-4 shadow-2xl">
+              <h3 className="text-base font-semibold text-slate-900">{customCatalogModal.title}</h3>
+              <p className="mt-1 text-sm text-slate-500">
+                Esta opción se agrega para este intake y queda seleccionada.
+              </p>
+              <input
+                className="input mt-3 h-12 text-base"
+                placeholder={customCatalogModal.placeholder}
+                value={customCatalogName}
+                onChange={(e) => setCustomCatalogName(capitalizeWords(e.target.value))}
+              />
+              <div className="mt-3 flex gap-2">
+                <button
+                  type="button"
+                  className="btn-secondary h-11 flex-1 justify-center"
+                  onClick={() => setCustomCatalogModal(null)}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  className="btn-primary h-11 flex-1 justify-center"
+                  onClick={saveCustomCatalogOption}
+                  disabled={!customCatalogName.trim()}
+                >
+                  Guardar opción
+                </button>
+              </div>
+            </div>
+          </div>
+        </OverlayPortal>
       ) : null}
 
       <div className="mobile-safe-bottom fixed inset-x-0 bottom-16 z-30 border-t border-slate-200 bg-white/95 px-3 py-3 shadow-[0_-8px_24px_rgba(15,23,42,0.08)] backdrop-blur">

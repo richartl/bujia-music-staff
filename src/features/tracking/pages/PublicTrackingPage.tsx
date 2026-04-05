@@ -9,6 +9,7 @@ import { getTimelinePaymentAttachments } from '@/features/visits/utils/paymentAt
 import { getVisitMainImageAttachment } from '@/features/visits/utils/visitAttachments';
 import { WorkshopAvatar } from '@/components/avatars/WorkshopAvatar';
 import { UserAvatar } from '@/components/avatars/UserAvatar';
+import { OverlayPortal } from '@/components/ui/OverlayPortal';
 import type { NoteAttachment, TrackingResponse, VisitServiceNote, VisitTimelineEvent } from '@/features/visits/api/types';
 
 export function PublicTrackingPage() {
@@ -255,23 +256,25 @@ export function PublicTrackingPage() {
       </section>
 
       {preview ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-3">
-          <div className="w-full max-w-md rounded-2xl bg-white p-3">
-            <p className="truncate text-sm font-medium text-slate-800">{preview.name}</p>
-            <div className="mt-2">
-              {preview.mimeType.startsWith('image/') ? (
-                <img src={preview.url} alt={preview.name} className="max-h-[70vh] w-full rounded object-contain" />
-              ) : preview.mimeType.startsWith('video/') ? (
-                <video src={preview.url} controls className="max-h-[70vh] w-full rounded object-contain" />
-              ) : preview.mimeType.startsWith('audio/') ? (
-                <audio src={preview.url} controls className="w-full" />
-              ) : (
-                <a href={preview.url} target="_blank" rel="noreferrer" className="text-sky-700">Abrir archivo</a>
-              )}
+        <OverlayPortal>
+          <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/70 p-3">
+            <div className="w-full max-w-md rounded-2xl bg-white p-3">
+              <p className="truncate text-sm font-medium text-slate-800">{preview.name}</p>
+              <div className="mt-2">
+                {preview.mimeType.startsWith('image/') ? (
+                  <img src={preview.url} alt={preview.name} className="max-h-[70vh] w-full rounded object-contain" />
+                ) : preview.mimeType.startsWith('video/') ? (
+                  <video src={preview.url} controls className="max-h-[70vh] w-full rounded object-contain" />
+                ) : preview.mimeType.startsWith('audio/') ? (
+                  <audio src={preview.url} controls className="w-full" />
+                ) : (
+                  <a href={preview.url} target="_blank" rel="noreferrer" className="text-sky-700">Abrir archivo</a>
+                )}
+              </div>
+              <button type="button" className="btn-secondary mt-3 h-10 w-full justify-center" onClick={() => setPreview(null)}>Cerrar</button>
             </div>
-            <button type="button" className="btn-secondary mt-3 h-10 w-full justify-center" onClick={() => setPreview(null)}>Cerrar</button>
           </div>
-        </div>
+        </OverlayPortal>
       ) : null}
 
       {selectedEvent ? (
@@ -294,8 +297,9 @@ function TrackingEventDetailModal({
   const content = extractEventNoteContent(event);
 
   return (
-    <div className="fixed inset-0 z-[60] bg-black/60 p-0 sm:p-4" role="dialog" aria-modal="true" aria-label="Detalle del evento">
-      <div className="mx-auto flex h-[100dvh] w-full max-w-2xl flex-col bg-white text-slate-900 sm:h-[90vh] sm:rounded-2xl sm:border sm:border-slate-300">
+    <OverlayPortal>
+      <div className="fixed inset-0 z-[145] bg-black/60 p-0 sm:p-4" role="dialog" aria-modal="true" aria-label="Detalle del evento">
+        <div className="mx-auto flex h-[100dvh] w-full max-w-2xl flex-col bg-white text-slate-900 sm:h-[90vh] sm:rounded-2xl sm:border sm:border-slate-300">
         <header className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-300 bg-white px-4 py-3">
           <div>
             <p className="text-xs uppercase tracking-wide text-slate-600">Detalle del evento</p>
@@ -338,8 +342,9 @@ function TrackingEventDetailModal({
         <footer className="border-t border-slate-300 bg-white p-4">
           <button type="button" className="btn-primary h-12 w-full justify-center text-base" onClick={onClose}>Cerrar detalle</button>
         </footer>
+        </div>
       </div>
-    </div>
+    </OverlayPortal>
   );
 }
 

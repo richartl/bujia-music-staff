@@ -21,6 +21,7 @@ import { getTimelinePaymentAttachments } from '@/features/visits/utils/paymentAt
 import { VisitAttachmentsGallery } from '@/features/visits/components/VisitAttachmentsGallery';
 import { useIntakeMediaUpload } from '@/features/intakes/hooks/useIntakeMediaUpload';
 import { getVisitMainImageAttachment } from '@/features/visits/utils/visitAttachments';
+import { OverlayPortal } from '@/components/ui/OverlayPortal';
 import type { WorkshopServiceLookup } from '@/features/intakes/types';
 import { 
   createVisitNote,
@@ -1082,8 +1083,9 @@ export function VisitDetailPage() {
       />
 
       {isStatusModalOpen ? (
-        <div className="fixed inset-0 z-50 flex items-end bg-black/40 p-3">
-          <div className="w-full rounded-2xl bg-white p-4">
+        <OverlayPortal>
+          <div className="fixed inset-0 z-[140] flex items-end bg-black/40 p-3">
+            <div className="w-full rounded-2xl bg-white p-4">
             <h4 className="text-sm font-semibold text-slate-900">Cambiar estado de la visita</h4>
             <p className="mt-1 text-xs text-slate-500">Estado actual: <span className="font-semibold">{currentStatus}</span></p>
             <div className="mt-2 space-y-2">
@@ -1152,8 +1154,9 @@ export function VisitDetailPage() {
             >
               {changeVisitStatusMutation.isPending ? 'Guardando...' : 'Guardar estado'}
             </button>
+            </div>
           </div>
-        </div>
+        </OverlayPortal>
       ) : null}
 
       {isCancelVisitModalOpen ? (
@@ -1379,8 +1382,9 @@ export function VisitDetailPage() {
       ) : null}
 
       {selectedServiceDetail ? (
-        <div className="fixed inset-0 z-50 bg-slate-950/50 p-0 sm:p-4">
-          <div className="h-full w-full overflow-y-auto bg-white sm:mx-auto sm:h-auto sm:max-h-[92vh] sm:max-w-3xl sm:rounded-2xl">
+        <OverlayPortal>
+          <div className="fixed inset-0 z-[145] bg-slate-950/50 p-0 sm:p-4">
+            <div className="h-full w-full overflow-y-auto bg-white sm:mx-auto sm:h-auto sm:max-h-[92vh] sm:max-w-3xl sm:rounded-2xl">
             <header className="sticky top-0 z-20 border-b border-slate-200 bg-white p-4">
               <div className="flex items-center justify-between gap-2">
                 <div>
@@ -1437,13 +1441,15 @@ export function VisitDetailPage() {
                 </div>
               ))}
             </div>
+            </div>
           </div>
-        </div>
+        </OverlayPortal>
       ) : null}
 
       {mediaPreview ? (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-3" onClick={() => setMediaPreview(null)}>
-          <div className="w-full max-w-md rounded-2xl bg-white p-3" onClick={(event) => event.stopPropagation()}>
+        <OverlayPortal>
+          <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/80 p-3" onClick={() => setMediaPreview(null)}>
+            <div className="w-full max-w-md rounded-2xl bg-white p-3" onClick={(event) => event.stopPropagation()}>
             <p className="truncate text-sm font-medium text-slate-800">{mediaPreview.name}</p>
             <div className="mt-2">
               {mediaPreview.mimeType.startsWith('image/') ? (
@@ -1459,8 +1465,9 @@ export function VisitDetailPage() {
             <button type="button" className="btn-secondary mt-3 h-10 w-full justify-center" onClick={() => setMediaPreview(null)}>
               Cerrar
             </button>
+            </div>
           </div>
-        </div>
+        </OverlayPortal>
       ) : null}
 
       {isRegenerateModalOpen ? (
