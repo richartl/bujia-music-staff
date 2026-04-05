@@ -1,9 +1,7 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent } from 'react';
-import { Camera, Clapperboard, FilePlus2, ImagePlus, Loader2, Mic, RefreshCw, Trash2, UploadCloud } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { useEffect, useMemo, useRef, type ChangeEvent } from 'react';
+import { Camera, Clapperboard, Loader2, Mic, RefreshCw, Trash2 } from 'lucide-react';
 import {
   useIntakeMediaUpload,
-  type IntakeUploadItem,
   type IntakeUploadStatus,
 } from '../hooks/useIntakeMediaUpload';
 
@@ -14,18 +12,16 @@ type IntakeMediaUploaderProps = {
   onFileErrorToast: (message: string) => void;
 };
 
+const MAX_EVIDENCE_FILES = 4;
+
 const STATUS_LABEL: Record<IntakeUploadStatus, string> = {
   idle: 'En cola',
   initing: 'Preparando',
-  uploading: 'Subiendo',
-  completing: 'Confirmando',
+  uploading: 'Subiendo...',
+  completing: 'Subiendo...',
   done: 'Listo',
   error: 'Error',
 };
-
-function isImage(file: File) {
-  return file.type.startsWith('image/');
-}
 
 function formatFileSize(size: number) {
   if (size < 1024) return `${size} B`;
@@ -39,7 +35,6 @@ export function IntakeMediaUploader({
   onBlockingUploadsChange,
   onFileErrorToast,
 }: IntakeMediaUploaderProps) {
-  const [isDragActive, setIsDragActive] = useState(false);
   const photoInputRef = useRef<HTMLInputElement | null>(null);
   const videoInputRef = useRef<HTMLInputElement | null>(null);
   const audioInputRef = useRef<HTMLInputElement | null>(null);
@@ -56,10 +51,12 @@ export function IntakeMediaUploader({
 
   const previewMap = useMemo(() => {
     const entries = items
-      .filter((item) => isImage(item.file))
+      .filter((item) => item.file.type.startsWith('image/'))
       .map((item) => [item.localId, URL.createObjectURL(item.file)] as const);
     return new Map(entries);
   }, [items]);
+
+  const slotsLeft = Math.max(0, MAX_EVIDENCE_FILES - items.length);
 
   useEffect(() => {
     onUploadedMediaIdsChange(uploadedMediaIds);
@@ -76,16 +73,10 @@ export function IntakeMediaUploader({
   }, [previewMap]);
 
   function onInputChange(event: ChangeEvent<HTMLInputElement>) {
-    if (!event.target.files) return;
-    addFiles(event.target.files);
+    const files = Array.from(event.target.files || []).slice(0, slotsLeft);
+    if (!files.length) return;
+    addFiles(files);
     event.target.value = '';
-  }
-
-  function onDrop(event: DragEvent<HTMLLabelElement>) {
-    event.preventDefault();
-    setIsDragActive(false);
-    if (!event.dataTransfer.files?.length) return;
-    addFiles(event.dataTransfer.files);
   }
 
   async function requestDevicePermission(kind: 'camera' | 'microphone') {
@@ -103,7 +94,7 @@ export function IntakeMediaUploader({
     } catch {
       onFileErrorToast(
         kind === 'camera'
-          ? 'Sin permiso de cámara. Habilítalo para tomar fotos.'
+          ? 'Sin permiso de cámara. Habilítalo para tomar fotos/video.'
           : 'Sin permiso de micrófono. Habilítalo para grabar audio.',
       );
       return false;
@@ -129,157 +120,103 @@ export function IntakeMediaUploader({
   }
 
   return (
-    <section className="space-y-3 rounded-xl border border-slate-200 p-3">
+    <section className="rounded-xl border border-slate-200 p-3">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-sm font-medium text-slate-700">Media (fotos/video/audio)</p>
-        <span className="text-xs text-slate-500">{uploadedMediaIds.length} archivo(s) listos</span>
+        <p className="text-sm font-semibold text-slate-800">Evidencia de visita (opcional)</p>
+        <p className="text-xs text-slate-500">Máx. {MAX_EVIDENCE_FILES}</p>
       </div>
+      <p className="mt-1 text-xs text-slate-500">Adjunta fotos, video o audio para documentar el estado inicial.</p>
 
-      <label
-        onDragOver={(event) => {
-          event.preventDefault();
-          setIsDragActive(true);
-        }}
-        onDragLeave={() => setIsDragActive(false)}
-        onDrop={onDrop}
-        className={cn(
-          'flex min-h-24 cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed px-3 py-4 text-center transition',
-          isDragActive ? 'border-emerald-500 bg-emerald-50' : 'border-slate-300 bg-slate-50',
-        )}
+      <input
+        ref={filesInputRef}
+        type="file"
+        multiple
+        accept="image/*,video/*,audio/*"
+        className="hidden"
+        onChange={onInputChange}
+      />
+      <button
+        type="button"
+        className="btn-secondary mt-2 h-10 w-full justify-center"
+        onClick={() => filesInputRef.current?.click()}
+        disabled={!slotsLeft}
       >
-        <input
-          type="file"
-          className="hidden"
-          multiple
-          accept="image/*,video/*,audio/*"
-          onChange={onInputChange}
-        />
-        <UploadCloud className="h-5 w-5 text-slate-500" />
-        <p className="mt-2 text-sm text-slate-700">Arrastra archivos o toca para seleccionar</p>
-      </label>
+        Adjuntar evidencia
+      </button>
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <input
-          ref={photoInputRef}
-          type="file"
-          accept="image/*"
-          capture="environment"
-          className="hidden"
-          onChange={onInputChange}
-        />
-        <input
-          ref={videoInputRef}
-          type="file"
-          accept="video/*"
-          capture="environment"
-          className="hidden"
-          onChange={onInputChange}
-        />
-        <input
-          ref={audioInputRef}
-          type="file"
-          accept="audio/*"
-          capture="user"
-          className="hidden"
-          onChange={onInputChange}
-        />
-        <input
-          ref={filesInputRef}
-          type="file"
-          multiple
-          accept="image/*,video/*,audio/*"
-          className="hidden"
-          onChange={onInputChange}
-        />
+      <div className="mt-2 grid grid-cols-3 gap-2">
+        <input ref={photoInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={onInputChange} />
+        <input ref={videoInputRef} type="file" accept="video/*" capture="environment" className="hidden" onChange={onInputChange} />
+        <input ref={audioInputRef} type="file" accept="audio/*" capture="user" className="hidden" onChange={onInputChange} />
 
-        <button type="button" className="btn-secondary h-10 justify-center gap-2" onClick={onTakePhoto}>
-          <Camera className="h-4 w-4" />
-          Tomar foto
+        <button type="button" className="btn-secondary h-9 justify-center gap-1 text-xs" onClick={onTakePhoto} disabled={!slotsLeft}>
+          <Camera className="h-3.5 w-3.5" />
+          Foto
         </button>
-        <button type="button" className="btn-secondary h-10 justify-center gap-2" onClick={onTakeVideo}>
-          <Clapperboard className="h-4 w-4" />
-          Tomar video
+        <button type="button" className="btn-secondary h-9 justify-center gap-1 text-xs" onClick={onTakeVideo} disabled={!slotsLeft}>
+          <Clapperboard className="h-3.5 w-3.5" />
+          Video
         </button>
-        <button type="button" className="btn-secondary h-10 justify-center gap-2" onClick={onRecordAudio}>
-          <Mic className="h-4 w-4" />
-          Tomar audio
-        </button>
-        <button
-          type="button"
-          className="btn-secondary h-10 justify-center gap-2"
-          onClick={() => filesInputRef.current?.click()}
-        >
-          <FilePlus2 className="h-4 w-4" />
-          Agregar media
+        <button type="button" className="btn-secondary h-9 justify-center gap-1 text-xs" onClick={onRecordAudio} disabled={!slotsLeft}>
+          <Mic className="h-3.5 w-3.5" />
+          Audio
         </button>
       </div>
 
-      {!items.length ? (
-        <p className="text-sm text-slate-500">Aún no agregas archivos.</p>
-      ) : (
-        <ul className="space-y-2">
-          {items.map((item) => {
-            const canRetry = item.status === 'error';
-            const canRemove = item.status !== 'uploading' && item.status !== 'completing';
-            const previewUrl = previewMap.get(item.localId) || '';
-
-            return (
-              <li key={item.localId} className="rounded-xl border border-slate-200 p-3">
-                <div className="flex items-start gap-3">
-                  <div className="h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-slate-100">
-                    {previewUrl ? (
-                      <img src={previewUrl} alt={item.file.name} className="h-full w-full object-cover" />
-                    ) : (
-                      <div className="flex h-full w-full items-center justify-center text-slate-400">
-                        <ImagePlus className="h-5 w-5" />
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium text-slate-800">{item.file.name}</p>
-                    <p className="text-xs text-slate-500">{formatFileSize(item.file.size)}</p>
-                    <p className="mt-1 text-xs text-slate-600">
-                      {STATUS_LABEL[item.status]}
-                      {item.status === 'uploading' ? ` · ${item.progress}%` : ''}
-                    </p>
-
-                    {(item.status === 'uploading' || item.status === 'completing') && (
-                      <div className="mt-2 h-1.5 overflow-hidden rounded bg-slate-200">
-                        <div className="h-full bg-emerald-500" style={{ width: `${item.progress}%` }} />
-                      </div>
-                    )}
-
-                    {item.status === 'error' && item.errorMessage ? (
-                      <p className="mt-1 text-xs text-red-600">{item.errorMessage}</p>
-                    ) : null}
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    {item.status === 'uploading' || item.status === 'completing' ? (
-                      <Loader2 className="h-4 w-4 animate-spin text-slate-400" />
-                    ) : null}
-                    {canRetry ? (
-                      <button type="button" className="btn-secondary h-8 px-2" onClick={() => retryFile(item.localId)}>
-                        <RefreshCw className="h-4 w-4" />
-                      </button>
-                    ) : null}
-                    {canRemove ? (
-                      <button type="button" className="btn-secondary h-8 px-2" onClick={() => removeFile(item.localId)}>
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    ) : null}
-                  </div>
+      {!!items.length ? (
+        <div className="mt-2 space-y-2">
+          {items.map((item) => (
+            <div key={item.localId} className="rounded-lg border border-slate-200 p-2">
+              <div className="flex items-center gap-2">
+                {previewMap.get(item.localId) ? (
+                  <img src={previewMap.get(item.localId)} alt={item.file.name} className="h-12 w-12 rounded object-cover" />
+                ) : (
+                  <div className="h-12 w-12 rounded bg-slate-100" />
+                )}
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-xs font-medium text-slate-700">{item.file.name}</p>
+                  <p className="text-[11px] text-slate-500">{formatFileSize(item.file.size)}</p>
+                  <p className="text-[11px] text-slate-500">
+                    {STATUS_LABEL[item.status]}
+                    {item.status === 'uploading' ? ` · ${item.progress}%` : ''}
+                  </p>
                 </div>
-              </li>
-            );
-          })}
-        </ul>
+                {item.status === 'error' ? (
+                  <button
+                    type="button"
+                    aria-label={`Reintentar ${item.file.name}`}
+                    className="rounded p-1 text-slate-500"
+                    onClick={() => retryFile(item.localId)}
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  aria-label={`Quitar ${item.file.name}`}
+                  className="rounded p-1 text-slate-500"
+                  onClick={() => removeFile(item.localId)}
+                >
+                  {item.status === 'uploading' || item.status === 'completing' ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Trash2 className="h-4 w-4" />
+                  )}
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="mt-2 text-xs text-slate-500">Sin evidencia seleccionada.</p>
       )}
 
-      {hasBlockingUploads ? (
-        <p className="text-xs text-amber-700">Finaliza las subidas en curso para habilitar guardar intake.</p>
-      ) : null}
+      <div className="mt-2 flex items-center justify-between gap-2">
+        <span className="text-xs text-slate-500">{uploadedMediaIds.length} archivo(s) listos</span>
+        {hasBlockingUploads ? (
+          <span className="text-xs text-amber-700">Finaliza las subidas para guardar intake.</span>
+        ) : null}
+      </div>
     </section>
   );
 }

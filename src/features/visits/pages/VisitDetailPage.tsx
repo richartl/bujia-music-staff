@@ -1,9 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useIsFetching, useIsMutating, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams, useParams } from 'react-router-dom';
 import { authStore } from '@/stores/auth-store';
 import { currency, dateTime } from '@/lib/utils';
-import { notifyError, notifyInfo } from '@/lib/notify';
+import { notifyError, notifyInfo, notifySuccess } from '@/lib/notify';
 import { getIntakeLookups } from '@/features/intakes/api/get-intake-lookups';
 import { filesApi } from '@/features/intakes/api/filesApi';
 import type { LookupOption } from '@/features/intakes/types';
@@ -12,10 +12,17 @@ import { useUpdateVisitServiceStatus } from '@/features/visits/hooks/useUpdateVi
 import { VisitServiceStatusChip } from '@/features/visits/components/VisitServiceStatusChip';
 import { VisitServiceStatusSheet } from '@/features/visits/components/VisitServiceStatusSheet';
 import { VisitPaymentsSection } from '@/features/visits/components/VisitPaymentsSection';
+import { VisitPartsSection } from '@/features/visits/components/VisitPartsSection';
+import { useVisitParts } from '@/features/visits/hooks/useVisitParts';
 import { parseEvidenceMarkerFromNotes } from '@/features/visits/utils/paymentEvidence';
 import { getTimelineEventIcon, getTimelineEventTone } from '@/features/visits/utils/timelineEventIcon';
 import { PaymentAttachmentGallery } from '@/features/visits/components/PaymentAttachmentGallery';
+import { EvidenceUploader, type EvidenceUploaderItem } from '@/features/visits/components/EvidenceUploader';
 import { getTimelinePaymentAttachments } from '@/features/visits/utils/paymentAttachments';
+import { VisitAttachmentsGallery } from '@/features/visits/components/VisitAttachmentsGallery';
+import { useIntakeMediaUpload } from '@/features/intakes/hooks/useIntakeMediaUpload';
+import { getVisitMainImageAttachment } from '@/features/visits/utils/visitAttachments';
+import { OverlayPortal } from '@/components/ui/OverlayPortal';
 import type { WorkshopServiceLookup } from '@/features/intakes/types';
 import { 
   createVisitNote,
@@ -81,7 +88,7 @@ export function VisitDetailPage() {
   const [noteModalServiceId, setNoteModalServiceId] = useState<string | null>(null);
   const [noteModalText, setNoteModalText] = useState('');
   const [noteModalIsInternal, setNoteModalIsInternal] = useState(true);
-  const [noteModalFile, setNoteModalFile] = useState<File | null>(null);
+  const [noteModalFiles, setNoteModalFiles] = useState<EvidenceUploaderItem[]>([]);
   const [confirmModal, setConfirmModal] = useState<{
     title: string;
     message: string;
@@ -91,6 +98,7 @@ export function VisitDetailPage() {
   const [serviceDetailModalId, setServiceDetailModalId] = useState<string | null>(null);
   const [mediaPreview, setMediaPreview] = useState<{ url: string; mimeType: string; name: string } | null>(null);
   const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
+  const [selectedStatusId, setSelectedStatusId] = useState('');
   const [isCancelVisitModalOpen, setIsCancelVisitModalOpen] = useState(false);
   const [statusSheetServiceId, setStatusSheetServiceId] = useState<string | null>(null);
   const [uploadingCount, setUploadingCount] = useState(0);
@@ -129,6 +137,7 @@ export function VisitDetailPage() {
     queryFn: () => getVisitServices(visitId),
     enabled: !!visitId,
   });
+  const partsQuery = useVisitParts(visitId);
 
   const timelineQuery = useQuery({
     queryKey: ['visit-timeline', visitId],
@@ -141,6 +150,15 @@ export function VisitDetailPage() {
     queryFn: () => getVisitTrackingLink(visitId),
     enabled: !!visitId,
   });
+
+  useEffect(() => {
+    if (!mediaPreview) return;
+    const onEsc = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMediaPreview(null);
+    };
+    window.addEventListener('keydown', onEsc);
+    return () => window.removeEventListener('keydown', onEsc);
+  }, [mediaPreview]);
 
   const [editPayload, setEditPayload] = useState<UpdateVisitPayload>({});
   const serviceStatusesQuery = useServiceStatuses(workshopId);
@@ -163,6 +181,7 @@ export function VisitDetailPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['visit-detail', workshopId, instrumentId, visitId] });
+      notifySuccess('Visita actualizada', 'Los cambios se guardaron correctamente.');
     },
   });
   const createNoteMutation = useMutation({
@@ -185,6 +204,7 @@ export function VisitDetailPage() {
       setInitialServiceNote('');
       setInitialServiceNoteIsInternal(false);
       setInitialServiceNoteFiles([]);
+      notifySuccess('Servicio agregado');
     },
   });
 
@@ -194,6 +214,24 @@ export function VisitDetailPage() {
       setIsRegenerateModalOpen(false);
       queryClient.invalidateQueries({ queryKey: ['visit-tracking-link', visitId] });
     },
+  });
+  const changeVisitStatusMutation = useMutation({
+    mutationFn: (payload: { statusId: string; visitMediaIds?: string[] }) => patchVisit(workshopId!, instrumentId, visitId, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['visit-detail', workshopId, instrumentId, visitId] });
+      queryClient.invalidateQueries({ queryKey: ['workshop-visits'] });
+      queryClient.invalidateQueries({ queryKey: ['public-tracking'] });
+      notifySuccess('Estado actualizado');
+      setIsStatusModalOpen(false);
+      setSelectedStatusId('');
+    },
+    onError: (error) => {
+      notifyError(getErrorMessage(error));
+    },
+  });
+  const statusUpload = useIntakeMediaUpload({
+    scope: `visit:${visitId}/status-change`,
+    onFileError: (item) => notifyError(`${item.file.name}: ${item.errorMessage || 'Error al subir archivo.'}`),
   });
 
   const noteAttachmentsQueries = useQuery({
@@ -245,6 +283,7 @@ export function VisitDetailPage() {
     if (fromVisit) return fromVisit;
     return statusesQuery.data?.find((status) => status.id === visit?.statusId)?.name || 'Sin estatus';
   }, [statusesQuery.data, visit?.status?.name, visit?.statusId]);
+  const mainVisitImage = useMemo(() => (visit ? getVisitMainImageAttachment(visit) : null), [visit]);
 
   const resolvedTrackingUrl = useMemo(() => {
     const payloadUrl = trackingLinkQuery.data?.publicUrl;
@@ -353,6 +392,36 @@ export function VisitDetailPage() {
     () => lookupsQuery.data?.paymentMethods || [],
     [lookupsQuery.data?.paymentMethods],
   );
+  const servicesTotal = useMemo(
+    () =>
+      (servicesQuery.data || []).reduce(
+        (sum, service) => sum + Number(service.price || 0) * Number(service.quantity || 1),
+        0,
+      ),
+    [servicesQuery.data],
+  );
+  const partsTotal = useMemo(
+    () =>
+      (partsQuery.data || []).reduce(
+        (sum, part) => sum + Number(part.subtotal || Number(part.quantity || 0) * Number(part.unitPrice || 0)),
+        0,
+      ),
+    [partsQuery.data],
+  );
+  const totalVisit = Number(visit?.total || servicesTotal + partsTotal);
+  const discountValue = Number(visit?.discount || 0);
+  const paidTotal = Number(
+    (((visit as unknown as Record<string, unknown> | undefined)?.paidAmount as number | string | undefined) || 0),
+  );
+  const selectedStatus = useMemo(
+    () => (statusesQuery.data || []).find((status) => status.id === selectedStatusId) || null,
+    [selectedStatusId, statusesQuery.data],
+  );
+  const isTerminatedSelection = useMemo(() => {
+    if (!selectedStatus) return false;
+    const raw = `${selectedStatus.name || ''} ${selectedStatus.slug || ''}`.toLowerCase();
+    return raw.includes('termin') || raw.includes('entreg');
+  }, [selectedStatus]);
   async function addCatalogService(service: WorkshopServiceLookup) {
     if (
       service.isAdjust &&
@@ -418,6 +487,7 @@ export function VisitDetailPage() {
           notes: existingAdjustService.notes || undefined,
         });
         await queryClient.invalidateQueries({ queryKey: ['visit-services', visitId] });
+        notifySuccess('Ajuste actualizado', 'Se cambió el servicio de ajuste.');
         setIsAdjustSwitchModalOpen(false);
       },
     });
@@ -434,26 +504,59 @@ export function VisitDetailPage() {
     }
     await deleteVisitService(visitId, deleteServiceModal.serviceId);
     await queryClient.invalidateQueries({ queryKey: ['visit-services', visitId] });
+    notifySuccess('Servicio eliminado');
     setDeleteServiceModal(null);
   }
 
   async function submitServiceNoteModal() {
     if (!noteModalServiceId || !noteModalText.trim()) return;
-    const createdNote = await createVisitServiceNote(noteModalServiceId, {
-      note: noteModalText.trim(),
-      isInternal: noteModalIsInternal,
-    });
-    if (noteModalFile) {
-      await withUploading(async () => {
-        await uploadVisitServiceNoteAttachment(createdNote.id, noteModalFile);
+    try {
+      const createdNote = await createVisitServiceNote(noteModalServiceId, {
+        note: noteModalText.trim(),
+        isInternal: noteModalIsInternal,
       });
+      if (noteModalFiles.length) {
+        for (const item of noteModalFiles) {
+          setNoteModalFiles((current) =>
+            current.map((entry) => (entry.id === item.id ? { ...entry, status: 'uploading', errorMessage: null } : entry)),
+          );
+          try {
+            await withUploading(async () => {
+              await uploadVisitServiceNoteAttachment(createdNote.id, item.file);
+            });
+            setNoteModalFiles((current) =>
+              current.map((entry) => (entry.id === item.id ? { ...entry, status: 'done', errorMessage: null } : entry)),
+            );
+          } catch (error) {
+            const message = getErrorMessage(error);
+            setNoteModalFiles((current) =>
+              current.map((entry) => (entry.id === item.id ? { ...entry, status: 'error', errorMessage: message } : entry)),
+            );
+            notifyError(message);
+            return;
+          }
+        }
+      }
+      await queryClient.invalidateQueries({ queryKey: ['service-notes-batch'] });
+      await queryClient.invalidateQueries({ queryKey: ['service-note-attachments-batch'] });
+      notifySuccess('Nota guardada');
+      setNoteModalServiceId(null);
+      setNoteModalText('');
+      setNoteModalIsInternal(true);
+      setNoteModalFiles([]);
+    } catch (error) {
+      notifyError(getErrorMessage(error));
     }
-    await queryClient.invalidateQueries({ queryKey: ['service-notes-batch'] });
-    await queryClient.invalidateQueries({ queryKey: ['service-note-attachments-batch'] });
-    setNoteModalServiceId(null);
-    setNoteModalText('');
-    setNoteModalIsInternal(true);
-    setNoteModalFile(null);
+  }
+
+  async function submitVisitStatusChange() {
+    if (!selectedStatusId) return;
+    const payload = {
+      statusId: selectedStatusId,
+      visitMediaIds: statusUpload.uploadedMediaIds.length ? statusUpload.uploadedMediaIds : undefined,
+    };
+    await changeVisitStatusMutation.mutateAsync(payload);
+    statusUpload.items.forEach((item) => statusUpload.removeFile(item.localId));
   }
 
   async function runApi(task: () => Promise<void>) {
@@ -530,13 +633,45 @@ export function VisitDetailPage() {
         </div>
       ) : null}
       <section className="card p-4">
-        <p className="text-xs font-semibold text-slate-500">{visit.folio}</p>
-        <h1 className="mt-1 text-lg font-semibold text-slate-900">{visit.instrument?.name || 'Detalle de visita'}</h1>
-        <p className="text-sm text-slate-500">
-          {visit.client?.fullName || 'Cliente'} · {visit.client?.phone || 'Sin teléfono'} · {currentStatus}
-        </p>
-        <div className="mt-2 flex gap-2">
-          <button type="button" className="btn-secondary h-8 px-3 text-xs" onClick={() => setIsStatusModalOpen(true)}>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{visit.folio}</p>
+            <h1 className="mt-1 text-lg font-semibold text-slate-900">{visit.instrument?.name || 'Detalle de visita'}</h1>
+            <p className="truncate text-sm text-slate-500">{visit.client?.fullName || 'Cliente'} · {visit.client?.phone || 'Sin teléfono'}</p>
+          </div>
+          <div className="flex flex-col items-end gap-2">
+            <span
+              className="shrink-0 rounded-full px-3 py-1 text-xs font-semibold text-white shadow-sm"
+              style={{ backgroundColor: visit.status?.color || '#334155' }}
+            >
+              {currentStatus}
+            </span>
+            {mainVisitImage?.publicUrl ? (
+              <button
+                type="button"
+                className="overflow-hidden rounded-lg border border-slate-200"
+                onClick={() =>
+                  setMediaPreview({
+                    url: mainVisitImage.publicUrl || '',
+                    mimeType: mainVisitImage.mimeType || 'image/*',
+                    name: mainVisitImage.originalName || 'Portada de visita',
+                  })
+                }
+              >
+                <img src={mainVisitImage.publicUrl} alt="Portada principal" className="h-14 w-14 object-cover" />
+              </button>
+            ) : null}
+          </div>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button
+            type="button"
+            className="btn-secondary h-8 px-3 text-xs"
+            onClick={() => {
+              setSelectedStatusId(visit.statusId || '');
+              setIsStatusModalOpen(true);
+            }}
+          >
             Cambiar estado
           </button>
           <button type="button" className="h-8 rounded-lg border border-rose-200 bg-rose-50 px-3 text-xs font-semibold text-rose-700" onClick={() => setIsCancelVisitModalOpen(true)}>
@@ -549,18 +684,28 @@ export function VisitDetailPage() {
           <button
             type="button"
             className="btn-secondary mt-2 h-8 px-3"
-            onClick={() => navigator.clipboard.writeText(resolvedTrackingUrl)}
+            onClick={async () => {
+              if (!resolvedTrackingUrl) return;
+              try {
+                await navigator.clipboard.writeText(resolvedTrackingUrl);
+                notifySuccess('Liga de seguimiento copiada');
+              } catch {
+                notifyError('No se pudo copiar la liga');
+              }
+            }}
             disabled={!resolvedTrackingUrl}
           >
             Copiar URL completa
           </button>
         </div>
 
-        <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
-          <p className="text-slate-500">Total</p>
-          <p className="text-right font-semibold text-slate-900">{currency(Number(visit.total || 0))}</p>
-          <p className="text-slate-500">Abierta</p>
-          <p className="text-right text-slate-700">{visit.openedAt ? dateTime(visit.openedAt) : '-'}</p>
+        <div className="mt-3 grid grid-cols-2 gap-2 text-sm sm:grid-cols-3">
+          <MetricHeader label="Servicios" value={currency(servicesTotal)} />
+          <MetricHeader label="Refacciones" value={currency(partsTotal)} />
+          <MetricHeader label="Descuento" value={currency(discountValue)} />
+          <MetricHeader label="Total visita" value={currency(totalVisit)} emphasized />
+          <MetricHeader label="Abonos" value={currency(paidTotal)} />
+          <MetricHeader label="Saldo pendiente" value={currency(Math.max(0, totalVisit - paidTotal))} emphasized />
         </div>
       </section>
 
@@ -604,16 +749,10 @@ export function VisitDetailPage() {
             </p>
           </div>
           <div className="rounded-lg border border-slate-200 p-2">
-            <p className="text-xs font-semibold uppercase text-slate-500">Adjuntos de registro</p>
-            {(noteAttachmentsQueries.data?.[((notesQuery.data || [])[0] || { id: '' }).id] || []).length ? (
-              (noteAttachmentsQueries.data?.[((notesQuery.data || [])[0] || { id: '' }).id] || []).map((attachment) => (
-                <div key={attachment.id} className="mt-1">
-                  <AttachmentPreview attachment={attachment} onOpen={setMediaPreview} />
-                </div>
-              ))
-            ) : (
-              <p className="mt-1 text-xs text-slate-500">Sin adjuntos de registro.</p>
-            )}
+            <VisitAttachmentsGallery
+              visit={visit}
+              onOpen={setMediaPreview}
+            />
           </div>
           <h3 className="pt-2 text-sm font-semibold text-slate-800">Notas generales de la visita</h3>
           <QuickNoteForm onSubmit={(payload) => createNoteMutation.mutate(payload)} isPending={createNoteMutation.isPending} />
@@ -682,13 +821,19 @@ export function VisitDetailPage() {
 
       {tab === 'services' ? (
         <section className="card space-y-3 p-4">
-          <button
-            type="button"
-            className="btn-primary h-10 w-full justify-center"
-            onClick={() => setIsServiceModalOpen(true)}
-          >
-            Agregar servicio
-          </button>
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-sm font-semibold text-slate-900">Agregados</h3>
+              <button
+                type="button"
+                className="btn-primary h-10 px-3"
+                onClick={() => setIsServiceModalOpen(true)}
+              >
+                Agregar servicio
+              </button>
+            </div>
+            <p className="mt-1 text-xs text-slate-500">Aquí administras servicios y refacciones de la visita.</p>
+          </div>
           {adjustService ? (
             <article className="rounded-xl border border-indigo-300 bg-indigo-50 p-3" onDoubleClick={() => setServiceDetailModalId(adjustService.id)}>
               <p className="text-xs font-semibold uppercase text-indigo-700">Servicio de ajuste</p>
@@ -714,7 +859,7 @@ export function VisitDetailPage() {
               <p className="mt-1 text-xs text-indigo-700">
                 Notas: {(serviceNotesQuery.data?.[adjustService.id] || []).length} (doble click para detalle)
               </p>
-              <div className="mt-2 flex gap-2">
+              <div className="mt-2 flex flex-wrap gap-2">
                 <button
                   type="button"
                   className="btn-secondary h-8 px-3"
@@ -722,7 +867,7 @@ export function VisitDetailPage() {
                     setNoteModalServiceId(adjustService.id);
                     setNoteModalIsInternal(true);
                     setNoteModalText('');
-                    setNoteModalFile(null);
+                    setNoteModalFiles([]);
                   }}
                 >
                   Agregar nota
@@ -756,7 +901,7 @@ export function VisitDetailPage() {
                 </div>
                 <p className="mt-1 text-xs text-slate-600">Notas: {(serviceNotesQuery.data?.[service.id] || []).length} (doble click para detalle)</p>
               </div>
-              <div className="mt-2 flex gap-2">
+              <div className="mt-2 flex flex-wrap gap-2">
                 <button
                   type="button"
                   className="btn-secondary h-8 px-3"
@@ -764,7 +909,7 @@ export function VisitDetailPage() {
                     setNoteModalServiceId(service.id);
                     setNoteModalIsInternal(true);
                     setNoteModalText('');
-                    setNoteModalFile(null);
+                    setNoteModalFiles([]);
                   }}
                 >
                   Agregar nota
@@ -780,15 +925,22 @@ export function VisitDetailPage() {
               </div>
             </article>
           ))}
+          <VisitPartsSection
+            visitId={visitId}
+            workshopId={workshopId}
+            services={servicesQuery.data || []}
+          />
         </section>
       ) : null}
 
       {tab === 'finance' ? (
-        <VisitPaymentsSection
-          visitId={visitId}
-          paymentMethods={paymentMethods}
-          fallbackVisitTotal={Number(visit.total || 0)}
-        />
+        <>
+          <VisitPaymentsSection
+            visitId={visitId}
+            paymentMethods={paymentMethods}
+            fallbackVisitTotal={Number(visit.total || 0)}
+          />
+        </>
       ) : null}
 
       {tab === 'tracking' ? (
@@ -797,7 +949,22 @@ export function VisitDetailPage() {
             <h3 className="text-sm font-semibold text-slate-800">Tracking interno</h3>
             <p className="mt-1 break-all text-xs text-sky-700">{resolvedTrackingUrl || 'No disponible'}</p>
             <div className="mt-2 flex gap-2">
-              <button type="button" className="btn-secondary h-9 px-3" onClick={() => navigator.clipboard.writeText(resolvedTrackingUrl)} disabled={!resolvedTrackingUrl}>Copiar</button>
+              <button
+                type="button"
+                className="btn-secondary h-9 px-3"
+                onClick={async () => {
+                  if (!resolvedTrackingUrl) return;
+                  try {
+                    await navigator.clipboard.writeText(resolvedTrackingUrl);
+                    notifySuccess('Liga de seguimiento copiada');
+                  } catch {
+                    notifyError('No se pudo copiar la liga');
+                  }
+                }}
+                disabled={!resolvedTrackingUrl}
+              >
+                Copiar
+              </button>
               <button type="button" className="btn-primary h-9 px-3" onClick={() => setIsRegenerateModalOpen(true)}>Regenerar</button>
             </div>
           </div>
@@ -938,30 +1105,80 @@ export function VisitDetailPage() {
       />
 
       {isStatusModalOpen ? (
-        <div className="fixed inset-0 z-50 flex items-end bg-black/40 p-3">
-          <div className="w-full rounded-2xl bg-white p-4">
+        <OverlayPortal>
+          <div className="fixed inset-0 z-[140] flex items-end bg-black/40 p-3">
+            <div className="w-full rounded-2xl bg-white p-4">
             <h4 className="text-sm font-semibold text-slate-900">Cambiar estado de la visita</h4>
+            <p className="mt-1 text-xs text-slate-500">Estado actual: <span className="font-semibold">{currentStatus}</span></p>
             <div className="mt-2 space-y-2">
               {(statusesQuery.data || []).map((status) => (
                 <button
                   key={status.id}
                   type="button"
-                  className="w-full rounded-lg border border-slate-200 p-2 text-left"
+                  className={`w-full rounded-lg border p-2 text-left ${status.id === selectedStatusId ? 'border-sky-300 bg-sky-50' : 'border-slate-200'}`}
                   onClick={() => {
-                    setEditPayload((current) => ({ ...current, statusId: status.id }));
-                    updateVisitMutation.mutate();
-                    setIsStatusModalOpen(false);
+                    setSelectedStatusId(status.id);
                   }}
                 >
-                  {status.name}
+                  <span className="inline-flex items-center gap-2 text-sm font-medium text-slate-800">
+                    <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: status.color || '#64748B' }} />
+                    {status.name}
+                  </span>
                 </button>
               ))}
             </div>
-            <button type="button" className="btn-secondary mt-3 h-10 w-full justify-center" onClick={() => setIsStatusModalOpen(false)}>
+            {isTerminatedSelection ? (
+              <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <p className="text-xs font-semibold text-slate-700">Archivo opcional al terminar</p>
+                <p className="mt-1 text-xs text-slate-500">Si subes una imagen, backend la marcará como portada principal.</p>
+                <label className="btn-secondary mt-2 h-9 w-full cursor-pointer justify-center text-xs">
+                  Subir foto/archivo
+                  <input
+                    type="file"
+                    multiple
+                    className="hidden"
+                    accept="image/*,video/*,audio/*,.pdf"
+                    onChange={(event) => {
+                      const files = Array.from(event.target.files || []);
+                      if (files.length) statusUpload.addFiles(files);
+                      event.target.value = '';
+                    }}
+                  />
+                </label>
+                {!!statusUpload.items.length ? (
+                  <div className="mt-2 space-y-1">
+                    {statusUpload.items.map((item) => (
+                      <div key={item.localId} className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-2 py-1">
+                        <p className="truncate text-xs text-slate-700">{item.file.name}</p>
+                        <p className="text-[11px] text-slate-500">{item.status === 'done' ? 'Listo' : item.status === 'error' ? 'Error' : 'Subiendo...'}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+            <button
+              type="button"
+              className="btn-secondary mt-3 h-10 w-full justify-center"
+              onClick={() => {
+                setIsStatusModalOpen(false);
+                setSelectedStatusId('');
+                statusUpload.items.forEach((item) => statusUpload.removeFile(item.localId));
+              }}
+            >
               Cerrar
             </button>
+            <button
+              type="button"
+              className="btn-primary mt-2 h-10 w-full justify-center"
+              disabled={!selectedStatusId || statusUpload.hasBlockingUploads || changeVisitStatusMutation.isPending}
+              onClick={() => void submitVisitStatusChange()}
+            >
+              {changeVisitStatusMutation.isPending ? 'Guardando...' : 'Guardar estado'}
+            </button>
+            </div>
           </div>
-        </div>
+        </OverlayPortal>
       ) : null}
 
       {isCancelVisitModalOpen ? (
@@ -1120,11 +1337,48 @@ export function VisitDetailPage() {
             >
               {noteModalIsInternal ? '🔒 Interna (oculta en tracking)' : '🌍 Pública (visible en tracking)'}
             </button>
-            <MediaQuickAttach onSelect={(file) => setNoteModalFile(file)} />
-            {noteModalFile ? <p className="mt-1 text-xs text-slate-500">{noteModalFile.name}</p> : null}
+            <EvidenceUploader
+              items={noteModalFiles}
+              maxFiles={4}
+              onAddFiles={(files) =>
+                setNoteModalFiles((current) => {
+                  const slotsLeft = Math.max(0, 4 - current.length);
+                  if (!slotsLeft) return current;
+                  const nextFiles = files.slice(0, slotsLeft).map((file) => ({
+                    id: crypto.randomUUID(),
+                    file,
+                    status: 'queued' as const,
+                    errorMessage: null,
+                  }));
+                  return [...current, ...nextFiles];
+                })
+              }
+              onRetry={(itemId) =>
+                setNoteModalFiles((current) =>
+                  current.map((item) => (item.id === itemId ? { ...item, status: 'queued', errorMessage: null } : item)),
+                )
+              }
+              onRemove={(itemId) => setNoteModalFiles((current) => current.filter((item) => item.id !== itemId))}
+            />
             <div className="mt-3 grid grid-cols-2 gap-2">
-              <button type="button" className="btn-secondary h-10 justify-center" onClick={() => setNoteModalServiceId(null)}>Cancelar</button>
-              <button type="button" className="btn-primary h-10 justify-center" onClick={() => void submitServiceNoteModal()} disabled={!noteModalText.trim()}>Guardar</button>
+              <button
+                type="button"
+                className="btn-secondary h-10 justify-center"
+                onClick={() => {
+                  setNoteModalServiceId(null);
+                  setNoteModalFiles([]);
+                }}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="btn-primary h-10 justify-center"
+                onClick={() => void submitServiceNoteModal()}
+                disabled={!noteModalText.trim() || noteModalFiles.some((item) => item.status === 'uploading' || item.status === 'completing')}
+              >
+                Guardar
+              </button>
             </div>
           </div>
         </div>
@@ -1152,48 +1406,60 @@ export function VisitDetailPage() {
       ) : null}
 
       {confirmModal ? (
-        <div className="fixed inset-0 z-50 flex items-end bg-black/40 p-3">
-          <div className="w-full rounded-2xl bg-white p-4">
-            <h4 className="text-sm font-semibold text-slate-900">{confirmModal.title}</h4>
-            <p className="mt-1 text-sm text-slate-700">{confirmModal.message}</p>
-            <div className="mt-3 grid grid-cols-2 gap-2">
-              <button type="button" className="btn-secondary h-10 justify-center" onClick={() => setConfirmModal(null)}>Cancelar</button>
-              <button
-                type="button"
-                className="btn-primary h-10 justify-center"
-                onClick={async () => {
-                  try {
-                    await confirmModal.action();
-                    setConfirmModal(null);
-                  } catch (error) {
-                    const fallback = getErrorMessage(error);
-                    if (error && typeof error === 'object' && 'response' in error) {
-                      const maybe = error as { response?: { data?: { message?: string | string[] } } };
-                      const message = maybe.response?.data?.message;
-                      if (message) {
-                        notifyError(Array.isArray(message) ? message.join(', ') : message);
-                        return;
+        <OverlayPortal>
+          <div className="fixed inset-0 z-[170] flex items-end bg-black/55 p-3 sm:items-center sm:justify-center">
+            <div className="w-full rounded-2xl bg-white p-4 shadow-2xl sm:max-w-md">
+              <h4 className="text-sm font-semibold text-slate-900">{confirmModal.title}</h4>
+              <p className="mt-1 text-sm text-slate-700">{confirmModal.message}</p>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <button type="button" className="btn-secondary h-10 justify-center" onClick={() => setConfirmModal(null)}>Cancelar</button>
+                <button
+                  type="button"
+                  className="btn-primary h-10 justify-center"
+                  onClick={async () => {
+                    try {
+                      await confirmModal.action();
+                      setConfirmModal(null);
+                    } catch (error) {
+                      const fallback = getErrorMessage(error);
+                      if (error && typeof error === 'object' && 'response' in error) {
+                        const maybe = error as { response?: { data?: { message?: string | string[] } } };
+                        const message = maybe.response?.data?.message;
+                        if (message) {
+                          notifyError(Array.isArray(message) ? message.join(', ') : message);
+                          return;
+                        }
                       }
+                      notifyError(fallback);
                     }
-                    notifyError(fallback);
-                  }
-                }}
-              >
-                Confirmar
-              </button>
+                  }}
+                >
+                  Confirmar
+                </button>
+              </div>
             </div>
           </div>
-        </div>
+        </OverlayPortal>
       ) : null}
 
       {selectedServiceDetail ? (
-        <div className="fixed inset-0 z-50 bg-slate-950/50 p-0 sm:p-4">
-          <div className="h-full w-full overflow-y-auto bg-white p-4 sm:mx-auto sm:h-auto sm:max-h-[92vh] sm:max-w-3xl sm:rounded-2xl">
-            <h4 className="text-base font-semibold text-slate-900">{selectedServiceDetail.name || 'Detalle de servicio'}</h4>
-            <p className="mt-1 text-xs text-slate-500">
-              Cantidad: {selectedServiceDetail.quantity || 1} · Precio: {currency(Number(selectedServiceDetail.price || 0))}
-            </p>
-            <div className="mt-3 space-y-3">
+        <OverlayPortal>
+          <div className="fixed inset-0 z-[145] bg-slate-950/50 p-0 sm:p-4">
+            <div className="h-full w-full overflow-y-auto bg-white sm:mx-auto sm:h-auto sm:max-h-[92vh] sm:max-w-3xl sm:rounded-2xl">
+            <header className="sticky top-0 z-20 border-b border-slate-200 bg-white p-4">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <h4 className="text-base font-semibold text-slate-900">{selectedServiceDetail.name || 'Detalle de servicio'}</h4>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Cantidad: {selectedServiceDetail.quantity || 1} · Precio: {currency(Number(selectedServiceDetail.price || 0))}
+                  </p>
+                </div>
+                <button type="button" className="btn-secondary h-9 px-3" onClick={() => setServiceDetailModalId(null)}>
+                  Cerrar
+                </button>
+              </div>
+            </header>
+            <div className="space-y-3 p-4">
               {(serviceNotesQuery.data?.[selectedServiceDetail.id] || [])
                 .slice()
                 .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
@@ -1236,16 +1502,15 @@ export function VisitDetailPage() {
                 </div>
               ))}
             </div>
-            <button type="button" className="btn-secondary mt-3 h-10 w-full justify-center" onClick={() => setServiceDetailModalId(null)}>
-              Cerrar detalle
-            </button>
+            </div>
           </div>
-        </div>
+        </OverlayPortal>
       ) : null}
 
       {mediaPreview ? (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-3">
-          <div className="w-full max-w-md rounded-2xl bg-white p-3">
+        <OverlayPortal>
+          <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/80 p-3" onClick={() => setMediaPreview(null)}>
+            <div className="w-full max-w-md rounded-2xl bg-white p-3" onClick={(event) => event.stopPropagation()}>
             <p className="truncate text-sm font-medium text-slate-800">{mediaPreview.name}</p>
             <div className="mt-2">
               {mediaPreview.mimeType.startsWith('image/') ? (
@@ -1261,8 +1526,9 @@ export function VisitDetailPage() {
             <button type="button" className="btn-secondary mt-3 h-10 w-full justify-center" onClick={() => setMediaPreview(null)}>
               Cerrar
             </button>
+            </div>
           </div>
-        </div>
+        </OverlayPortal>
       ) : null}
 
       {isRegenerateModalOpen ? (
@@ -1309,6 +1575,15 @@ function QuickNoteForm({ onSubmit, isPending }: { onSubmit: (payload: { note: st
 
 function Spinner() {
   return <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />;
+}
+
+function MetricHeader({ label, value, emphasized = false }: { label: string; value: string; emphasized?: boolean }) {
+  return (
+    <div className={`rounded-lg border p-2 ${emphasized ? 'border-amber-200 bg-amber-50' : 'border-slate-200 bg-white'}`}>
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</p>
+      <p className={`mt-1 text-sm font-semibold ${emphasized ? 'text-amber-700' : 'text-slate-900'}`}>{value}</p>
+    </div>
+  );
 }
 
 function AvatarImage({ imageUrl, fallback, sizeClassName = 'h-8 w-8' }: { imageUrl?: string | null; fallback: string; sizeClassName?: string }) {

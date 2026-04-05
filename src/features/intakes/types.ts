@@ -47,6 +47,19 @@ export type ClientInstrument = {
   notes?: string | null;
 };
 
+
+export type IntakePartLine = {
+  id: string;
+  source: 'CATALOG' | 'MANUAL';
+  workshopPartId?: string;
+  name: string;
+  quantity: number;
+  unitPrice: number;
+  unitCost?: number;
+  notes?: string;
+  visitServiceId?: string;
+};
+
 export type IntakeServiceLine = {
   id: string;
   source: 'CATALOG' | 'MANUAL';
@@ -107,4 +120,13 @@ export type CreateIntakePayload = {
     notes?: string;
   }>;
   visitMediaIds?: string[];
+  parts?: Array<{
+    workshopPartId?: string;
+    name?: string;
+    quantity: number;
+    unitPrice: number;
+    unitCost?: number;
+    notes?: string;
+    visitServiceId?: string;
+  }>;
 };

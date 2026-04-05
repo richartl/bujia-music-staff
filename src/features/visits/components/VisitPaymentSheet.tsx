@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Loader2, RefreshCw, Trash2, X } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Trash2, X } from 'lucide-react';
 import { useIntakeMediaUpload } from '@/features/intakes/hooks/useIntakeMediaUpload';
 import type { LookupOption } from '@/features/intakes/types';
 import type { VisitPayment } from '@/features/visits/api/visitPaymentsApi';
 import { PaymentAttachmentGallery } from '@/features/visits/components/PaymentAttachmentGallery';
+import { EvidenceUploader } from '@/features/visits/components/EvidenceUploader';
 import { normalizePaymentAttachments } from '@/features/visits/utils/paymentAttachments';
 import {
   getFriendlyPaymentError,
@@ -46,7 +47,6 @@ export function VisitPaymentSheet({
   const [keptExistingMediaIds, setKeptExistingMediaIds] = useState<string[]>([]);
   const [error, setError] = useState('');
   const [toast, setToast] = useState('');
-  const inputRef = useRef<HTMLInputElement | null>(null);
 
   const isEditMode = !!editingPayment;
   const normalizedExistingAttachments = useMemo(
@@ -84,19 +84,9 @@ export function VisitPaymentSheet({
     setToast('');
   }, [editingPayment, open]);
 
-  const previewMap = useMemo(() => {
-    const entries = items
-      .filter((item) => item.file.type.startsWith('image/'))
-      .map((item) => [item.localId, URL.createObjectURL(item.file)] as const);
-    return new Map(entries);
-  }, [items]);
-
-  useEffect(() => () => previewMap.forEach((url) => URL.revokeObjectURL(url)), [previewMap]);
-
   if (!open) return null;
 
   const currentMediaIds = Array.from(new Set([...keptExistingMediaIds, ...uploadedMediaIds]));
-  const slotsLeft = Math.max(0, MAX_EVIDENCE_FILES - items.length - keptExistingMediaIds.length);
 
   async function handleSubmit() {
     const validationError = validateVisitPaymentForm(formValues, {
@@ -216,61 +206,19 @@ export function VisitPaymentSheet({
             <p className="mt-2 text-xs text-slate-500">Sin evidencia seleccionada.</p>
           )}
 
-          <input
-            ref={inputRef}
-            type="file"
-            multiple
-            accept="image/*,video/*,audio/*"
-            className="hidden"
-            onChange={(event) => {
-              const files = Array.from(event.target.files || []).slice(0, slotsLeft);
-              if (files.length) addFiles(files);
-              event.target.value = '';
-            }}
+          <EvidenceUploader
+            items={items.map((item) => ({
+              id: item.localId,
+              file: item.file,
+              status: item.status,
+              errorMessage: item.errorMessage,
+            }))}
+            maxFiles={MAX_EVIDENCE_FILES}
+            existingCount={keptExistingMediaIds.length}
+            onAddFiles={(files) => addFiles(files)}
+            onRetry={retryFile}
+            onRemove={removeFile}
           />
-
-          <button
-            type="button"
-            className="btn-secondary mt-2 h-10 w-full justify-center"
-            onClick={() => inputRef.current?.click()}
-            disabled={!slotsLeft}
-          >
-            Adjuntar evidencia
-          </button>
-
-          {!!items.length ? (
-            <div className="mt-2 space-y-2">
-              {items.map((item) => (
-                <div key={item.localId} className="rounded-lg border border-slate-200 p-2">
-                  <div className="flex items-center gap-2">
-                    {previewMap.get(item.localId) ? (
-                      <img src={previewMap.get(item.localId)} alt={item.file.name} className="h-12 w-12 rounded object-cover" />
-                    ) : (
-                      <div className="h-12 w-12 rounded bg-slate-100" />
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-xs font-medium text-slate-700">{item.file.name}</p>
-                      <p className="text-[11px] text-slate-500">
-                        {item.status === 'done' ? 'Listo' : item.status === 'error' ? 'Error' : 'Subiendo...'}
-                      </p>
-                    </div>
-                    {item.status === 'error' ? (
-                      <button type="button" className="rounded p-1 text-slate-500" onClick={() => retryFile(item.localId)}>
-                        <RefreshCw className="h-4 w-4" />
-                      </button>
-                    ) : null}
-                    <button type="button" className="rounded p-1 text-slate-500" onClick={() => removeFile(item.localId)}>
-                      {item.status === 'uploading' || item.status === 'completing' ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Trash2 className="h-4 w-4" />
-                      )}
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : null}
         </div>
 
         {error ? <p className="mt-2 text-xs text-red-600">{error}</p> : null}

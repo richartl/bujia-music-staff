@@ -6,14 +6,17 @@ import { getPublicTracking } from '@/features/visits/api/trackingApi';
 import { getTimelineEventIcon, getTimelineEventTone } from '@/features/visits/utils/timelineEventIcon';
 import { PaymentAttachmentGallery } from '@/features/visits/components/PaymentAttachmentGallery';
 import { getTimelinePaymentAttachments } from '@/features/visits/utils/paymentAttachments';
+import { getVisitMainImageAttachment } from '@/features/visits/utils/visitAttachments';
 import { WorkshopAvatar } from '@/components/avatars/WorkshopAvatar';
 import { UserAvatar } from '@/components/avatars/UserAvatar';
+import { OverlayPortal } from '@/components/ui/OverlayPortal';
 import type { NoteAttachment, TrackingResponse, VisitServiceNote, VisitTimelineEvent } from '@/features/visits/api/types';
 
 export function PublicTrackingPage() {
   const { token = '' } = useParams();
   const [preview, setPreview] = useState<{ url: string; mimeType: string; name: string } | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<VisitTimelineEvent | null>(null);
+  const [expandedTimeline, setExpandedTimeline] = useState(false);
 
   const trackingQuery = useQuery({
     queryKey: ['public-tracking', token],
@@ -50,6 +53,7 @@ export function PublicTrackingPage() {
   const timeline = (data.timeline || [])
     .filter((event) => shouldDisplayInPublicTimeline(event))
     .sort((a, b) => new Date(b.occurredAt || 0).getTime() - new Date(a.occurredAt || 0).getTime());
+  const visibleTimeline = expandedTimeline ? timeline : timeline.slice(0, 3);
 
   const clientName =
     data.client?.displayName ||
@@ -63,6 +67,7 @@ export function PublicTrackingPage() {
   const statusColors = getStatusColors(data.status?.color || data.visit?.status?.color);
   const heroGradient = getSoftGradient((data.status?.color || data.visit?.status?.color) ?? undefined);
   const totals = getFinancialSummary(data);
+  const mainImage = data.visit ? getVisitMainImageAttachment(data.visit) : null;
 
   return (
     <main className="mx-auto max-w-3xl space-y-4 p-3 pb-8 sm:p-4">
@@ -71,8 +76,23 @@ export function PublicTrackingPage() {
           <h1 className="text-lg font-bold text-slate-900">Seguimiento de tu instrumento</h1>
           <p className="mt-1 text-sm text-slate-700">Consulta aquí el avance de tu orden en tiempo real.</p>
           <div className="mt-2 flex items-center gap-2 text-sm text-slate-700">
-            <WorkshopAvatar name={data.workshop?.name} profileImageUrl={data.workshop?.profileImageUrl} logoUrl={data.workshop?.logoUrl} size="sm" />
-            <span className="truncate">{data.workshop?.name} · {data.branch?.name || 'Sucursal'}</span>
+            <WorkshopAvatar
+              name={data.workshop?.name}
+              profileImageUrl={data.workshop?.profileImageUrl}
+              logoUrl={data.workshop?.logoUrl}
+              size="md"
+              className="shrink-0"
+            />
+            <span className="truncate font-medium">{data.workshop?.name} · {data.branch?.name || 'Sucursal'}</span>
+            {mainImage?.publicUrl ? (
+              <button
+                type="button"
+                className="ml-auto overflow-hidden rounded-lg border border-slate-200"
+                onClick={() => setPreview({ url: mainImage.publicUrl || '', mimeType: mainImage.mimeType || 'image/*', name: mainImage.originalName || 'Portada principal' })}
+              >
+                <img src={mainImage.publicUrl} alt="Portada principal" className="h-10 w-10 object-cover" />
+              </button>
+            ) : null}
           </div>
 
           <div className="mt-3 grid grid-cols-1 gap-2 text-sm sm:grid-cols-3">
@@ -88,9 +108,12 @@ export function PublicTrackingPage() {
             </div>
           </div>
 
-          <div className="mt-2 grid grid-cols-1 gap-2 text-sm sm:grid-cols-3">
+          <div className="mt-2 grid grid-cols-2 gap-2 text-sm sm:grid-cols-3">
             <MoneyPill label="Total servicios" value={totals.servicesTotal} />
-            <MoneyPill label="Abonos" value={totals.paymentsTotal} />
+            <MoneyPill label="Total refacciones" value={totals.partsTotal} />
+            <MoneyPill label="Descuento" value={totals.discountTotal} />
+            <MoneyPill label="Abonado" value={totals.paymentsTotal} />
+            <MoneyPill label="Saldo pendiente" value={totals.pendingTotal} emphasized={totals.pendingTotal > 0} />
             <MoneyPill label="Total orden" value={totals.visitTotal} emphasized />
           </div>
         </div>
@@ -104,7 +127,7 @@ export function PublicTrackingPage() {
           </div>
         ) : (
           <div className="mt-3 space-y-3">
-            {timeline.map((event) => {
+            {visibleTimeline.map((event) => {
               const eventType = event.eventType || '';
               const paymentData =
                 ((event.payment as Record<string, unknown> | undefined) ||
@@ -200,6 +223,15 @@ export function PublicTrackingPage() {
             })}
           </div>
         )}
+        {timeline.length > 3 ? (
+          <button
+            type="button"
+            className="btn-secondary mt-3 h-10 w-full justify-center"
+            onClick={() => setExpandedTimeline((value) => !value)}
+          >
+            {expandedTimeline ? 'Ver solo los recientes' : 'Ver todos los eventos'}
+          </button>
+        ) : null}
       </section>
 
       <section className="rounded-2xl border border-slate-300 bg-white p-4 shadow-sm">
@@ -230,23 +262,25 @@ export function PublicTrackingPage() {
       </section>
 
       {preview ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-3">
-          <div className="w-full max-w-md rounded-2xl bg-white p-3">
-            <p className="truncate text-sm font-medium text-slate-800">{preview.name}</p>
-            <div className="mt-2">
-              {preview.mimeType.startsWith('image/') ? (
-                <img src={preview.url} alt={preview.name} className="max-h-[70vh] w-full rounded object-contain" />
-              ) : preview.mimeType.startsWith('video/') ? (
-                <video src={preview.url} controls className="max-h-[70vh] w-full rounded object-contain" />
-              ) : preview.mimeType.startsWith('audio/') ? (
-                <audio src={preview.url} controls className="w-full" />
-              ) : (
-                <a href={preview.url} target="_blank" rel="noreferrer" className="text-sky-700">Abrir archivo</a>
-              )}
+        <OverlayPortal>
+          <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/70 p-3">
+            <div className="w-full max-w-md rounded-2xl bg-white p-3">
+              <p className="truncate text-sm font-medium text-slate-800">{preview.name}</p>
+              <div className="mt-2">
+                {preview.mimeType.startsWith('image/') ? (
+                  <img src={preview.url} alt={preview.name} className="max-h-[70vh] w-full rounded object-contain" />
+                ) : preview.mimeType.startsWith('video/') ? (
+                  <video src={preview.url} controls className="max-h-[70vh] w-full rounded object-contain" />
+                ) : preview.mimeType.startsWith('audio/') ? (
+                  <audio src={preview.url} controls className="w-full" />
+                ) : (
+                  <a href={preview.url} target="_blank" rel="noreferrer" className="text-sky-700">Abrir archivo</a>
+                )}
+              </div>
+              <button type="button" className="btn-secondary mt-3 h-10 w-full justify-center" onClick={() => setPreview(null)}>Cerrar</button>
             </div>
-            <button type="button" className="btn-secondary mt-3 h-10 w-full justify-center" onClick={() => setPreview(null)}>Cerrar</button>
           </div>
-        </div>
+        </OverlayPortal>
       ) : null}
 
       {selectedEvent ? (
@@ -269,8 +303,9 @@ function TrackingEventDetailModal({
   const content = extractEventNoteContent(event);
 
   return (
-    <div className="fixed inset-0 z-[60] bg-black/60 p-0 sm:p-4" role="dialog" aria-modal="true" aria-label="Detalle del evento">
-      <div className="mx-auto flex h-[100dvh] w-full max-w-2xl flex-col bg-white text-slate-900 sm:h-[90vh] sm:rounded-2xl sm:border sm:border-slate-300">
+    <OverlayPortal>
+      <div className="fixed inset-0 z-[145] bg-black/60 p-0 sm:p-4" role="dialog" aria-modal="true" aria-label="Detalle del evento">
+        <div className="mx-auto flex h-[100dvh] w-full max-w-2xl flex-col bg-white text-slate-900 sm:h-[90vh] sm:rounded-2xl sm:border sm:border-slate-300">
         <header className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-300 bg-white px-4 py-3">
           <div>
             <p className="text-xs uppercase tracking-wide text-slate-600">Detalle del evento</p>
@@ -313,8 +348,9 @@ function TrackingEventDetailModal({
         <footer className="border-t border-slate-300 bg-white p-4">
           <button type="button" className="btn-primary h-12 w-full justify-center text-base" onClick={onClose}>Cerrar detalle</button>
         </footer>
+        </div>
       </div>
-    </div>
+    </OverlayPortal>
   );
 }
 
@@ -368,7 +404,7 @@ function toNumberSafe(value: unknown) {
   return 0;
 }
 
-function getFinancialSummary(data: TrackingResponse) {
+export function getFinancialSummary(data: TrackingResponse) {
   const servicesTotal = (data.services || []).reduce((acc, service) => {
     if (isServiceCancelled(service.status)) return acc;
     const qty = toNumberSafe(service.quantity || 1) || 1;
@@ -398,8 +434,18 @@ function getFinancialSummary(data: TrackingResponse) {
         : 0);
 
   const visitTotal = toNumberSafe(paymentsSummary.visitTotal) || toNumberSafe(data.visit?.total) || servicesTotal;
+  const visitRecord = (data.visit || {}) as Record<string, unknown>;
+  const partsTotal =
+    toNumberSafe(visitRecord.partsTotal) ||
+    toNumberSafe(visitRecord.totalParts) ||
+    toNumberSafe(visitRecord.partsSubtotal) ||
+    0;
+  const discountTotal = toNumberSafe(visitRecord.discount);
+  const pendingTotal =
+    toNumberSafe(paymentsSummary.pendingAmount) ||
+    Math.max(0, visitTotal - paymentsTotal);
 
-  return { servicesTotal, paymentsTotal, visitTotal };
+  return { servicesTotal, partsTotal, discountTotal, paymentsTotal, pendingTotal, visitTotal };
 }
 
 function isServiceCancelled(status: TrackingService['status']) {

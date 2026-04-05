@@ -10,7 +10,7 @@ describe('avatar components', () => {
     expect(screen.getByText('RB')).toBeTruthy();
   });
 
-  it('WorkshopAvatar prioriza profileImageUrl sobre logo', () => {
+  it('WorkshopAvatar prioriza profileImageUrl sobre logo y mejora visibilidad', () => {
     render(
       <WorkshopAvatar
         name="Bujia Music"
@@ -21,6 +21,12 @@ describe('avatar components', () => {
 
     const image = screen.getByAltText('Bujia Music') as HTMLImageElement;
     expect(image.src).toContain('profile.jpg');
+    expect(image.className).toContain('ring-2');
+  });
+
+  it('WorkshopAvatar fallback muestra iniciales cuando no hay imagen', () => {
+    render(<WorkshopAvatar name="Taller Vintage" profileImageUrl={null} logoUrl={null} />);
+    expect(screen.getByText('TV')).toBeTruthy();
   });
 
   it('UserAvatarUploader muestra acciones cuando hay permisos', () => {

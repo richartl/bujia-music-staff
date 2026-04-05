@@ -5,10 +5,13 @@ import { AppShellNav } from '@/components/AppShellNav';
 import { WorkshopSwitcher } from '@/features/workshops/components/WorkshopSwitcher';
 import { BottomNav } from '@/components/navigation/BottomNav';
 import { UserAvatar } from '@/components/avatars/UserAvatar';
-import { LogOut, Settings2, X } from 'lucide-react';
+import { WorkshopAvatar } from '@/components/avatars/WorkshopAvatar';
+import { LogOut, X } from 'lucide-react';
+import { useWorkshopBranding } from '@/features/settings/hooks/useProfileBranding';
+import { AppHeader } from '@/components/layout/AppHeader';
 
 const ROUTE_COPY: Record<string, { title: string; subtitle: string }> = {
-  '/app/intakes': { title: 'Recepción', subtitle: 'Intake rápido para mostrador' },
+  '/app/intakes': { title: 'Recepción', subtitle: 'Registro y control de entrada' },
   '/app/visits': { title: 'Órdenes', subtitle: 'Seguimiento de instrumentos en taller' },
   '/app/dashboard': { title: 'Resumen', subtitle: 'Estado operativo del día' },
   '/app/catalogs': { title: 'Catálogos', subtitle: 'Servicios, marcas y configuraciones' },
@@ -21,6 +24,7 @@ export function AppLayout() {
   const user = authStore((state) => state.user);
   const logout = authStore((state) => state.logout);
   const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
+  const { activeWorkshop, isLoading: isWorkshopLoading, isError: isWorkshopError } = useWorkshopBranding();
 
   useEffect(() => {
     setMobilePanelOpen(false);
@@ -28,44 +32,29 @@ export function AppLayout() {
 
   const routeMeta = useMemo(() => {
     const matched = Object.entries(ROUTE_COPY).find(([path]) => location.pathname.startsWith(path));
-    return matched?.[1] ?? { title: 'Staff Platform', subtitle: 'Operación rápida de taller' };
+    return matched?.[1] ?? { title: 'Bujía Staff', subtitle: 'Operación del taller' };
   }, [location.pathname]);
-
   function handleLogout() {
     logout();
     navigate('/login');
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-100 via-slate-100 to-slate-200 pb-24 md:pb-0">
-      <header className="border-b border-slate-300 bg-white/95 shadow-sm md:sticky md:top-0 md:z-30 md:backdrop-blur">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-3 py-3 sm:px-4 md:px-4">
-          <div className="min-w-0">
-            <div className="truncate text-base font-bold text-slate-900 sm:text-lg">{routeMeta.title}</div>
-            <div className="truncate text-xs text-slate-500 sm:text-sm">{routeMeta.subtitle}</div>
-          </div>
-
-          <div className="hidden md:flex md:items-center md:gap-3">
-            <WorkshopSwitcher />
-            <UserAvatar email={user?.email} profileImageUrl={user?.profileImageUrl} size="sm" />
-            <button type="button" className="btn-secondary gap-2" onClick={handleLogout}>
-              <LogOut className="h-4 w-4" />
-              Salir
-            </button>
-          </div>
-
-          <button
-            type="button"
-            className="btn-secondary gap-2 md:hidden"
-            onClick={() => setMobilePanelOpen((current) => !current)}
-            aria-expanded={mobilePanelOpen}
-            aria-controls="mobile-options-panel"
-          >
-            {mobilePanelOpen ? <X className="h-4 w-4" /> : <Settings2 className="h-4 w-4" />}
-            {mobilePanelOpen ? 'Cerrar' : 'Opciones'}
-          </button>
-        </div>
-      </header>
+    <div className="min-h-screen bg-gradient-to-b from-slate-100 via-slate-100 to-slate-200 pb-24 pt-16 md:pb-0 md:pt-20">
+      <AppHeader
+        title={routeMeta.title}
+        subtitle={routeMeta.subtitle}
+        workshopName={activeWorkshop?.name}
+        workshopImageUrl={activeWorkshop?.profileImageUrl}
+        workshopLogoUrl={activeWorkshop?.logoUrl}
+        isWorkshopLoading={isWorkshopLoading}
+        isWorkshopError={isWorkshopError}
+        userEmail={user?.email}
+        userProfileImageUrl={user?.profileImageUrl}
+        mobilePanelOpen={mobilePanelOpen}
+        onToggleMobilePanel={() => setMobilePanelOpen((current) => !current)}
+        onLogout={handleLogout}
+      />
 
       {mobilePanelOpen ? (
         <div className="fixed inset-0 z-50 bg-black/40 md:hidden" onClick={() => setMobilePanelOpen(false)}>
@@ -87,6 +76,21 @@ export function AppLayout() {
                 <X className="h-4 w-4" />
               </button>
             </div>
+
+            {activeWorkshop ? (
+              <div className="mb-4 flex items-center gap-3 rounded-xl border border-amber-200/70 bg-amber-50/70 p-2">
+                <WorkshopAvatar
+                  name={activeWorkshop.name}
+                  profileImageUrl={activeWorkshop.profileImageUrl}
+                  logoUrl={activeWorkshop.logoUrl}
+                  size={activeWorkshop.profileImageUrl || activeWorkshop.logoUrl ? 'lg' : 'md'}
+                />
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-amber-900">{activeWorkshop.name}</p>
+                  <p className="text-[11px] uppercase tracking-wide text-amber-700">Taller activo</p>
+                </div>
+              </div>
+            ) : null}
 
             <div className="space-y-4">
               <div>

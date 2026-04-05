@@ -82,6 +82,16 @@ export type VisitResponse = {
   } | null;
   payments?: VisitPayment[];
   visitMediaIds?: string[];
+  attachments?: Array<{
+    id: string;
+    mediaId?: string;
+    isMainAttachment?: boolean;
+    originalName?: string;
+    mimeType?: string;
+    sizeBytes?: number;
+    publicUrl?: string;
+    createdAt?: string;
+  }>;
 };
 
 export type UpdateVisitPayload = Partial<{

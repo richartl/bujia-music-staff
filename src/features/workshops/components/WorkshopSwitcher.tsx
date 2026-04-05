@@ -42,8 +42,10 @@ export function WorkshopSwitcher() {
             <button
               key={workshop.id}
               type="button"
-              className={`flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm ${
-                workshopId === workshop.id ? 'bg-amber-50 text-amber-800' : 'hover:bg-slate-50'
+              className={`flex w-full items-center gap-2 rounded-xl border px-2.5 py-2 text-left text-sm transition ${
+                workshopId === workshop.id
+                  ? 'border-amber-200 bg-gradient-to-r from-amber-50 to-orange-50 text-amber-900 shadow-sm'
+                  : 'border-transparent hover:border-slate-200 hover:bg-slate-50'
               }`}
               onClick={() => setWorkshopId(workshop.id)}
               disabled={!user?.id}
@@ -52,9 +54,9 @@ export function WorkshopSwitcher() {
                 name={workshop.name}
                 profileImageUrl={workshop.profileImageUrl}
                 logoUrl={workshop.logoUrl}
-                size="sm"
+                size={workshopId === workshop.id ? 'md' : 'sm'}
               />
-              <span className="truncate">{workshop.name}</span>
+              <span className="truncate font-medium">{workshop.name}</span>
             </button>
           );
         })}
