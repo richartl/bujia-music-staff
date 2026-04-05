@@ -7,39 +7,39 @@ describe('textCasing utilities', () => {
     expect(capitalizeHumanText('ajuste general - guitarra eléctrica')).toBe('Ajuste General - Guitarra Eléctrica');
   });
 
-  it('respeta excepciones técnicas por tipo o metadata', () => {
+  it('excluye email y password por tipo', () => {
     const emailInput = document.createElement('input');
     emailInput.type = 'email';
-    emailInput.name = 'email';
 
     const passwordInput = document.createElement('input');
     passwordInput.type = 'password';
-    passwordInput.name = 'password';
-
-    const slugInput = document.createElement('input');
-    slugInput.type = 'text';
-    slugInput.name = 'slug';
 
     expect(shouldAutoCapitalizeTextInput(emailInput)).toBe(false);
     expect(shouldAutoCapitalizeTextInput(passwordInput)).toBe(false);
-    expect(shouldAutoCapitalizeTextInput(slugInput)).toBe(false);
   });
 
-  it('no modifica campos técnicos como urls/códigos y permite override explícito', () => {
+  it('mantiene capitalización en inputs de texto normales', () => {
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.name = 'name';
+
+    expect(shouldAutoCapitalizeTextInput(nameInput)).toBe(true);
+  });
+
+  it('permite override explícito para apagar/encender normalización', () => {
     const urlInput = document.createElement('input');
     urlInput.type = 'url';
 
-    const skuInput = document.createElement('input');
-    skuInput.type = 'text';
-    skuInput.name = 'sku';
+    const manualOff = document.createElement('input');
+    manualOff.type = 'text';
+    manualOff.dataset.textNormalization = 'off';
 
     const manualOverride = document.createElement('input');
     manualOverride.type = 'text';
     manualOverride.dataset.textNormalization = 'on';
-    manualOverride.name = 'sku';
 
-    expect(shouldAutoCapitalizeTextInput(urlInput)).toBe(false);
-    expect(shouldAutoCapitalizeTextInput(skuInput)).toBe(false);
+    expect(shouldAutoCapitalizeTextInput(urlInput)).toBe(true);
+    expect(shouldAutoCapitalizeTextInput(manualOff)).toBe(false);
     expect(shouldAutoCapitalizeTextInput(manualOverride)).toBe(true);
   });
 });

@@ -1,21 +1,5 @@
-const TECHNICAL_FIELD_KEYWORDS = [
-  'email',
-  'password',
-  'slug',
-  'url',
-  'uri',
-  'sku',
-  'serial',
-  'token',
-  'code',
-  'username',
-  'userid',
-  'handle',
-  'instagram',
-];
-
-const EXCLUDED_INPUT_TYPES = new Set(['email', 'password', 'url']);
-const TEXTUAL_INPUT_TYPES = new Set(['', 'text', 'search']);
+const EXCLUDED_INPUT_TYPES = new Set(['email', 'password']);
+const TEXTUAL_INPUT_TYPES = new Set(['', 'text', 'search', 'url', 'tel']);
 
 function capitalizeWord(word: string): string {
   if (!word) return word;
@@ -40,13 +24,5 @@ export function shouldAutoCapitalizeTextInput(element: HTMLInputElement | HTMLTe
     if (!TEXTUAL_INPUT_TYPES.has(normalizedType)) return false;
     if (EXCLUDED_INPUT_TYPES.has(normalizedType)) return false;
   }
-
-  const technicalHint = `${element.name} ${element.id} ${element.autocomplete}`
-    .toLowerCase()
-    .replace(/\s+/g, ' ')
-    .trim();
-
-  if (!technicalHint) return true;
-
-  return !TECHNICAL_FIELD_KEYWORDS.some((keyword) => technicalHint.includes(keyword));
+  return true;
 }

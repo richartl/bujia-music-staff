@@ -6,6 +6,7 @@ import { GlobalTextAutoCapitalize } from '../src/components/behavior/GlobalTextA
 function TextFormHarness() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
 
   return (
     <>
@@ -15,6 +16,9 @@ function TextFormHarness() {
 
       <label htmlFor="email">Email</label>
       <input id="email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} />
+
+      <label htmlFor="password">Password</label>
+      <input id="password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
     </>
   );
 }
@@ -38,5 +42,15 @@ describe('GlobalTextAutoCapitalize', () => {
     fireEvent.blur(email);
 
     expect((email as HTMLInputElement).value).toBe('UPPER@MAIL.COM');
+  });
+
+  it('no transforma campos excluidos (password)', () => {
+    render(<TextFormHarness />);
+    const password = screen.getByLabelText('Password');
+
+    fireEvent.change(password, { target: { value: 'AbC123xYz' } });
+    fireEvent.blur(password);
+
+    expect((password as HTMLInputElement).value).toBe('AbC123xYz');
   });
 });
