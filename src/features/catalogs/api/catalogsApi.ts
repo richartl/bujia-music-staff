@@ -14,6 +14,7 @@ import type {
   CreateWorkshopColorPayload,
   CreateWorkshopPartPayload,
   CreateWorkshopServicePayload,
+  CreateWorkshopInstrumentTypePayload,
   ServiceStatus,
   StringGauge,
   Tuning,
@@ -27,12 +28,14 @@ import type {
   UpdateVisitStatusPayload,
   UpdateWorkshopPartPayload,
   UpdateWorkshopServicePayload,
+  UpdateWorkshopInstrumentTypePayload,
   UpdateWorkshopUserPayload,
   UserProfileImage,
   VisitStatus,
   WorkshopPartCatalog,
   WorkshopPartListFilters,
   WorkshopServiceCatalog,
+  WorkshopInstrumentType,
   WorkshopUser,
   WorkshopUsersListParams,
   WorkshopUsersListResponse,
@@ -180,6 +183,22 @@ export async function updateWorkshopPart(workshopId: string, partId: string, pay
 
 export async function getWorkshopServices(workshopId: string) {
   const { data } = await http.get<WorkshopServiceCatalog[]>(`/workshops/${workshopId}/workshop-services`);
+  return data;
+}
+export async function getWorkshopInstrumentTypes(workshopId: string) {
+  const { data } = await http.get<WorkshopInstrumentType[]>(`/workshops/${workshopId}/instrument-types`);
+  return data;
+}
+export async function getWorkshopInstrumentTypeById(workshopId: string, id: string) {
+  const { data } = await http.get<WorkshopInstrumentType>(`/workshops/${workshopId}/instrument-types/${id}`);
+  return data;
+}
+export async function createWorkshopInstrumentType(workshopId: string, payload: CreateWorkshopInstrumentTypePayload) {
+  const { data } = await http.post<WorkshopInstrumentType>(`/workshops/${workshopId}/instrument-types`, payload);
+  return data;
+}
+export async function updateWorkshopInstrumentType(workshopId: string, id: string, payload: UpdateWorkshopInstrumentTypePayload) {
+  const { data } = await http.patch<WorkshopInstrumentType>(`/workshops/${workshopId}/instrument-types/${id}`, payload);
   return data;
 }
 export async function getWorkshopServiceById(workshopId: string, id: string) {

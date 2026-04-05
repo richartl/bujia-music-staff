@@ -15,6 +15,12 @@ describe('catalogsQueryKeys', () => {
     expect(catalogsQueryKeys.workshopParts.list('w1', false)).toEqual(['catalogs', 'workshop-parts', 'w1', 'list', 'inactive']);
   });
 
+  it('instrument types define base/list/detail por workshop', () => {
+    expect(catalogsQueryKeys.instrumentTypes.base('w1')).toEqual(['catalogs', 'instrument-types', 'w1']);
+    expect(catalogsQueryKeys.instrumentTypes.list('w1')).toEqual(['catalogs', 'instrument-types', 'w1', 'list']);
+    expect(catalogsQueryKeys.instrumentTypes.detail('w1', 'it1')).toEqual(['catalogs', 'instrument-types', 'w1', 'detail', 'it1']);
+  });
+
   it('users incluye base, list con paginación/filtros y detail', () => {
     expect(catalogsQueryKeys.users.workshopBase('w1')).toEqual(['catalogs', 'users', 'workshop', 'w1']);
     expect(catalogsQueryKeys.users.workshopList('w1', { page: 2, limit: 10, search: 'maria', role: 'ADMIN' })).toEqual([

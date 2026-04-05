@@ -8,6 +8,7 @@ import {
   createTuning,
   createWorkshopBrand,
   createWorkshopColor,
+  createWorkshopInstrumentType,
   createWorkshopPart,
   createWorkshopService,
   createWorkshopUser,
@@ -40,6 +41,8 @@ import {
   getWorkshopColors,
   getWorkshopPartById,
   getWorkshopParts,
+  getWorkshopInstrumentTypeById,
+  getWorkshopInstrumentTypes,
   getWorkshopServiceById,
   getWorkshopServices,
   getWorkshopServiceStatusById,
@@ -57,6 +60,7 @@ import {
   updateWorkshopBrand,
   updateWorkshopColor,
   updateWorkshopPart,
+  updateWorkshopInstrumentType,
   updateWorkshopService,
   updateWorkshopServiceStatus,
   updateWorkshopUser,
@@ -148,6 +152,10 @@ describe('catalogsApi endpoints', () => {
     await updateWorkshopPart('w1', 'p1', { publicPrice: 15 });
 
     await getWorkshopServices('w1');
+    await getWorkshopInstrumentTypes('w1');
+    await getWorkshopInstrumentTypeById('w1', 'it1');
+    await createWorkshopInstrumentType('w1', { code: 'BASS_5', name: 'Bajo 5', slug: 'bajo-5', family: 'BASS', isActive: true });
+    await updateWorkshopInstrumentType('w1', 'it1', { isActive: false });
     await getWorkshopServiceById('w1', 'svc1');
     await createWorkshopService('w1', { name: 'Ajuste', slug: 'ajuste' });
     await updateWorkshopService('w1', 'svc1', { isAdjust: true });
@@ -182,6 +190,16 @@ describe('catalogsApi endpoints', () => {
     expect(http.get).toHaveBeenCalledWith('/workshops/w1/service-statuses');
     expect(http.get).toHaveBeenCalledWith('/workshops/w1/parts', { params: { isActive: true } });
     expect(http.get).toHaveBeenCalledWith('/workshops/w1/workshop-services');
+    expect(http.get).toHaveBeenCalledWith('/workshops/w1/instrument-types');
+    expect(http.get).toHaveBeenCalledWith('/workshops/w1/instrument-types/it1');
+    expect(http.post).toHaveBeenCalledWith('/workshops/w1/instrument-types', {
+      code: 'BASS_5',
+      name: 'Bajo 5',
+      slug: 'bajo-5',
+      family: 'BASS',
+      isActive: true,
+    });
+    expect(http.patch).toHaveBeenCalledWith('/workshops/w1/instrument-types/it1', { isActive: false });
     expect(http.get).toHaveBeenCalledWith('/workshops/w1/tunings');
     expect(http.get).toHaveBeenCalledWith('/workshops/w1/string-gauges');
     expect(http.get).toHaveBeenCalledWith('/workshops/w1/affiliates');

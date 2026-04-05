@@ -42,6 +42,11 @@ export const catalogsQueryKeys = {
     list: (workshopId: string) => ['catalogs', 'workshop-services', workshopId, 'list'] as const,
     detail: (workshopId: string, id: string) => ['catalogs', 'workshop-services', workshopId, 'detail', id] as const,
   },
+  instrumentTypes: {
+    base: (workshopId: string) => ['catalogs', 'instrument-types', workshopId] as const,
+    list: (workshopId: string) => ['catalogs', 'instrument-types', workshopId, 'list'] as const,
+    detail: (workshopId: string, id: string) => ['catalogs', 'instrument-types', workshopId, 'detail', id] as const,
+  },
   tunings: {
     base: (workshopId: string) => ['catalogs', 'tunings', workshopId] as const,
     list: (workshopId: string) => ['catalogs', 'tunings', workshopId, 'list'] as const,

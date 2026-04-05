@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as catalogsApi from '../src/features/catalogs/api/catalogsApi';
 import {
   useCreateWorkshopUser,
+  useCreateWorkshopInstrumentType,
   useDeleteWorkshopUser,
   useCreateWorkshopPart,
   useCreateWorkshopService,
@@ -12,6 +13,7 @@ import {
   useUpdateUserProfileImage,
   useWorkshopColors,
   useWorkshopUsers,
+  useUpdateWorkshopInstrumentType,
 } from '../src/features/catalogs/hooks/useCatalogs';
 import { catalogsQueryKeys } from '../src/features/catalogs/queryKeys';
 
@@ -53,6 +55,26 @@ describe('catalogs hooks', () => {
 
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: catalogsQueryKeys.workshopServices.list('w1') });
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: catalogsQueryKeys.workshopServices.detail('w1', 'svc1') });
+  });
+
+  it('instrument types invalida list + detail en create/update', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const invalidateSpy = vi.spyOn(client, 'invalidateQueries');
+    vi.mocked(catalogsApi.createWorkshopInstrumentType).mockResolvedValue({ id: 'it1' } as never);
+    vi.mocked(catalogsApi.updateWorkshopInstrumentType).mockResolvedValue({ id: 'it1' } as never);
+
+    const createHook = renderHook(() => useCreateWorkshopInstrumentType('w1'), { wrapper: createWrapper(client) });
+    await act(async () => {
+      await createHook.result.current.mutateAsync({ code: 'BASS_5', name: 'Bajo 5', slug: 'bajo-5', family: 'BASS' });
+    });
+
+    const updateHook = renderHook(() => useUpdateWorkshopInstrumentType('w1'), { wrapper: createWrapper(client) });
+    await act(async () => {
+      await updateHook.result.current.mutateAsync({ id: 'it1', payload: { isActive: false } });
+    });
+
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: catalogsQueryKeys.instrumentTypes.list('w1') });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: catalogsQueryKeys.instrumentTypes.detail('w1', 'it1') });
   });
 
   it('workshop parts invalida listas con y sin isActive', async () => {

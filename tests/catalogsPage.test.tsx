@@ -47,6 +47,12 @@ vi.mock('../src/features/catalogs/hooks/useCatalogs', () => {
     useWorkshopVisitStatuses: vi.fn(() => query([])),
     useWorkshopServiceStatuses: vi.fn(() => query([])),
     useWorkshopParts: vi.fn(() => query([{ id: 'p1', name: 'Cejuela', listPrice: 10, publicPrice: 20, isActive: true, updatedAt: '2026-01-02' }])),
+    useWorkshopInstrumentTypes: vi.fn(() =>
+      query([
+        { id: 'it-global', code: 'BASS_4', name: 'Bajo 4', slug: 'bajo-4', family: 'BASS', isActive: true, isGlobal: true, workshopId: 'w1' },
+        { id: 'it-local', code: 'BASS_5', name: 'Bajo 5', slug: 'bajo-5', family: 'BASS', isActive: true, isGlobal: false, workshopId: 'w1' },
+      ]),
+    ),
     useWorkshopServices: vi.fn(() => query([])),
     useTunings: vi.fn(() => query([])),
     useStringGauges: vi.fn(() => query([])),
@@ -66,6 +72,8 @@ vi.mock('../src/features/catalogs/hooks/useCatalogs', () => {
     useDeleteWorkshopServiceStatus: vi.fn(mutation),
     useCreateWorkshopPart: vi.fn(mutation),
     useUpdateWorkshopPart: vi.fn(mutation),
+    useCreateWorkshopInstrumentType: vi.fn(mutation),
+    useUpdateWorkshopInstrumentType: vi.fn(mutation),
     useCreateWorkshopService: vi.fn(mutation),
     useUpdateWorkshopService: vi.fn(mutation),
     useDeleteWorkshopService: vi.fn(mutation),
@@ -129,6 +137,8 @@ describe('CatalogsPage UI', () => {
     expect(screen.getByText('Selecciona un catálogo para abrir su pantalla dedicada.')).toBeTruthy();
     const colorsLink = screen.getByRole('link', { name: /Colores/i });
     expect(colorsLink.getAttribute('href')).toBe('/app/catalogs/colors');
+    const instrumentTypesLink = screen.getByRole('link', { name: /Tipos de instrumentos/i });
+    expect(instrumentTypesLink.getAttribute('href')).toBe('/app/catalogs/instrument-types');
   });
 
   it('página dedicada muestra buscador y filtra resultados', () => {
@@ -166,6 +176,16 @@ describe('CatalogsPage UI', () => {
 
   it('refacciones usa toggle y no delete', () => {
     renderCatalogs('/app/catalogs/parts');
+    fireEvent.click(screen.getAllByRole('button').find((btn) => btn.className.includes('btn-secondary h-8 px-2'))!);
+    expect(screen.getByText('Activar / desactivar')).toBeTruthy();
+    expect(screen.queryByText('Eliminar')).toBeNull();
+  });
+
+  it('tipos de instrumentos muestra global solo lectura y taller con toggle sin delete', () => {
+    renderCatalogs('/app/catalogs/instrument-types');
+    expect(screen.getByText('Bajo 4')).toBeTruthy();
+    expect(screen.getByText('Bajo 5')).toBeTruthy();
+    expect(screen.getByText('Solo lectura · Registro global')).toBeTruthy();
     fireEvent.click(screen.getAllByRole('button').find((btn) => btn.className.includes('btn-secondary h-8 px-2'))!);
     expect(screen.getByText('Activar / desactivar')).toBeTruthy();
     expect(screen.queryByText('Eliminar')).toBeNull();

@@ -60,6 +60,17 @@ export type WorkshopServiceCatalog = CatalogTimestampFields & {
   isAdjust: boolean;
 };
 
+export type WorkshopInstrumentType = CatalogTimestampFields & {
+  id: string;
+  workshopId: string;
+  code: string;
+  name: string;
+  slug: string;
+  family: string;
+  isActive: boolean;
+  isGlobal: boolean;
+};
+
 export type Tuning = CatalogTimestampFields & {
   id: string;
   workshopId: string;
@@ -179,6 +190,15 @@ export type CreateWorkshopServicePayload = {
   isAdjust?: boolean;
 };
 export type UpdateWorkshopServicePayload = Partial<CreateWorkshopServicePayload>;
+
+export type CreateWorkshopInstrumentTypePayload = {
+  code: string;
+  name: string;
+  slug: string;
+  family: string;
+  isActive?: boolean;
+};
+export type UpdateWorkshopInstrumentTypePayload = Partial<CreateWorkshopInstrumentTypePayload>;
 
 export type CreateTuningPayload = {
   name: string;

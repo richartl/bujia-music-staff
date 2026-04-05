@@ -18,6 +18,7 @@ import {
   useCreateWorkshopColor,
   useCreateWorkshopPart,
   useCreateWorkshopService,
+  useCreateWorkshopInstrumentType,
   useCreateWorkshopServiceStatus,
   useCreateWorkshopUser,
   useCreateWorkshopVisitStatus,
@@ -39,12 +40,14 @@ import {
   useUpdateWorkshopColor,
   useUpdateWorkshopPart,
   useUpdateWorkshopService,
+  useUpdateWorkshopInstrumentType,
   useUpdateWorkshopServiceStatus,
   useUpdateWorkshopUser,
   useUpdateWorkshopVisitStatus,
   useWorkshopBrands,
   useWorkshopColors,
   useWorkshopParts,
+  useWorkshopInstrumentTypes,
   useWorkshopServiceStatuses,
   useWorkshopServices,
   useWorkshopUsers,
@@ -60,6 +63,7 @@ import type {
   VisitStatus,
   WorkshopPartCatalog,
   WorkshopServiceCatalog,
+  WorkshopInstrumentType,
   WorkshopUser,
   WorkshopUserRole,
 } from '@/features/catalogs/types/catalogs';
@@ -70,6 +74,7 @@ type CatalogSectionKey =
   | 'visit-statuses'
   | 'service-statuses'
   | 'parts'
+  | 'instrument-types'
   | 'services'
   | 'tunings'
   | 'string-gauges'
@@ -82,6 +87,7 @@ const HUB_ITEMS: Array<{ key: CatalogSectionKey; label: string; description: str
   { key: 'visit-statuses', label: 'Status de visita', description: 'Flujo operativo de la orden.' },
   { key: 'service-statuses', label: 'Status de servicio', description: 'Estados internos por servicio.' },
   { key: 'parts', label: 'Refacciones', description: 'Precios y disponibilidad por taller.' },
+  { key: 'instrument-types', label: 'Tipos de instrumentos', description: 'Catálogo de tipos por taller y globales.' },
   { key: 'services', label: 'Servicios', description: 'Servicios de taller y ajustes.' },
   { key: 'tunings', label: 'Afinaciones', description: 'Afinaciones disponibles en intake.' },
   { key: 'string-gauges', label: 'Calibres de cuerdas', description: 'Calibres por familia de instrumento.' },
@@ -117,6 +123,13 @@ const PART_FIELDS: CatalogFieldDefinition[] = [
   { name: 'sku', label: 'SKU', type: 'text' },
   { name: 'brand', label: 'Marca', type: 'text' },
   { name: 'isActive', label: 'Activa', type: 'checkbox' },
+];
+const INSTRUMENT_TYPE_FIELDS: CatalogFieldDefinition[] = [
+  { name: 'code', label: 'Código', type: 'text', required: true },
+  { name: 'name', label: 'Nombre', type: 'text', required: true },
+  { name: 'slug', label: 'Slug', type: 'text', required: true },
+  { name: 'family', label: 'Familia', type: 'text', required: true },
+  { name: 'isActive', label: 'Activo', type: 'checkbox' },
 ];
 const SERVICE_FIELDS: CatalogFieldDefinition[] = [
   { name: 'name', label: 'Nombre', type: 'text', required: true },
@@ -189,6 +202,7 @@ export function CatalogsPage() {
   const visitStatusesQuery = useWorkshopVisitStatuses(activeSection === 'visit-statuses' ? workshopId : null);
   const serviceStatusesQuery = useWorkshopServiceStatuses(activeSection === 'service-statuses' ? workshopId : null);
   const partsQuery = useWorkshopParts(activeSection === 'parts' ? workshopId : null);
+  const instrumentTypesQuery = useWorkshopInstrumentTypes(activeSection === 'instrument-types' ? workshopId : null);
   const servicesQuery = useWorkshopServices(activeSection === 'services' ? workshopId : null);
   const tuningsQuery = useTunings(activeSection === 'tunings' ? workshopId : null);
   const gaugesQuery = useStringGauges(activeSection === 'string-gauges' ? workshopId : null);
@@ -219,6 +233,8 @@ export function CatalogsPage() {
   const deleteServiceStatus = useDeleteWorkshopServiceStatus(workshopId);
   const createPart = useCreateWorkshopPart(workshopId);
   const updatePart = useUpdateWorkshopPart(workshopId);
+  const createInstrumentType = useCreateWorkshopInstrumentType(workshopId);
+  const updateInstrumentType = useUpdateWorkshopInstrumentType(workshopId);
   const createService = useCreateWorkshopService(workshopId);
   const updateService = useUpdateWorkshopService(workshopId);
   const deleteService = useDeleteWorkshopService(workshopId);
@@ -814,6 +830,55 @@ export function CatalogsPage() {
               item.isActive ? 'Refacción desactivada' : 'Refacción activada',
               'No se pudo cambiar estado de la refacción',
             )
+          }
+        />
+      ) : null}
+
+      {activeSection === 'instrument-types' ? (
+        <CatalogEntitySection<WorkshopInstrumentType>
+          title="Tipos de instrumentos"
+          description="No hay delete: activar/desactivar por PATCH."
+          createContextHint="Los nuevos tipos se agregan al catálogo del taller activo."
+          fields={INSTRUMENT_TYPE_FIELDS}
+          items={filteredItems(instrumentTypesQuery.data || [])}
+          isLoading={instrumentTypesQuery.isLoading}
+          isError={instrumentTypesQuery.isError}
+          emptyMessage="Aún no hay tipos de instrumentos."
+          getItemTitle={(item) => item.name}
+          getItemMeta={(item) => `${item.code} · ${item.family} · ${item.slug}`}
+          renderBadges={(item) => (
+            <>
+              <SectionBadge tone={item.isGlobal ? 'amber' : 'sky'}>{item.isGlobal ? 'Global' : 'Taller'}</SectionBadge>
+              <SectionBadge tone={item.isActive ? 'emerald' : 'slate'}>{item.isActive ? 'Activo' : 'Inactivo'}</SectionBadge>
+            </>
+          )}
+          canEdit={(item) => !item.isGlobal}
+          getReadonlyReason={(item) => (item.isGlobal ? 'Registro global' : null)}
+          toFormValues={(item) => ({
+            code: item?.code || '',
+            name: item?.name || '',
+            slug: item?.slug || '',
+            family: item?.family || '',
+            isActive: item?.isActive ?? true,
+          })}
+          onCreate={(payload) => handleMutation(() => createInstrumentType.mutateAsync(payload as never), 'Tipo de instrumento creado', 'No se pudo crear el tipo de instrumento')}
+          onUpdate={(item, payload) =>
+            !item.isGlobal
+              ? handleMutation(
+                  () => updateInstrumentType.mutateAsync({ id: item.id, payload: payload as never }),
+                  'Tipo de instrumento actualizado',
+                  'No se pudo actualizar el tipo de instrumento',
+                )
+              : Promise.resolve()
+          }
+          onToggleActive={(item) =>
+            !item.isGlobal
+              ? handleMutation(
+                  () => updateInstrumentType.mutateAsync({ id: item.id, payload: { isActive: !item.isActive } }),
+                  item.isActive ? 'Tipo de instrumento desactivado' : 'Tipo de instrumento activado',
+                  'No se pudo cambiar estado del tipo de instrumento',
+                )
+              : Promise.resolve()
           }
         />
       ) : null}

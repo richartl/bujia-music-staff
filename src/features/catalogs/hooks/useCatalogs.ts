@@ -13,6 +13,7 @@ import type {
   CreateWorkshopColorPayload,
   CreateWorkshopPartPayload,
   CreateWorkshopServicePayload,
+  CreateWorkshopInstrumentTypePayload,
   CreateWorkshopUserPayload,
   UpdateAffiliatePayload,
   UpdateBrandPayload,
@@ -24,6 +25,7 @@ import type {
   UpdateVisitStatusPayload,
   UpdateWorkshopPartPayload,
   UpdateWorkshopServicePayload,
+  UpdateWorkshopInstrumentTypePayload,
   UpdateWorkshopUserPayload,
   WorkshopUsersListParams,
 } from '@/features/catalogs/types/catalogs';
@@ -339,6 +341,41 @@ export function useWorkshopServices(workshopId?: string | null) {
     queryKey: catalogsQueryKeys.workshopServices.list(workshopId || ''),
     queryFn: () => catalogsApi.getWorkshopServices(workshopId!),
     enabled: !!workshopId,
+  });
+}
+export function useWorkshopInstrumentTypes(workshopId?: string | null) {
+  return useQuery({
+    queryKey: catalogsQueryKeys.instrumentTypes.list(workshopId || ''),
+    queryFn: () => catalogsApi.getWorkshopInstrumentTypes(workshopId!),
+    enabled: !!workshopId,
+  });
+}
+export function useWorkshopInstrumentType(workshopId?: string | null, id?: string | null) {
+  return useQuery({
+    queryKey: catalogsQueryKeys.instrumentTypes.detail(workshopId || '', id || ''),
+    queryFn: () => catalogsApi.getWorkshopInstrumentTypeById(workshopId!, id!),
+    enabled: !!workshopId && !!id,
+  });
+}
+export function useCreateWorkshopInstrumentType(workshopId?: string | null) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: CreateWorkshopInstrumentTypePayload) => catalogsApi.createWorkshopInstrumentType(workshopId!, payload),
+    onSuccess: (created) => {
+      queryClient.invalidateQueries({ queryKey: catalogsQueryKeys.instrumentTypes.list(workshopId!) });
+      queryClient.invalidateQueries({ queryKey: catalogsQueryKeys.instrumentTypes.detail(workshopId!, created.id) });
+    },
+  });
+}
+export function useUpdateWorkshopInstrumentType(workshopId?: string | null) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: UpdateWorkshopInstrumentTypePayload }) =>
+      catalogsApi.updateWorkshopInstrumentType(workshopId!, id, payload),
+    onSuccess: (_data, vars) => {
+      queryClient.invalidateQueries({ queryKey: catalogsQueryKeys.instrumentTypes.list(workshopId!) });
+      queryClient.invalidateQueries({ queryKey: catalogsQueryKeys.instrumentTypes.detail(workshopId!, vars.id) });
+    },
   });
 }
 export function useWorkshopService(workshopId?: string | null, id?: string | null) {
