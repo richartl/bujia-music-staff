@@ -2034,7 +2034,7 @@ export function IntakesPage() {
         <ChevronUp className="h-4 w-4" />
       </button>
 
-      <div className="mobile-safe-bottom fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 px-3 py-3 shadow-[0_-8px_24px_rgba(15,23,42,0.08)] backdrop-blur">
+      <div className="mobile-safe-bottom fixed inset-x-0 bottom-16 z-30 border-t border-slate-200 bg-white/95 px-3 py-3 shadow-[0_-8px_24px_rgba(15,23,42,0.08)] backdrop-blur md:bottom-0">
         <div className="mx-auto max-w-3xl space-y-2">
           <div className="flex items-center justify-between rounded-xl bg-emerald-50 px-3 py-2 text-sm">
             <span className="font-medium text-emerald-800">Resumen rápido</span>
