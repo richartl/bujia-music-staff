@@ -186,8 +186,14 @@ describe('CatalogsPage UI', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Agregar usuario' }));
     fireEvent.change(screen.getByLabelText('Nombre'), { target: { value: 'Luis V' } });
-    fireEvent.change(screen.getByLabelText('Correo'), { target: { value: 'luis@bujia.com' } });
-    fireEvent.change(screen.getByLabelText('Contraseña'), { target: { value: '12345678' } });
+    const emailInput = screen.getByLabelText('Correo') as HTMLInputElement;
+    const passwordInput = screen.getByLabelText('Contraseña') as HTMLInputElement;
+    expect(emailInput.type).toBe('email');
+    expect(emailInput.dataset.textNormalization).toBe('off');
+    expect(passwordInput.type).toBe('password');
+    expect(passwordInput.dataset.textNormalization).toBe('off');
+    fireEvent.change(emailInput, { target: { value: 'luis@bujia.com' } });
+    fireEvent.change(passwordInput, { target: { value: '12345678' } });
     fireEvent.change(screen.getByLabelText('Rol'), { target: { value: 'ADMIN' } });
 
     fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
@@ -207,7 +213,13 @@ describe('CatalogsPage UI', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Editar' }));
     const nameInput = screen.getByLabelText('Nombre') as HTMLInputElement;
+    const emailInput = screen.getByLabelText('Correo') as HTMLInputElement;
+    const passwordInput = screen.getByLabelText('Nueva contraseña (opcional)') as HTMLInputElement;
     expect(nameInput.value).toBe('María Pérez');
+    expect(emailInput.type).toBe('email');
+    expect(emailInput.dataset.textNormalization).toBe('off');
+    expect(passwordInput.type).toBe('password');
+    expect(passwordInput.dataset.textNormalization).toBe('off');
 
     fireEvent.change(nameInput, { target: { value: 'María P.' } });
     fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));

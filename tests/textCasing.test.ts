@@ -7,15 +7,25 @@ describe('textCasing utilities', () => {
     expect(capitalizeHumanText('ajuste general - guitarra eléctrica')).toBe('Ajuste General - Guitarra Eléctrica');
   });
 
-  it('excluye email y password por tipo', () => {
+  it('permite capitalización por tipo y respeta opt-out explícito para campos sensibles', () => {
     const emailInput = document.createElement('input');
     emailInput.type = 'email';
 
     const passwordInput = document.createElement('input');
     passwordInput.type = 'password';
 
-    expect(shouldAutoCapitalizeTextInput(emailInput)).toBe(false);
-    expect(shouldAutoCapitalizeTextInput(passwordInput)).toBe(false);
+    const loginEmailInput = document.createElement('input');
+    loginEmailInput.type = 'email';
+    loginEmailInput.dataset.textNormalization = 'off';
+
+    const loginPasswordInput = document.createElement('input');
+    loginPasswordInput.type = 'password';
+    loginPasswordInput.dataset.textNormalization = 'off';
+
+    expect(shouldAutoCapitalizeTextInput(emailInput)).toBe(true);
+    expect(shouldAutoCapitalizeTextInput(passwordInput)).toBe(true);
+    expect(shouldAutoCapitalizeTextInput(loginEmailInput)).toBe(false);
+    expect(shouldAutoCapitalizeTextInput(loginPasswordInput)).toBe(false);
   });
 
   it('mantiene capitalización en inputs de texto normales', () => {

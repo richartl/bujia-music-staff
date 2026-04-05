@@ -1,5 +1,4 @@
-const EXCLUDED_INPUT_TYPES = new Set(['email', 'password']);
-const TEXTUAL_INPUT_TYPES = new Set(['', 'text', 'search', 'url', 'tel']);
+const TEXTUAL_INPUT_TYPES = new Set(['', 'text', 'search', 'email', 'password', 'url', 'tel']);
 
 function capitalizeWord(word: string): string {
   if (!word) return word;
@@ -22,7 +21,6 @@ export function shouldAutoCapitalizeTextInput(element: HTMLInputElement | HTMLTe
   if (element instanceof HTMLInputElement) {
     const normalizedType = (element.type || '').toLowerCase();
     if (!TEXTUAL_INPUT_TYPES.has(normalizedType)) return false;
-    if (EXCLUDED_INPUT_TYPES.has(normalizedType)) return false;
   }
   return true;
 }

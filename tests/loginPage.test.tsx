@@ -58,6 +58,21 @@ describe('LoginPage', () => {
     expect(passwordInput.type).toBe('password');
   });
 
+  it('marca email/password para preservar case en normalización global', () => {
+    render(
+      <MemoryRouter>
+        <LoginPage />
+      </MemoryRouter>,
+    );
+
+    const emailInput = screen.getByLabelText('Correo') as HTMLInputElement;
+    const passwordInput = screen.getByLabelText('Contraseña') as HTMLInputElement;
+
+    expect(emailInput.type).toBe('email');
+    expect(emailInput.dataset.textNormalization).toBe('off');
+    expect(passwordInput.dataset.textNormalization).toBe('off');
+  });
+
   it('submit sigue funcionando correctamente', async () => {
     vi.mocked(loginRequest).mockResolvedValue({
       access_token: 'token-123',

@@ -509,6 +509,8 @@ export function CatalogsPage() {
                     <input
                       className="input mt-1 h-11 bg-slate-800 text-slate-100"
                       value={userFormValues.email}
+                      type="email"
+                      data-text-normalization="off"
                       onChange={(event) => handleUserFormValue('email', event.target.value)}
                     />
                   </label>
@@ -517,6 +519,8 @@ export function CatalogsPage() {
                     <input
                       className="input mt-1 h-11 bg-slate-800 text-slate-100"
                       value={userFormValues.password}
+                      type="password"
+                      data-text-normalization="off"
                       onChange={(event) => handleUserFormValue('password', event.target.value)}
                     />
                   </label>

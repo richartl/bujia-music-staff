@@ -72,7 +72,9 @@ export function LoginPage() {
                 <input
                   id="email"
                   name="email"
+                  type="email"
                   autoComplete="username"
+                  data-text-normalization="off"
                   className="input border-slate-700 bg-slate-950 text-base text-slate-100 placeholder:text-slate-500 focus:border-amber-400 focus:ring-amber-500/20"
                   placeholder="tu@taller.com"
                   inputMode="email"
@@ -90,6 +92,7 @@ export function LoginPage() {
                     id="password"
                     name="password"
                     autoComplete="current-password"
+                    data-text-normalization="off"
                     className="input border-slate-700 bg-slate-950 pr-14 text-base text-slate-100 placeholder:text-slate-500 focus:border-amber-400 focus:ring-amber-500/20"
                     type={showPassword ? 'text' : 'password'}
                     placeholder="Tu contraseña"
