@@ -29,7 +29,7 @@ describe('LoginPage', () => {
     vi.clearAllMocks();
   });
 
-  it('renderiza el formulario vacío', () => {
+  it('renderiza el formulario vacío y sin datos precargados', () => {
     render(
       <MemoryRouter>
         <LoginPage />
@@ -38,26 +38,24 @@ describe('LoginPage', () => {
 
     expect((screen.getByLabelText('Correo') as HTMLInputElement).value).toBe('');
     expect((screen.getByLabelText('Contraseña') as HTMLInputElement).value).toBe('');
+    expect(screen.getByRole('button', { name: 'Iniciar sesión' })).toBeDisabled();
   });
 
-  it('no tiene valor por defecto en email/usuario', () => {
+  it('permite mostrar y ocultar la contraseña', () => {
     render(
       <MemoryRouter>
         <LoginPage />
       </MemoryRouter>,
     );
 
-    expect((screen.getByLabelText('Correo') as HTMLInputElement).value).toBe('');
-  });
+    const passwordInput = screen.getByLabelText('Contraseña') as HTMLInputElement;
+    expect(passwordInput.type).toBe('password');
 
-  it('no tiene valor por defecto en password', () => {
-    render(
-      <MemoryRouter>
-        <LoginPage />
-      </MemoryRouter>,
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Mostrar contraseña' }));
+    expect(passwordInput.type).toBe('text');
 
-    expect((screen.getByLabelText('Contraseña') as HTMLInputElement).value).toBe('');
+    fireEvent.click(screen.getByRole('button', { name: 'Ocultar contraseña' }));
+    expect(passwordInput.type).toBe('password');
   });
 
   it('submit sigue funcionando correctamente', async () => {
@@ -74,7 +72,11 @@ describe('LoginPage', () => {
 
     fireEvent.change(screen.getByLabelText('Correo'), { target: { value: 'staff@taller.com' } });
     fireEvent.change(screen.getByLabelText('Contraseña'), { target: { value: 'secreto-123' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Iniciar sesión' }));
+
+    const submitButton = screen.getByRole('button', { name: 'Iniciar sesión' });
+    expect(submitButton).not.toBeDisabled();
+
+    fireEvent.click(submitButton);
 
     await waitFor(() => {
       expect(loginRequest).toHaveBeenCalledWith('staff@taller.com', 'secreto-123');
@@ -84,5 +86,62 @@ describe('LoginPage', () => {
       });
       expect(navigateMock).toHaveBeenCalledWith('/app');
     });
+  });
+
+  it('muestra el estado de loading durante el submit', async () => {
+    let resolveLogin: ((value: { access_token: string; user: { id: string; email: string } }) => void) | null = null;
+    vi.mocked(loginRequest).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveLogin = resolve;
+        }) as never,
+    );
+
+    render(
+      <MemoryRouter>
+        <LoginPage />
+      </MemoryRouter>,
+    );
+
+    fireEvent.change(screen.getByLabelText('Correo'), { target: { value: 'staff@taller.com' } });
+    fireEvent.change(screen.getByLabelText('Contraseña'), { target: { value: 'secreto-123' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Iniciar sesión' }));
+
+    expect(screen.getByRole('button', { name: 'Entrando...' })).toBeDisabled();
+
+    resolveLogin?.({ access_token: 'token-123', user: { id: 'u1', email: 'staff@taller.com' } });
+
+    await waitFor(() => {
+      expect(navigateMock).toHaveBeenCalledWith('/app');
+    });
+  });
+
+  it('muestra errores de autenticación', async () => {
+    vi.mocked(loginRequest).mockRejectedValue(new Error('invalid credentials'));
+
+    render(
+      <MemoryRouter>
+        <LoginPage />
+      </MemoryRouter>,
+    );
+
+    fireEvent.change(screen.getByLabelText('Correo'), { target: { value: 'staff@taller.com' } });
+    fireEvent.change(screen.getByLabelText('Contraseña'), { target: { value: 'bad-pass' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Iniciar sesión' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('No pude iniciar sesión. Revisa credenciales o endpoint.');
+  });
+
+  it('mantiene estructura mobile-first sin romper layout base', () => {
+    const { container } = render(
+      <MemoryRouter>
+        <LoginPage />
+      </MemoryRouter>,
+    );
+
+    const root = container.querySelector('main');
+    expect(root?.className).toContain('min-h-screen');
+    expect(root?.className).toContain('px-4');
+    expect(root?.className).toContain('sm:px-6');
   });
 });
