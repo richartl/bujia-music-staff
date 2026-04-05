@@ -1347,38 +1347,40 @@ export function VisitDetailPage() {
       ) : null}
 
       {confirmModal ? (
-        <div className="fixed inset-0 z-50 flex items-end bg-black/40 p-3">
-          <div className="w-full rounded-2xl bg-white p-4">
-            <h4 className="text-sm font-semibold text-slate-900">{confirmModal.title}</h4>
-            <p className="mt-1 text-sm text-slate-700">{confirmModal.message}</p>
-            <div className="mt-3 grid grid-cols-2 gap-2">
-              <button type="button" className="btn-secondary h-10 justify-center" onClick={() => setConfirmModal(null)}>Cancelar</button>
-              <button
-                type="button"
-                className="btn-primary h-10 justify-center"
-                onClick={async () => {
-                  try {
-                    await confirmModal.action();
-                    setConfirmModal(null);
-                  } catch (error) {
-                    const fallback = getErrorMessage(error);
-                    if (error && typeof error === 'object' && 'response' in error) {
-                      const maybe = error as { response?: { data?: { message?: string | string[] } } };
-                      const message = maybe.response?.data?.message;
-                      if (message) {
-                        notifyError(Array.isArray(message) ? message.join(', ') : message);
-                        return;
+        <OverlayPortal>
+          <div className="fixed inset-0 z-[170] flex items-end bg-black/55 p-3 sm:items-center sm:justify-center">
+            <div className="w-full rounded-2xl bg-white p-4 shadow-2xl sm:max-w-md">
+              <h4 className="text-sm font-semibold text-slate-900">{confirmModal.title}</h4>
+              <p className="mt-1 text-sm text-slate-700">{confirmModal.message}</p>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <button type="button" className="btn-secondary h-10 justify-center" onClick={() => setConfirmModal(null)}>Cancelar</button>
+                <button
+                  type="button"
+                  className="btn-primary h-10 justify-center"
+                  onClick={async () => {
+                    try {
+                      await confirmModal.action();
+                      setConfirmModal(null);
+                    } catch (error) {
+                      const fallback = getErrorMessage(error);
+                      if (error && typeof error === 'object' && 'response' in error) {
+                        const maybe = error as { response?: { data?: { message?: string | string[] } } };
+                        const message = maybe.response?.data?.message;
+                        if (message) {
+                          notifyError(Array.isArray(message) ? message.join(', ') : message);
+                          return;
+                        }
                       }
+                      notifyError(fallback);
                     }
-                    notifyError(fallback);
-                  }
-                }}
-              >
-                Confirmar
-              </button>
+                  }}
+                >
+                  Confirmar
+                </button>
+              </div>
             </div>
           </div>
-        </div>
+        </OverlayPortal>
       ) : null}
 
       {selectedServiceDetail ? (

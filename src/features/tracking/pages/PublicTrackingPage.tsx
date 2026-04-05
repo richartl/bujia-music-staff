@@ -76,8 +76,14 @@ export function PublicTrackingPage() {
           <h1 className="text-lg font-bold text-slate-900">Seguimiento de tu instrumento</h1>
           <p className="mt-1 text-sm text-slate-700">Consulta aquí el avance de tu orden en tiempo real.</p>
           <div className="mt-2 flex items-center gap-2 text-sm text-slate-700">
-            <WorkshopAvatar name={data.workshop?.name} profileImageUrl={data.workshop?.profileImageUrl} logoUrl={data.workshop?.logoUrl} size="sm" />
-            <span className="truncate">{data.workshop?.name} · {data.branch?.name || 'Sucursal'}</span>
+            <WorkshopAvatar
+              name={data.workshop?.name}
+              profileImageUrl={data.workshop?.profileImageUrl}
+              logoUrl={data.workshop?.logoUrl}
+              size="md"
+              className="shrink-0"
+            />
+            <span className="truncate font-medium">{data.workshop?.name} · {data.branch?.name || 'Sucursal'}</span>
             {mainImage?.publicUrl ? (
               <button
                 type="button"

@@ -15,9 +15,11 @@ describe('VisitServiceStatusSheet', () => {
       />,
     );
 
-    const backdrop = screen.getByText('Cambiar').closest('div')?.parentElement;
-    expect(screen.getByText('Cambiar')).toBeTruthy();
-    if (backdrop) fireEvent.click(backdrop);
+    const sheet = screen.getByText('Cambiar');
+    const overlay = sheet.closest('div')?.parentElement;
+    expect(sheet).toBeTruthy();
+    expect(overlay?.className).toContain('z-[140]');
+    if (overlay) fireEvent.click(overlay);
     expect(onClose).toHaveBeenCalled();
   });
 });

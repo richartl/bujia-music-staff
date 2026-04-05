@@ -5,7 +5,9 @@ import { AppShellNav } from '@/components/AppShellNav';
 import { WorkshopSwitcher } from '@/features/workshops/components/WorkshopSwitcher';
 import { BottomNav } from '@/components/navigation/BottomNav';
 import { UserAvatar } from '@/components/avatars/UserAvatar';
+import { WorkshopAvatar } from '@/components/avatars/WorkshopAvatar';
 import { LogOut, Settings2, X } from 'lucide-react';
+import { useWorkshopBranding } from '@/features/settings/hooks/useProfileBranding';
 
 const ROUTE_COPY: Record<string, { title: string; subtitle: string }> = {
   '/app/intakes': { title: 'Recepción', subtitle: 'Intake rápido para mostrador' },
@@ -21,6 +23,7 @@ export function AppLayout() {
   const user = authStore((state) => state.user);
   const logout = authStore((state) => state.logout);
   const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
+  const { activeWorkshop } = useWorkshopBranding();
 
   useEffect(() => {
     setMobilePanelOpen(false);
@@ -46,6 +49,20 @@ export function AppLayout() {
           </div>
 
           <div className="hidden md:flex md:items-center md:gap-3">
+            {activeWorkshop ? (
+              <div className="hidden items-center gap-2 rounded-xl border border-amber-200/70 bg-amber-50/70 px-2.5 py-1.5 lg:flex">
+                <WorkshopAvatar
+                  name={activeWorkshop.name}
+                  profileImageUrl={activeWorkshop.profileImageUrl}
+                  logoUrl={activeWorkshop.logoUrl}
+                  size="sm"
+                />
+                <div className="min-w-0">
+                  <p className="max-w-[170px] truncate text-xs font-semibold text-amber-900">{activeWorkshop.name}</p>
+                  <p className="text-[10px] uppercase tracking-wide text-amber-700">Taller activo</p>
+                </div>
+              </div>
+            ) : null}
             <WorkshopSwitcher />
             <UserAvatar email={user?.email} profileImageUrl={user?.profileImageUrl} size="sm" />
             <button type="button" className="btn-secondary gap-2" onClick={handleLogout}>
@@ -87,6 +104,21 @@ export function AppLayout() {
                 <X className="h-4 w-4" />
               </button>
             </div>
+
+            {activeWorkshop ? (
+              <div className="mb-4 flex items-center gap-2 rounded-xl border border-amber-200/70 bg-amber-50/70 p-2">
+                <WorkshopAvatar
+                  name={activeWorkshop.name}
+                  profileImageUrl={activeWorkshop.profileImageUrl}
+                  logoUrl={activeWorkshop.logoUrl}
+                  size="md"
+                />
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-amber-900">{activeWorkshop.name}</p>
+                  <p className="text-[11px] uppercase tracking-wide text-amber-700">Taller activo</p>
+                </div>
+              </div>
+            ) : null}
 
             <div className="space-y-4">
               <div>
