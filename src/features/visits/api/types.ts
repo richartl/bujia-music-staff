@@ -85,6 +85,7 @@ export type VisitResponse = {
   attachments?: Array<{
     id: string;
     mediaId?: string;
+    isMainAttachment?: boolean;
     originalName?: string;
     mimeType?: string;
     sizeBytes?: number;

@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { cn, currency, dateTime } from '@/lib/utils';
 import { normalizeVisit } from '../utils/visitAdapter';
-import { getVisitCoverImage } from '../utils/visitAttachments';
+import { getVisitMainImageAttachment } from '../utils/visitAttachments';
 import type { VisitResponse } from '../api/types';
 import { resolveStatusTone, VisitStatusBadge } from './VisitStatusBadge';
 
@@ -14,7 +14,7 @@ export function VisitCard({ visit }: VisitCardProps) {
   const normalized = normalizeVisit(visit);
   const tone = resolveStatusTone(normalized.status.name, normalized.isActive);
   const accent = normalized.status.color || tone.accent;
-  const cover = useMemo(() => getVisitCoverImage(visit), [visit]);
+  const cover = useMemo(() => getVisitMainImageAttachment(visit), [visit]);
   const [imageError, setImageError] = useState(false);
   const servicesCount = Array.isArray((visit as Record<string, unknown>).services)
     ? ((visit as Record<string, unknown>).services as unknown[]).length
@@ -27,8 +27,8 @@ export function VisitCard({ visit }: VisitCardProps) {
       className="group card block overflow-hidden border p-0 transition hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
       style={{ borderLeftWidth: 5, borderLeftColor: accent }}
     >
-      <div className="relative h-36 w-full bg-slate-900 sm:h-40">
-        {cover && !imageError ? (
+      {cover && !imageError ? (
+        <div className="relative h-36 w-full bg-slate-900 sm:h-40">
           <img
             src={cover.publicUrl}
             alt={cover.originalName || normalized.instrumentName}
@@ -36,19 +36,17 @@ export function VisitCard({ visit }: VisitCardProps) {
             loading="lazy"
             onError={() => setImageError(true)}
           />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-slate-800 to-slate-950 text-slate-300">
-            <div className="text-center">
-              <p className="text-xs uppercase tracking-wide">Sin foto</p>
-              <p className="mt-1 text-sm font-semibold">{normalized.instrumentType}</p>
-            </div>
+          <div className="absolute inset-x-0 top-0 flex items-center justify-between bg-gradient-to-b from-black/60 to-transparent p-2">
+            <span className="rounded-full bg-black/55 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-white">{normalized.folio}</span>
+            <VisitStatusBadge name={normalized.status.name} color={normalized.status.color} isActive={normalized.isActive} />
           </div>
-        )}
-        <div className="absolute inset-x-0 top-0 flex items-center justify-between bg-gradient-to-b from-black/60 to-transparent p-2">
-          <span className="rounded-full bg-black/55 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-white">{normalized.folio}</span>
+        </div>
+      ) : (
+        <div className="flex items-center justify-between px-3 pt-3">
+          <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-700">{normalized.folio}</span>
           <VisitStatusBadge name={normalized.status.name} color={normalized.status.color} isActive={normalized.isActive} />
         </div>
-      </div>
+      )}
 
       <div className="space-y-3 p-3">
         <div>

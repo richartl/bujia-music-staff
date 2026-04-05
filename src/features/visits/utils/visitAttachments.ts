@@ -16,9 +16,14 @@ function hasValidPublicUrl(publicUrl?: string) {
 }
 
 export function getVisitCoverImage(visit: VisitResponse): VisitAttachment | null {
+  return getVisitMainImageAttachment(visit);
+}
+
+export function getVisitMainImageAttachment(visit: VisitResponse): VisitAttachment | null {
   const attachments = Array.isArray(visit.attachments) ? visit.attachments : [];
   const candidate = attachments.find(
     (attachment) =>
+      attachment.isMainAttachment === true &&
       hasValidPublicUrl(attachment.publicUrl) &&
       (isImageMime(attachment.mimeType) || isImageByExtension(attachment.originalName)),
   );

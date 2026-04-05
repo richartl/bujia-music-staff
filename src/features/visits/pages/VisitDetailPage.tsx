@@ -19,6 +19,8 @@ import { getTimelineEventIcon, getTimelineEventTone } from '@/features/visits/ut
 import { PaymentAttachmentGallery } from '@/features/visits/components/PaymentAttachmentGallery';
 import { getTimelinePaymentAttachments } from '@/features/visits/utils/paymentAttachments';
 import { VisitAttachmentsGallery } from '@/features/visits/components/VisitAttachmentsGallery';
+import { useIntakeMediaUpload } from '@/features/intakes/hooks/useIntakeMediaUpload';
+import { getVisitMainImageAttachment } from '@/features/visits/utils/visitAttachments';
 import type { WorkshopServiceLookup } from '@/features/intakes/types';
 import { 
   createVisitNote,
@@ -94,6 +96,7 @@ export function VisitDetailPage() {
   const [serviceDetailModalId, setServiceDetailModalId] = useState<string | null>(null);
   const [mediaPreview, setMediaPreview] = useState<{ url: string; mimeType: string; name: string } | null>(null);
   const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
+  const [selectedStatusId, setSelectedStatusId] = useState('');
   const [isCancelVisitModalOpen, setIsCancelVisitModalOpen] = useState(false);
   const [statusSheetServiceId, setStatusSheetServiceId] = useState<string | null>(null);
   const [uploadingCount, setUploadingCount] = useState(0);
@@ -210,6 +213,24 @@ export function VisitDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['visit-tracking-link', visitId] });
     },
   });
+  const changeVisitStatusMutation = useMutation({
+    mutationFn: (payload: { statusId: string; visitMediaIds?: string[] }) => patchVisit(workshopId!, instrumentId, visitId, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['visit-detail', workshopId, instrumentId, visitId] });
+      queryClient.invalidateQueries({ queryKey: ['workshop-visits'] });
+      queryClient.invalidateQueries({ queryKey: ['public-tracking'] });
+      notifySuccess('Estado actualizado');
+      setIsStatusModalOpen(false);
+      setSelectedStatusId('');
+    },
+    onError: (error) => {
+      notifyError(getErrorMessage(error));
+    },
+  });
+  const statusUpload = useIntakeMediaUpload({
+    scope: `visit:${visitId}/status-change`,
+    onFileError: (item) => notifyError(`${item.file.name}: ${item.errorMessage || 'Error al subir archivo.'}`),
+  });
 
   const noteAttachmentsQueries = useQuery({
     queryKey: ['visit-note-attachments', notesQuery.data?.map((note) => note.id).join(',')],
@@ -260,6 +281,7 @@ export function VisitDetailPage() {
     if (fromVisit) return fromVisit;
     return statusesQuery.data?.find((status) => status.id === visit?.statusId)?.name || 'Sin estatus';
   }, [statusesQuery.data, visit?.status?.name, visit?.statusId]);
+  const mainVisitImage = useMemo(() => (visit ? getVisitMainImageAttachment(visit) : null), [visit]);
 
   const resolvedTrackingUrl = useMemo(() => {
     const payloadUrl = trackingLinkQuery.data?.publicUrl;
@@ -389,6 +411,15 @@ export function VisitDetailPage() {
   const paidTotal = Number(
     (((visit as unknown as Record<string, unknown> | undefined)?.paidAmount as number | string | undefined) || 0),
   );
+  const selectedStatus = useMemo(
+    () => (statusesQuery.data || []).find((status) => status.id === selectedStatusId) || null,
+    [selectedStatusId, statusesQuery.data],
+  );
+  const isTerminatedSelection = useMemo(() => {
+    if (!selectedStatus) return false;
+    const raw = `${selectedStatus.name || ''} ${selectedStatus.slug || ''}`.toLowerCase();
+    return raw.includes('termin') || raw.includes('entreg');
+  }, [selectedStatus]);
   async function addCatalogService(service: WorkshopServiceLookup) {
     if (
       service.isAdjust &&
@@ -495,6 +526,16 @@ export function VisitDetailPage() {
     setNoteModalFile(null);
   }
 
+  async function submitVisitStatusChange() {
+    if (!selectedStatusId) return;
+    const payload = {
+      statusId: selectedStatusId,
+      visitMediaIds: statusUpload.uploadedMediaIds.length ? statusUpload.uploadedMediaIds : undefined,
+    };
+    await changeVisitStatusMutation.mutateAsync(payload);
+    statusUpload.items.forEach((item) => statusUpload.removeFile(item.localId));
+  }
+
   async function runApi(task: () => Promise<void>) {
     setApiPendingCount((value) => value + 1);
     try {
@@ -575,15 +616,39 @@ export function VisitDetailPage() {
             <h1 className="mt-1 text-lg font-semibold text-slate-900">{visit.instrument?.name || 'Detalle de visita'}</h1>
             <p className="truncate text-sm text-slate-500">{visit.client?.fullName || 'Cliente'} · {visit.client?.phone || 'Sin teléfono'}</p>
           </div>
-          <span
-            className="shrink-0 rounded-full px-3 py-1 text-xs font-semibold text-white shadow-sm"
-            style={{ backgroundColor: visit.status?.color || '#334155' }}
-          >
-            {currentStatus}
-          </span>
+          <div className="flex flex-col items-end gap-2">
+            <span
+              className="shrink-0 rounded-full px-3 py-1 text-xs font-semibold text-white shadow-sm"
+              style={{ backgroundColor: visit.status?.color || '#334155' }}
+            >
+              {currentStatus}
+            </span>
+            {mainVisitImage?.publicUrl ? (
+              <button
+                type="button"
+                className="overflow-hidden rounded-lg border border-slate-200"
+                onClick={() =>
+                  setMediaPreview({
+                    url: mainVisitImage.publicUrl || '',
+                    mimeType: mainVisitImage.mimeType || 'image/*',
+                    name: mainVisitImage.originalName || 'Portada de visita',
+                  })
+                }
+              >
+                <img src={mainVisitImage.publicUrl} alt="Portada principal" className="h-14 w-14 object-cover" />
+              </button>
+            ) : null}
+          </div>
         </div>
         <div className="mt-3 flex flex-wrap gap-2">
-          <button type="button" className="btn-secondary h-8 px-3 text-xs" onClick={() => setIsStatusModalOpen(true)}>
+          <button
+            type="button"
+            className="btn-secondary h-8 px-3 text-xs"
+            onClick={() => {
+              setSelectedStatusId(visit.statusId || '');
+              setIsStatusModalOpen(true);
+            }}
+          >
             Cambiar estado
           </button>
           <button type="button" className="h-8 rounded-lg border border-rose-200 bg-rose-50 px-3 text-xs font-semibold text-rose-700" onClick={() => setIsCancelVisitModalOpen(true)}>
@@ -1026,11 +1091,9 @@ export function VisitDetailPage() {
                 <button
                   key={status.id}
                   type="button"
-                  className={`w-full rounded-lg border p-2 text-left ${status.id === visit.statusId ? 'border-sky-300 bg-sky-50' : 'border-slate-200'}`}
+                  className={`w-full rounded-lg border p-2 text-left ${status.id === selectedStatusId ? 'border-sky-300 bg-sky-50' : 'border-slate-200'}`}
                   onClick={() => {
-                    setEditPayload((current) => ({ ...current, statusId: status.id }));
-                    updateVisitMutation.mutate();
-                    setIsStatusModalOpen(false);
+                    setSelectedStatusId(status.id);
                   }}
                 >
                   <span className="inline-flex items-center gap-2 text-sm font-medium text-slate-800">
@@ -1040,8 +1103,54 @@ export function VisitDetailPage() {
                 </button>
               ))}
             </div>
-            <button type="button" className="btn-secondary mt-3 h-10 w-full justify-center" onClick={() => setIsStatusModalOpen(false)}>
+            {isTerminatedSelection ? (
+              <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <p className="text-xs font-semibold text-slate-700">Archivo opcional al terminar</p>
+                <p className="mt-1 text-xs text-slate-500">Si subes una imagen, backend la marcará como portada principal.</p>
+                <label className="btn-secondary mt-2 h-9 w-full cursor-pointer justify-center text-xs">
+                  Subir foto/archivo
+                  <input
+                    type="file"
+                    multiple
+                    className="hidden"
+                    accept="image/*,video/*,audio/*,.pdf"
+                    onChange={(event) => {
+                      const files = Array.from(event.target.files || []);
+                      if (files.length) statusUpload.addFiles(files);
+                      event.target.value = '';
+                    }}
+                  />
+                </label>
+                {!!statusUpload.items.length ? (
+                  <div className="mt-2 space-y-1">
+                    {statusUpload.items.map((item) => (
+                      <div key={item.localId} className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-2 py-1">
+                        <p className="truncate text-xs text-slate-700">{item.file.name}</p>
+                        <p className="text-[11px] text-slate-500">{item.status === 'done' ? 'Listo' : item.status === 'error' ? 'Error' : 'Subiendo...'}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+            <button
+              type="button"
+              className="btn-secondary mt-3 h-10 w-full justify-center"
+              onClick={() => {
+                setIsStatusModalOpen(false);
+                setSelectedStatusId('');
+                statusUpload.items.forEach((item) => statusUpload.removeFile(item.localId));
+              }}
+            >
               Cerrar
+            </button>
+            <button
+              type="button"
+              className="btn-primary mt-2 h-10 w-full justify-center"
+              disabled={!selectedStatusId || statusUpload.hasBlockingUploads || changeVisitStatusMutation.isPending}
+              onClick={() => void submitVisitStatusChange()}
+            >
+              {changeVisitStatusMutation.isPending ? 'Guardando...' : 'Guardar estado'}
             </button>
           </div>
         </div>

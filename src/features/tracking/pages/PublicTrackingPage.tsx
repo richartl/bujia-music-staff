@@ -6,6 +6,7 @@ import { getPublicTracking } from '@/features/visits/api/trackingApi';
 import { getTimelineEventIcon, getTimelineEventTone } from '@/features/visits/utils/timelineEventIcon';
 import { PaymentAttachmentGallery } from '@/features/visits/components/PaymentAttachmentGallery';
 import { getTimelinePaymentAttachments } from '@/features/visits/utils/paymentAttachments';
+import { getVisitMainImageAttachment } from '@/features/visits/utils/visitAttachments';
 import { WorkshopAvatar } from '@/components/avatars/WorkshopAvatar';
 import { UserAvatar } from '@/components/avatars/UserAvatar';
 import type { NoteAttachment, TrackingResponse, VisitServiceNote, VisitTimelineEvent } from '@/features/visits/api/types';
@@ -65,6 +66,7 @@ export function PublicTrackingPage() {
   const statusColors = getStatusColors(data.status?.color || data.visit?.status?.color);
   const heroGradient = getSoftGradient((data.status?.color || data.visit?.status?.color) ?? undefined);
   const totals = getFinancialSummary(data);
+  const mainImage = data.visit ? getVisitMainImageAttachment(data.visit) : null;
 
   return (
     <main className="mx-auto max-w-3xl space-y-4 p-3 pb-8 sm:p-4">
@@ -75,6 +77,15 @@ export function PublicTrackingPage() {
           <div className="mt-2 flex items-center gap-2 text-sm text-slate-700">
             <WorkshopAvatar name={data.workshop?.name} profileImageUrl={data.workshop?.profileImageUrl} logoUrl={data.workshop?.logoUrl} size="sm" />
             <span className="truncate">{data.workshop?.name} · {data.branch?.name || 'Sucursal'}</span>
+            {mainImage?.publicUrl ? (
+              <button
+                type="button"
+                className="ml-auto overflow-hidden rounded-lg border border-slate-200"
+                onClick={() => setPreview({ url: mainImage.publicUrl || '', mimeType: mainImage.mimeType || 'image/*', name: mainImage.originalName || 'Portada principal' })}
+              >
+                <img src={mainImage.publicUrl} alt="Portada principal" className="h-10 w-10 object-cover" />
+              </button>
+            ) : null}
           </div>
 
           <div className="mt-3 grid grid-cols-1 gap-2 text-sm sm:grid-cols-3">
