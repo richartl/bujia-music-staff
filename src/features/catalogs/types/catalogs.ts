@@ -98,6 +98,31 @@ export type UserProfileImage = {
   profileImageUrl: string | null;
 };
 
+export type WorkshopUserRole = 'ADMIN' | 'STAFF';
+
+export type WorkshopUser = CatalogTimestampFields & {
+  id: string;
+  name: string;
+  email: string;
+  role: WorkshopUserRole;
+  workshopRole: string;
+  profileImageUrl: string | null;
+};
+
+export type WorkshopUsersListParams = {
+  page?: number;
+  limit?: number;
+  search?: string;
+  role?: WorkshopUserRole;
+};
+
+export type WorkshopUsersListResponse = {
+  items: WorkshopUser[];
+  page: number;
+  limit: number;
+  total: number;
+};
+
 export type WorkshopPartListFilters = {
   isActive?: boolean;
 };
@@ -186,3 +211,12 @@ export type UpdateAffiliatePayload = Partial<CreateAffiliatePayload>;
 export type UpdateUserProfileImagePayload = {
   mediaId: string;
 };
+
+export type CreateWorkshopUserPayload = {
+  name: string;
+  email: string;
+  password: string;
+  role: WorkshopUserRole;
+};
+
+export type UpdateWorkshopUserPayload = Partial<CreateWorkshopUserPayload>;
