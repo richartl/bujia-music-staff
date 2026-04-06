@@ -8,3 +8,7 @@ type RuntimeConfig = {
 interface Window {
   __APP_CONFIG__?: RuntimeConfig;
 }
+
+interface Navigator {
+  standalone?: boolean;
+}

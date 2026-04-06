@@ -5,6 +5,7 @@ import { RouterProvider } from 'react-router-dom';
 import { router } from './router';
 import { AppToastViewport } from './components/feedback/AppToastViewport';
 import { GlobalNetworkActivityIndicator } from './components/feedback/GlobalNetworkActivityIndicator';
+import { PwaInstallAndUpdate } from './components/feedback/PwaInstallAndUpdate';
 import { GlobalTextAutoCapitalize } from './components/behavior/GlobalTextAutoCapitalize';
 import './styles.css';
 
@@ -16,6 +17,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
       <RouterProvider router={router} />
       <GlobalTextAutoCapitalize />
       <GlobalNetworkActivityIndicator />
+      <PwaInstallAndUpdate />
       <AppToastViewport />
     </QueryClientProvider>
   </React.StrictMode>,

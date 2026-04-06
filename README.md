@@ -87,3 +87,29 @@ docker run --rm -p 8080:8080 \
 - **Cloud Run:** recibe tráfico HTTPS por su URL pública y lo enruta al puerto interno del contenedor (normalmente `8080`).
 
 En otras palabras: no hay conflicto; son contextos distintos. En local puedes seguir usando `5173`, y en Cloud Run el contenedor debe escuchar en `8080`.
+
+## PWA (instalable)
+La app incluye configuración PWA base para instalarse en Android/iOS/escritorio sin cambiar la lógica actual.
+
+Incluye:
+- `public/manifest.webmanifest`
+- `public/sw.js` (service worker conservador)
+- íconos base en `public/icons/*`
+- fallback `public/offline.html`
+- registro del SW y prompts UI en `src/components/feedback/PwaInstallAndUpdate.tsx`
+- íconos `.png` quedan **fuera de git** intencionalmente (deben agregarse manualmente en `public/icons/*` y `public/apple-touch-icon.png` para branding final)
+
+### Probar PWA en local
+```bash
+npm run build
+npm run preview
+```
+Luego abre `http://localhost:4173`, revisa DevTools > Application:
+- Manifest cargado
+- Service Worker activo
+- opción de instalación disponible (según navegador)
+
+### Estrategia de cache
+- **Navegación (`mode: navigate`)**: `network-first` con fallback a caché/offline.
+- **Assets estáticos (`script/style/image/font`)**: cache con revalidación en background.
+- **API y requests sensibles**: no se interceptan para evitar inconsistencias.
