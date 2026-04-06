@@ -235,6 +235,10 @@ export function VisitDetailPage() {
     scope: `visit:${visitId}/status-change`,
     onFileError: (item) => notifyError(`${item.file.name}: ${item.errorMessage || 'Error al subir archivo.'}`),
   });
+  const visitAttachmentsUpload = useIntakeMediaUpload({
+    scope: `visit:${visitId}/attachments`,
+    onFileError: (item) => notifyError(`${item.file.name}: ${item.errorMessage || 'Error al subir archivo.'}`),
+  });
 
   const noteAttachmentsQueries = useQuery({
     queryKey: ['visit-note-attachments', notesQuery.data?.map((note) => note.id).join(',')],
@@ -413,8 +417,12 @@ export function VisitDetailPage() {
   const totalVisit = Number(visit?.total || servicesTotal + partsTotal);
   const discountValue = Number(visit?.discount || 0);
   const paidTotal = Number(
-    (((visit as unknown as Record<string, unknown> | undefined)?.paidAmount as number | string | undefined) || 0),
+    (((visit as unknown as Record<string, unknown> | undefined)?.paidAmount as number | string | undefined) ||
+      (Array.isArray(visit?.payments)
+        ? visit.payments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0)
+        : 0)),
   );
+  const pendingBalance = Math.max(0, totalVisit - paidTotal);
   const selectedStatus = useMemo(
     () => (statusesQuery.data || []).find((status) => status.id === selectedStatusId) || null,
     [selectedStatusId, statusesQuery.data],
@@ -559,6 +567,38 @@ export function VisitDetailPage() {
     };
     await changeVisitStatusMutation.mutateAsync(payload);
     statusUpload.items.forEach((item) => statusUpload.removeFile(item.localId));
+  }
+
+  async function submitVisitAttachments() {
+    if (!visit) return;
+    const newMediaIds = visitAttachmentsUpload.uploadedMediaIds;
+    if (!newMediaIds.length) {
+      notifyInfo('Aún no hay archivos listos para adjuntar.');
+      return;
+    }
+
+    const existingMediaIds = [
+      ...(Array.isArray((visit as unknown as Record<string, unknown>)?.visitMediaIds)
+        ? (((visit as unknown as Record<string, unknown>).visitMediaIds as unknown[])
+            .filter((value): value is string => typeof value === 'string')
+          )
+        : []),
+      ...((visit.attachments || [])
+        .map((attachment) => attachment.mediaId)
+        .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)),
+    ];
+
+    const visitMediaIds = Array.from(new Set([...existingMediaIds, ...newMediaIds]));
+    if (!visitMediaIds.length) return;
+
+    await runApi(async () => {
+      await patchVisit(workshopId!, instrumentId, visitId, { visitMediaIds });
+      await queryClient.invalidateQueries({ queryKey: ['visit-detail', workshopId, instrumentId, visitId] });
+      await queryClient.invalidateQueries({ queryKey: ['workshop-visits'] });
+      await queryClient.invalidateQueries({ queryKey: ['public-tracking'] });
+      visitAttachmentsUpload.items.forEach((item) => visitAttachmentsUpload.removeFile(item.localId));
+      notifySuccess('Attachments agregados a la visita');
+    });
   }
 
   async function runApi(task: () => Promise<void>) {
@@ -713,7 +753,7 @@ export function VisitDetailPage() {
           <MetricHeader label="Descuento" value={currency(discountValue)} />
           <MetricHeader label="Total visita" value={currency(totalVisit)} emphasized />
           <MetricHeader label="Abonos" value={currency(paidTotal)} />
-          <MetricHeader label="Saldo pendiente" value={currency(Math.max(0, totalVisit - paidTotal))} emphasized />
+          <MetricHeader label="Saldo pendiente" value={currency(pendingBalance)} emphasized />
         </div>
       </section>
 
@@ -757,10 +797,62 @@ export function VisitDetailPage() {
             </p>
           </div>
           <div className="rounded-lg border border-slate-200 p-2">
-            <VisitAttachmentsGallery
-              visit={visit}
-              onOpen={setMediaPreview}
-            />
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Subir attachments de la visita</p>
+              <p className="mt-1 text-xs text-slate-500">Fotos, video y documentos. Se agregan a esta orden sin reemplazar los actuales.</p>
+              <input
+                id="visit-attachments-upload-input"
+                type="file"
+                multiple
+                accept="image/*,video/*,application/pdf,.doc,.docx,.xls,.xlsx,.txt"
+                className="hidden"
+                onChange={(event) => {
+                  const files = Array.from(event.target.files || []);
+                  if (files.length) {
+                    visitAttachmentsUpload.addFiles(files);
+                    notifyInfo(`${files.length} archivo(s) en subida…`);
+                  }
+                  event.target.value = '';
+                }}
+              />
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <label htmlFor="visit-attachments-upload-input" className="btn-secondary h-11 cursor-pointer justify-center text-xs font-semibold">
+                  Agregar archivo
+                </label>
+                <button
+                  type="button"
+                  className="btn-primary h-11 justify-center text-xs"
+                  disabled={visitAttachmentsUpload.hasBlockingUploads || !visitAttachmentsUpload.uploadedMediaIds.length}
+                  onClick={() => void withUploading(submitVisitAttachments)}
+                >
+                  {visitAttachmentsUpload.hasBlockingUploads ? 'Subiendo…' : 'Guardar en visita'}
+                </button>
+              </div>
+              {visitAttachmentsUpload.items.length ? (
+                <div className="mt-2 space-y-2">
+                  {visitAttachmentsUpload.items.map((item) => (
+                    <div key={item.localId} className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="truncate font-medium text-slate-700">{item.file.name}</p>
+                        <span className="text-[11px] text-slate-500">
+                          {item.status === 'done' ? 'Listo' : item.status === 'error' ? 'Error' : 'Subiendo'}
+                        </span>
+                      </div>
+                      <div className="mt-1 h-1.5 rounded-full bg-slate-100">
+                        <div className={`h-1.5 rounded-full ${item.status === 'error' ? 'bg-rose-500' : 'bg-sky-500'}`} style={{ width: `${Math.min(Math.max(item.progress, 6), 100)}%` }} />
+                      </div>
+                      {item.errorMessage ? <p className="mt-1 text-[11px] text-rose-600">{item.errorMessage}</p> : null}
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+            <div className="mt-2">
+              <VisitAttachmentsGallery
+                visit={visit}
+                onOpen={setMediaPreview}
+              />
+            </div>
           </div>
           <h3 className="pt-2 text-sm font-semibold text-slate-800">Notas generales de la visita</h3>
           <QuickNoteForm onSubmit={(payload) => createNoteMutation.mutate(payload)} isPending={createNoteMutation.isPending} />
