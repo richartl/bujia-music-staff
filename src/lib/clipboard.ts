@@ -3,9 +3,22 @@ export async function copyTextToClipboard(text: string): Promise<void> {
     throw new Error('No text to copy');
   }
 
-  if (!navigator.clipboard || typeof navigator.clipboard.writeText !== 'function') {
-    throw new Error('Clipboard API unavailable');
+  if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+    await navigator.clipboard.writeText(text);
+    return;
   }
 
-  await navigator.clipboard.writeText(text);
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.setAttribute('readonly', 'true');
+  textarea.style.position = 'fixed';
+  textarea.style.opacity = '0';
+  document.body.appendChild(textarea);
+  textarea.select();
+  const copied = document.execCommand('copy');
+  document.body.removeChild(textarea);
+
+  if (!copied) {
+    throw new Error('Clipboard API unavailable');
+  }
 }

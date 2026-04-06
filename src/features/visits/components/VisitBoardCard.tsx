@@ -13,6 +13,10 @@ type VisitBoardCardProps = {
   onStatusChange: (visit: VisitResponse, statusId: string) => void;
   onPreviewImage: (image: { url: string; name: string }) => void;
   isStatusChanging?: boolean;
+  onArchiveVisit?: (visit: VisitResponse) => void;
+  onUnarchiveVisit?: (visit: VisitResponse) => void;
+  isArchiving?: boolean;
+  isArchiveMode?: boolean;
 };
 
 function getDaysSince(dateValue?: string | null) {
@@ -23,7 +27,17 @@ function getDaysSince(dateValue?: string | null) {
   return Math.floor(diffMs / (1000 * 60 * 60 * 24));
 }
 
-export function VisitBoardCard({ visit, statuses, onStatusChange, onPreviewImage, isStatusChanging = false }: VisitBoardCardProps) {
+export function VisitBoardCard({
+  visit,
+  statuses,
+  onStatusChange,
+  onPreviewImage,
+  isStatusChanging = false,
+  onArchiveVisit,
+  onUnarchiveVisit,
+  isArchiving = false,
+  isArchiveMode = false,
+}: VisitBoardCardProps) {
   const normalized = useMemo(() => normalizeVisit(visit), [visit]);
   const cover = useMemo(() => getVisitMainImageAttachment(visit), [visit]);
   const [imageError, setImageError] = useState(false);
@@ -41,6 +55,12 @@ export function VisitBoardCard({ visit, statuses, onStatusChange, onPreviewImage
         </div>
         <VisitStatusBadge name={normalized.status.name} color={normalized.status.color} isActive={normalized.isActive} />
       </div>
+      {visit.isArchived ? (
+        <div className="mt-2 rounded-lg border border-amber-400/50 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-200">
+          <p className="font-semibold">Archivada</p>
+          {visit.archivedAt ? <p className="mt-0.5">Desde: {dateTime(visit.archivedAt)}</p> : null}
+        </div>
+      ) : null}
 
       <div className="mt-2 flex gap-2 rounded-xl border border-slate-700 bg-slate-950/40 p-2">
         {cover && !imageError ? (
@@ -80,7 +100,10 @@ export function VisitBoardCard({ visit, statuses, onStatusChange, onPreviewImage
           statuses={statuses}
           onStatusChange={(statusId) => onStatusChange(visit, statusId)}
           isChangingStatus={isStatusChanging}
-          onOpenImage={cover && !imageError ? () => onPreviewImage({ url: cover.publicUrl || '', name: cover.originalName || normalized.instrumentName }) : undefined}
+          onArchive={() => onArchiveVisit?.(visit)}
+          onUnarchive={() => onUnarchiveVisit?.(visit)}
+          isArchiving={isArchiving}
+          isArchiveMode={isArchiveMode}
         />
       </div>
     </article>

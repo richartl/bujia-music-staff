@@ -9,6 +9,9 @@ export type VisitCard = {
   total: number;
   createdAt: string;
   branchName: string;
+  isArchived?: boolean;
+  archivedAt?: string | null;
+  archiveReason?: string | null;
 };
 
 export type VisitDetail = VisitCard & {

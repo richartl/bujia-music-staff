@@ -6,17 +6,21 @@ import type { VisitFilters } from '../api/types';
 const DEFAULT_FILTERS: VisitFilters = {
   search: '',
   statusId: '',
+  statusCode: '',
   createdByUserId: '',
   branchId: '',
   clientId: '',
   instrumentId: '',
-  isActive: 'true',
+  isActive: '',
+  isArchived: 'false',
+  page: '',
+  limit: '',
   openedFrom: '',
   openedTo: '',
 };
 
 function toUrlSearchParams(filters: VisitFilters) {
-  const entries = Object.entries(filters).filter(([, value]) => value !== '');
+  const entries = Object.entries(filters).filter(([, value]) => value !== '' && value !== undefined && value !== null);
   return new URLSearchParams(entries as Array<[string, string]>);
 }
 
@@ -28,11 +32,15 @@ export function useVisitBoardFilters() {
     () => ({
       search: searchParams.get('search') || '',
       statusId: searchParams.get('statusId') || '',
+      statusCode: searchParams.get('statusCode') || '',
       createdByUserId: '',
       branchId: '',
       clientId: '',
       instrumentId: '',
-      isActive: (searchParams.get('isActive') as VisitFilters['isActive']) || 'true',
+      isActive: (searchParams.get('isActive') as VisitFilters['isActive']) || '',
+      isArchived: (searchParams.get('isArchived') as VisitFilters['isArchived']) || 'false',
+      page: searchParams.get('page') || '',
+      limit: searchParams.get('limit') || '',
       openedFrom: '',
       openedTo: '',
     }),

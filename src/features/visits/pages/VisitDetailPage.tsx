@@ -26,6 +26,7 @@ import { useIntakeMediaUpload } from '@/features/intakes/hooks/useIntakeMediaUpl
 import { getVisitMainImageAttachment } from '@/features/visits/utils/visitAttachments';
 import { OverlayPortal } from '@/components/ui/OverlayPortal';
 import type { WorkshopServiceLookup } from '@/features/intakes/types';
+import { useVisitArchive } from '@/features/visits/hooks/useVisitArchive';
 import { 
   createVisitNote,
   getVisitNotes,
@@ -102,6 +103,8 @@ export function VisitDetailPage() {
   const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
   const [selectedStatusId, setSelectedStatusId] = useState('');
   const [isCancelVisitModalOpen, setIsCancelVisitModalOpen] = useState(false);
+  const [isArchiveModalOpen, setIsArchiveModalOpen] = useState(false);
+  const [archiveReason, setArchiveReason] = useState('');
   const [statusSheetServiceId, setStatusSheetServiceId] = useState<string | null>(null);
   const [uploadingCount, setUploadingCount] = useState(0);
   const [apiPendingCount, setApiPendingCount] = useState(0);
@@ -165,6 +168,7 @@ export function VisitDetailPage() {
   const [editPayload, setEditPayload] = useState<UpdateVisitPayload>({});
   const serviceStatusesQuery = useServiceStatuses(workshopId);
   const updateServiceStatusMutation = useUpdateVisitServiceStatus();
+  const { archiveMutation, unarchiveMutation } = useVisitArchive({ workshopId });
   const updateVisitMutation = useMutation({
     mutationFn: async () => {
       if (!workshopId) throw new Error('No hay workshop activo');
@@ -432,6 +436,7 @@ export function VisitDetailPage() {
     const raw = `${selectedStatus.name || ''} ${selectedStatus.slug || ''}`.toLowerCase();
     return raw.includes('termin') || raw.includes('entreg');
   }, [selectedStatus]);
+  const canArchiveVisit = Boolean(!visit?.isArchived && visit && visit.isActive === false);
   async function addCatalogService(service: WorkshopServiceLookup) {
     if (
       service.isAdjust &&
@@ -658,6 +663,8 @@ export function VisitDetailPage() {
     createNoteMutation.isPending ||
     createServiceMutation.isPending ||
     updateVisitMutation.isPending ||
+    archiveMutation.isPending ||
+    unarchiveMutation.isPending ||
     saveTrackingLinkMutation.isPending ||
     notesQuery.isFetching ||
     servicesQuery.isFetching ||
@@ -733,7 +740,34 @@ export function VisitDetailPage() {
           <button type="button" className="h-8 rounded-lg border border-rose-200 bg-rose-50 px-3 text-xs font-semibold text-rose-700" onClick={() => setIsCancelVisitModalOpen(true)}>
             Cancelar visita
           </button>
+          {canArchiveVisit ? (
+            <button
+              type="button"
+              className="btn-secondary h-8 px-3 text-xs"
+              onClick={() => setIsArchiveModalOpen(true)}
+              disabled={archiveMutation.isPending}
+            >
+              {archiveMutation.isPending ? 'Archivando...' : 'Archivar'}
+            </button>
+          ) : null}
+          {visit.isArchived ? (
+            <button
+              type="button"
+              className="btn-secondary h-8 px-3 text-xs"
+              onClick={() => unarchiveMutation.mutate({ instrumentId, visitId })}
+              disabled={unarchiveMutation.isPending}
+            >
+              {unarchiveMutation.isPending ? 'Desarchivando...' : 'Desarchivar'}
+            </button>
+          ) : null}
         </div>
+        {visit.isArchived ? (
+          <div className="mt-2 rounded-lg border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900">
+            <p className="font-semibold">Visita archivada</p>
+            {visit.archivedAt ? <p className="mt-1">Fecha: {dateTime(visit.archivedAt)}</p> : null}
+            {visit.archiveReason ? <p className="mt-1">Motivo: {visit.archiveReason}</p> : null}
+          </div>
+        ) : null}
         <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 p-2">
           <p className="text-[11px] font-semibold uppercase text-slate-500">Tracking público</p>
           <p className="mt-1 break-all text-xs text-sky-700">{resolvedTrackingUrl || 'No disponible'}</p>
@@ -1527,6 +1561,54 @@ export function VisitDetailPage() {
                   }}
                 >
                   Confirmar
+                </button>
+              </div>
+            </div>
+          </div>
+        </OverlayPortal>
+      ) : null}
+
+      {isArchiveModalOpen ? (
+        <OverlayPortal>
+          <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/50 p-3 sm:items-center">
+            <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-4">
+              <h3 className="text-base font-semibold text-slate-900">Archivar visita</h3>
+              <p className="mt-1 text-sm text-slate-600">Puedes agregar un motivo opcional antes de archivar.</p>
+              <textarea
+                className="input mt-3 min-h-24 w-full resize-none py-2"
+                placeholder="Motivo (opcional)"
+                value={archiveReason}
+                onChange={(event) => setArchiveReason(event.target.value)}
+              />
+              <div className="mt-3 flex gap-2">
+                <button
+                  type="button"
+                  className="btn-secondary h-10 flex-1 justify-center"
+                  onClick={() => {
+                    setIsArchiveModalOpen(false);
+                    setArchiveReason('');
+                  }}
+                  disabled={archiveMutation.isPending}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  className="btn-primary h-10 flex-1 justify-center"
+                  onClick={() => {
+                    archiveMutation.mutate(
+                      { instrumentId, visitId, reason: archiveReason.trim() || undefined },
+                      {
+                        onSuccess: () => {
+                          setIsArchiveModalOpen(false);
+                          setArchiveReason('');
+                        },
+                      },
+                    );
+                  }}
+                  disabled={archiveMutation.isPending}
+                >
+                  {archiveMutation.isPending ? 'Archivando...' : 'Confirmar'}
                 </button>
               </div>
             </div>

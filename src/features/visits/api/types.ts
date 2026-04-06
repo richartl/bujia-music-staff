@@ -1,6 +1,7 @@
 export type VisitStatusCatalog = {
   id: string;
   name: string;
+  code?: string;
   color?: string | null;
   slug?: string | null;
   isActive?: boolean;
@@ -32,11 +33,15 @@ export type VisitPayment = {
 export type VisitFilters = {
   search: string;
   statusId: string;
+  statusCode?: string;
   createdByUserId: string;
   branchId: string;
   clientId: string;
   instrumentId: string;
   isActive: '' | 'true' | 'false';
+  isArchived: '' | 'true' | 'false';
+  page?: string;
+  limit?: string;
   openedFrom: string;
   openedTo: string;
 };
@@ -60,7 +65,15 @@ export type VisitResponse = {
   subtotal?: number | null;
   discount?: number | null;
   total?: number | null;
+  financialSummary?: {
+    total?: number | string | null;
+    paymentsTotal?: number | string | null;
+    pendingBalance?: number | string | null;
+  } | null;
   isActive?: boolean;
+  isArchived?: boolean;
+  archivedAt?: string | null;
+  archiveReason?: string | null;
   wantsStringChange?: boolean;
   hasCase?: boolean;
   hasStrap?: boolean;
@@ -92,6 +105,10 @@ export type VisitResponse = {
     publicUrl?: string;
     createdAt?: string;
   }>;
+};
+
+export type ArchiveVisitPayload = {
+  reason?: string;
 };
 
 export type UpdateVisitPayload = Partial<{

@@ -14,9 +14,23 @@ type VisitsBoardColumnProps = {
   onStatusChange: (visit: VisitResponse, statusId: string) => void;
   onPreviewImage: (image: { url: string; name: string }) => void;
   changingVisitId?: string;
+  onArchiveVisit?: (visit: VisitResponse) => void;
+  onUnarchiveVisit?: (visit: VisitResponse) => void;
+  isArchivingVisit?: (visitId: string) => boolean;
+  isArchiveMode?: boolean;
 };
 
-export function VisitsBoardColumn({ column, statuses, onStatusChange, onPreviewImage, changingVisitId }: VisitsBoardColumnProps) {
+export function VisitsBoardColumn({
+  column,
+  statuses,
+  onStatusChange,
+  onPreviewImage,
+  changingVisitId,
+  onArchiveVisit,
+  onUnarchiveVisit,
+  isArchivingVisit,
+  isArchiveMode = false,
+}: VisitsBoardColumnProps) {
   return (
     <section className="w-[84vw] shrink-0 space-y-3 rounded-2xl border border-slate-800 bg-slate-950/80 p-3 sm:w-80 lg:w-96">
       <header className="flex items-center justify-between gap-2 border-b border-slate-800 pb-2">
@@ -41,6 +55,10 @@ export function VisitsBoardColumn({ column, statuses, onStatusChange, onPreviewI
               onStatusChange={onStatusChange}
               onPreviewImage={onPreviewImage}
               isStatusChanging={changingVisitId === visit.id}
+              onArchiveVisit={onArchiveVisit}
+              onUnarchiveVisit={onUnarchiveVisit}
+              isArchiving={isArchivingVisit?.(visit.id)}
+              isArchiveMode={isArchiveMode}
             />
           ))}
         </div>
