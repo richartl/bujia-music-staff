@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useIsFetching, useIsMutating, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams, useParams } from 'react-router-dom';
+import { Archive, ArrowRightLeft, RotateCcw, XCircle } from 'lucide-react';
 import { authStore } from '@/stores/auth-store';
 import { currency, dateTime } from '@/lib/utils';
 import { copyTextToClipboard } from '@/lib/clipboard';
@@ -711,28 +712,6 @@ export function VisitDetailPage() {
             >
               {currentStatus}
             </span>
-            <div className="flex flex-wrap justify-end gap-2">
-              {canArchiveVisit ? (
-                <button
-                  type="button"
-                  className="btn-secondary h-8 px-3 text-xs"
-                  onClick={() => setIsArchiveModalOpen(true)}
-                  disabled={archiveMutation.isPending}
-                >
-                  {archiveMutation.isPending ? 'Archivando...' : 'Archivar'}
-                </button>
-              ) : null}
-              {visit.isArchived ? (
-                <button
-                  type="button"
-                  className="btn-secondary h-8 px-3 text-xs"
-                  onClick={() => unarchiveMutation.mutate({ instrumentId, visitId })}
-                  disabled={unarchiveMutation.isPending}
-                >
-                  {unarchiveMutation.isPending ? 'Desarchivando...' : 'Desarchivar'}
-                </button>
-              ) : null}
-            </div>
             {mainVisitImage?.publicUrl ? (
               <button
                 type="button"
@@ -750,19 +729,49 @@ export function VisitDetailPage() {
             ) : null}
           </div>
         </div>
-        <div className="mt-3 flex flex-wrap gap-2">
+        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
           <button
             type="button"
-            className="btn-secondary h-8 px-3 text-xs"
+            className="btn-primary h-10 justify-center gap-1.5 px-3 text-xs"
             onClick={() => {
               setSelectedStatusId(visit.statusId || '');
               setIsStatusModalOpen(true);
             }}
           >
+            <ArrowRightLeft className="h-3.5 w-3.5" />
             Cambiar estado
           </button>
-          <button type="button" className="h-8 rounded-lg border border-rose-200 bg-rose-50 px-3 text-xs font-semibold text-rose-700" onClick={() => setIsCancelVisitModalOpen(true)}>
-            Cancelar visita
+          {canArchiveVisit ? (
+            <button
+              type="button"
+              className="btn-secondary h-10 justify-center gap-1.5 px-3 text-xs text-violet-700"
+              onClick={() => setIsArchiveModalOpen(true)}
+              disabled={archiveMutation.isPending}
+            >
+              <Archive className="h-3.5 w-3.5 text-violet-500" />
+              {archiveMutation.isPending ? 'Archivando...' : 'Archivar'}
+            </button>
+          ) : null}
+          {visit.isArchived ? (
+            <button
+              type="button"
+              className="btn-secondary h-10 justify-center gap-1.5 px-3 text-xs text-violet-700"
+              onClick={() => unarchiveMutation.mutate({ instrumentId, visitId })}
+              disabled={unarchiveMutation.isPending}
+            >
+              <RotateCcw className="h-3.5 w-3.5 text-violet-500" />
+              {unarchiveMutation.isPending ? 'Desarchivando...' : 'Desarchivar'}
+            </button>
+          ) : null}
+          <button
+            type="button"
+            className="h-10 rounded-lg border border-rose-200 bg-rose-50 px-3 text-xs font-semibold text-rose-700"
+            onClick={() => setIsCancelVisitModalOpen(true)}
+          >
+            <span className="inline-flex items-center gap-1.5">
+              <XCircle className="h-3.5 w-3.5" />
+              Cancelar visita
+            </span>
           </button>
         </div>
         {visit.isArchived ? (
