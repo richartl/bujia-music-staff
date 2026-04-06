@@ -1,325 +1,98 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { useSearchParams } from 'react-router-dom';
-import { useDebouncedValue } from '@/hooks/useDebouncedValue';
-import { dateTime } from '@/lib/utils';
-import { authStore } from '@/stores/auth-store';
-import { QuickFilterChips } from '../components/QuickFilterChips';
-import { VisitCard } from '../components/VisitCard';
-import { getWorkshopVisitStatuses, getWorkshopVisitsWithFilters } from '../api/visitsApi';
-import { getClientInstruments, getWorkshopBranches, getWorkshopClients } from '../api/workshopCatalogsApi';
-import type { VisitFilters, VisitStatusCatalog } from '../api/types';
-
-const EMPTY_FILTERS: VisitFilters = {
-  search: '',
-  statusId: '',
-  createdByUserId: '',
-  branchId: '',
-  clientId: '',
-  instrumentId: '',
-  isActive: 'true',
-  openedFrom: '',
-  openedTo: '',
-};
-
-const BASE_QUICK_FILTERS = [
-  { label: 'Activas', value: 'active' },
-  { label: 'Hoy', value: 'today' },
-  { label: 'Pendientes', value: 'pending' },
-  { label: 'Entregadas', value: 'delivered' },
-  { label: 'Todas', value: 'all' },
-];
-
-function toInputDate(iso?: string | null) {
-  if (!iso) return '';
-  return iso.slice(0, 10);
-}
-
-function getStartOfTodayIso() {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  return today.toISOString();
-}
-
-function getEndOfTodayIso() {
-  const today = new Date();
-  today.setHours(23, 59, 59, 999);
-  return today.toISOString();
-}
-
-function toUrlSearchParams(filters: VisitFilters) {
-  const entries = Object.entries(filters).filter(([, value]) => value !== '');
-  return new URLSearchParams(entries as Array<[string, string]>);
-}
-
-function detectQuickFilter(filters: VisitFilters, statuses: VisitStatusCatalog[]) {
-  if (filters.isActive === 'true' && !filters.statusId && !filters.openedFrom && !filters.openedTo) return 'active';
-  if (!filters.isActive && !filters.statusId && !filters.openedFrom && !filters.openedTo) return 'all';
-
-  const selectedStatus = statuses.find((status) => status.id === filters.statusId);
-  if (selectedStatus) {
-    const lowered = selectedStatus.name.toLowerCase();
-    if (lowered.includes('entreg')) return 'delivered';
-    if (lowered.includes('pend')) return 'pending';
-    return `status:${selectedStatus.id}`;
-  }
-
-  const todayStart = getStartOfTodayIso().slice(0, 10);
-  const todayEnd = getEndOfTodayIso().slice(0, 10);
-  if (filters.openedFrom.slice(0, 10) === todayStart && filters.openedTo.slice(0, 10) === todayEnd) return 'today';
-
-  return 'all';
-}
+import { useState } from 'react';
+import { useChangeVisitStatus } from '../hooks/useChangeVisitStatus';
+import { useVisitBoardFilters } from '../hooks/useVisitBoardFilters';
+import { useVisitsBoard } from '../hooks/useVisitsBoard';
+import { VisitsViewSwitcher } from '../components/VisitsViewSwitcher';
+import { VisitsBoardFilters } from '../components/VisitsBoardFilters';
+import { VisitsBoardColumn } from '../components/VisitsBoardColumn';
+import { VisitBoardImagePreview } from '../components/VisitBoardImagePreview';
+import type { VisitResponse } from '../api/types';
 
 export function VisitsBoardPage() {
-  const workshopId = authStore((state) => state.workshopId);
-  const [searchParams, setSearchParams] = useSearchParams();
+  const { filters, setFilters, update, clear, isExpanded, setIsExpanded } = useVisitBoardFilters();
+  const { workshopId, visitsQuery, statusesQuery, columns, visitsCount, activeCount } = useVisitsBoard(filters);
+  const [previewImage, setPreviewImage] = useState<{ url: string; name: string } | null>(null);
+  const [changingVisitId, setChangingVisitId] = useState<string>('');
 
-  const urlFilters: VisitFilters = {
-    search: searchParams.get('search') || '',
-    statusId: searchParams.get('statusId') || '',
-    createdByUserId: searchParams.get('createdByUserId') || '',
-    branchId: searchParams.get('branchId') || '',
-    clientId: searchParams.get('clientId') || '',
-    instrumentId: searchParams.get('instrumentId') || '',
-    isActive: (searchParams.get('isActive') as VisitFilters['isActive']) || 'true',
-    openedFrom: searchParams.get('openedFrom') || '',
-    openedTo: searchParams.get('openedTo') || '',
-  };
-
-  const [filters, setFilters] = useState<VisitFilters>(urlFilters);
-  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
-  const debouncedSearch = useDebouncedValue(filters.search.trim(), 300);
-
-  useEffect(() => {
-    setFilters(urlFilters);
-  }, [searchParams]);
-
-  const visitsQuery = useQuery({
-    queryKey: ['workshop-visits', workshopId, urlFilters],
-    queryFn: () => getWorkshopVisitsWithFilters(workshopId!, urlFilters),
-    enabled: !!workshopId,
+  const changeStatusMutation = useChangeVisitStatus({
+    workshopId,
+    filters,
+    statuses: statusesQuery.data || [],
   });
 
-  const statusesQuery = useQuery({
-    queryKey: ['visit-statuses', workshopId],
-    queryFn: () => getWorkshopVisitStatuses(workshopId!),
-    enabled: !!workshopId,
-  });
-
-  const branchesQuery = useQuery({
-    queryKey: ['visit-branches', workshopId],
-    queryFn: () => getWorkshopBranches(workshopId!),
-    enabled: !!workshopId,
-  });
-
-  const clientsQuery = useQuery({
-    queryKey: ['visit-clients', workshopId, filters.search],
-    queryFn: () => getWorkshopClients(workshopId!, { search: filters.search, page: 1, limit: 30, isActive: true }),
-    enabled: !!workshopId,
-  });
-
-  const instrumentsQuery = useQuery({
-    queryKey: ['visit-client-instruments-filter', workshopId, filters.clientId],
-    queryFn: () => getClientInstruments(workshopId!, filters.clientId),
-    enabled: !!workshopId && !!filters.clientId,
-  });
-
-  const quickFilterItems = useMemo(
-    () => [
-      ...BASE_QUICK_FILTERS,
-      ...(statusesQuery.data || []).map((status) => ({
-        label: status.name,
-        value: `status:${status.id}`,
-      })),
-    ],
-    [statusesQuery.data],
-  );
-
-  const sortedVisits = useMemo(() => {
-    const visits = visitsQuery.data || [];
-    return [...visits].sort((a, b) => {
-      if (Boolean(a.isActive) !== Boolean(b.isActive)) {
-        return a.isActive ? -1 : 1;
-      }
-      const aDate = new Date(a.openedAt || a.closedAt || 0).getTime();
-      const bDate = new Date(b.openedAt || b.closedAt || 0).getTime();
-      return aDate - bDate;
-    });
-  }, [visitsQuery.data]);
-
-  const quickFilter = useMemo(
-    () => detectQuickFilter(urlFilters, statusesQuery.data || []),
-    [urlFilters, statusesQuery.data],
-  );
-
-  const activeVisitsCount = useMemo(
-    () => (visitsQuery.data || []).filter((visit) => visit.isActive).length,
-    [visitsQuery.data],
-  );
-
-  function applyImmediate(next: VisitFilters) {
-    setFilters(next);
-    setSearchParams(toUrlSearchParams(next));
-  }
-
-  function updateImmediate<K extends keyof VisitFilters>(key: K, value: VisitFilters[K]) {
-    const next = { ...filters, [key]: value };
-    applyImmediate(next);
-  }
-
-  useEffect(() => {
-    const current = (urlFilters.search || '').trim();
-    if (debouncedSearch === current) return;
-    const next = { ...filters, search: debouncedSearch };
-    setSearchParams(toUrlSearchParams(next));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedSearch]);
-
-  function clearFilters() {
-    const next = { ...EMPTY_FILTERS, isActive: 'true' as const };
-    applyImmediate(next);
-  }
-
-  function findStatusIdByKeyword(keyword: 'pend' | 'entreg') {
-    return (statusesQuery.data || []).find((status) => status.name.toLowerCase().includes(keyword))?.id || '';
-  }
-
-  function handleQuickFilter(value: string) {
-    const next = { ...filters };
-
-    if (value === 'active') {
-      next.isActive = 'true';
-      next.statusId = '';
-      next.openedFrom = '';
-      next.openedTo = '';
-    } else if (value === 'all') {
-      next.isActive = '';
-      next.statusId = '';
-      next.openedFrom = '';
-      next.openedTo = '';
-    } else if (value === 'today') {
-      next.isActive = '';
-      next.statusId = '';
-      next.openedFrom = getStartOfTodayIso();
-      next.openedTo = getEndOfTodayIso();
-    } else if (value === 'pending') {
-      next.isActive = '';
-      next.statusId = findStatusIdByKeyword('pend');
-      next.openedFrom = '';
-      next.openedTo = '';
-    } else if (value === 'delivered') {
-      next.isActive = 'false';
-      next.statusId = findStatusIdByKeyword('entreg');
-      next.openedFrom = '';
-      next.openedTo = '';
-    } else if (value.startsWith('status:')) {
-      next.isActive = '';
-      next.statusId = value.replace('status:', '');
-      next.openedFrom = '';
-      next.openedTo = '';
-    }
-
-    applyImmediate(next);
+  function handleStatusChange(visit: VisitResponse, statusId: string) {
+    setChangingVisitId(visit.id);
+    changeStatusMutation.mutate(
+      { visitId: visit.id, instrumentId: visit.instrumentId, statusId },
+      { onSettled: () => setChangingVisitId('') },
+    );
   }
 
   return (
     <div className="space-y-3 pb-6">
+      <VisitsViewSwitcher current="board" />
+
       <section className="card p-4">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h1 className="section-title">Intakes / órdenes de trabajo</h1>
-            <p className="mt-1 text-sm text-slate-500">Lista operativa para revisar rápido qué visita sigue activa y qué ya está lista.</p>
+            <h1 className="section-title">Tablero de visitas</h1>
+            <p className="mt-1 text-sm text-slate-500">Flujo diario por estatus para mostrador y taller.</p>
           </div>
-          <div className="rounded-xl bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-700">
-            {activeVisitsCount} activas · {sortedVisits.length} totales
-          </div>
-        </div>
-
-        <div className="mt-3">
-          <QuickFilterChips items={quickFilterItems} selected={quickFilter} onChange={handleQuickFilter} />
-        </div>
-
-        <div className="mt-3 space-y-2">
-          <input
-            className="input h-11"
-            value={filters.search}
-            placeholder="Buscar folio, cliente, teléfono, modelo o color"
-            onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))}
-          />
-
-          <div className="grid grid-cols-2 gap-2">
-            <select className="input h-11" value={filters.statusId} onChange={(event) => updateImmediate('statusId', event.target.value)}>
-              <option value="">Estatus</option>
-              {(statusesQuery.data || []).map((status) => <option key={status.id} value={status.id}>{status.name}</option>)}
-            </select>
-            <select className="input h-11" value={filters.isActive} onChange={(event) => updateImmediate('isActive', event.target.value as VisitFilters['isActive'])}>
-              <option value="true">Activas</option>
-              <option value="">Todas</option>
-              <option value="false">Inactivas</option>
-            </select>
-          </div>
-
-          <button type="button" className="btn-secondary h-10 w-full justify-center text-xs" onClick={() => setShowAdvancedFilters((current) => !current)}>
-            {showAdvancedFilters ? 'Ocultar filtros avanzados' : 'Más filtros'}
-          </button>
-
-          {showAdvancedFilters ? (
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <select className="input h-11" value={filters.branchId} onChange={(event) => updateImmediate('branchId', event.target.value)}>
-                <option value="">Sucursal</option>
-                {(branchesQuery.data || []).map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
-              </select>
-
-              <select className="input h-11" value={filters.clientId} onChange={(event) => applyImmediate({ ...filters, clientId: event.target.value, instrumentId: '' })}>
-                <option value="">Cliente</option>
-                {(clientsQuery.data || []).map((client) => <option key={client.id} value={client.id}>{client.fullName || `${client.firstName || ''} ${client.lastName || ''}`.trim() || client.phone || client.id}</option>)}
-              </select>
-
-              <select className="input h-11" value={filters.instrumentId} onChange={(event) => updateImmediate('instrumentId', event.target.value)}>
-                <option value="">Instrumento</option>
-                {(instrumentsQuery.data || []).map((instrument) => <option key={instrument.id} value={instrument.id}>{instrument.name || instrument.model || instrument.id}</option>)}
-              </select>
-
-              <input className="input h-11" placeholder="Creado por userId" value={filters.createdByUserId} onChange={(event) => updateImmediate('createdByUserId', event.target.value)} />
-
-              <input className="input h-11" type="date" value={toInputDate(filters.openedFrom)} onChange={(event) => updateImmediate('openedFrom', event.target.value ? `${event.target.value}T00:00:00.000Z` : '')} />
-
-              <input className="input h-11" type="date" value={toInputDate(filters.openedTo)} onChange={(event) => updateImmediate('openedTo', event.target.value ? `${event.target.value}T23:59:59.999Z` : '')} />
-            </div>
-          ) : null}
-
-          <div className="grid grid-cols-1 gap-2">
-            <button type="button" className="btn-secondary h-11 justify-center" onClick={clearFilters}>Limpiar filtros</button>
+          <div className="rounded-xl bg-slate-900 px-3 py-2 text-xs font-semibold text-slate-100">
+            {activeCount} activas · {visitsCount} totales
           </div>
         </div>
       </section>
 
+      <VisitsBoardFilters
+        filters={filters}
+        statuses={statusesQuery.data || []}
+        isExpanded={isExpanded}
+        onToggleExpanded={() => setIsExpanded((current) => !current)}
+        onSearchChange={(value) => setFilters((current) => ({ ...current, search: value }))}
+        onStatusChange={(value) => update('statusId', value)}
+        onActiveChange={(value) => update('isActive', value)}
+        onClear={clear}
+      />
+
       {visitsQuery.isLoading ? (
-        <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        <section className="-mx-3 flex gap-3 overflow-x-auto px-3 pb-2 sm:mx-0 sm:px-0">
           {[...Array(3)].map((_, index) => (
-            <div key={index} className="card animate-pulse p-4">
-              <div className="h-3 w-24 rounded bg-slate-200" />
-              <div className="mt-3 h-5 w-40 rounded bg-slate-200" />
-              <div className="mt-2 h-4 w-32 rounded bg-slate-100" />
-              <div className="mt-4 h-14 rounded bg-slate-100" />
-            </div>
+            <div key={index} className="h-80 w-[84vw] shrink-0 animate-pulse rounded-2xl border border-slate-800 bg-slate-900 sm:w-80" />
           ))}
         </section>
       ) : null}
 
-      {visitsQuery.isError ? <section className="card p-4 text-sm text-red-700">No se pudieron cargar las visitas. Reintenta.</section> : null}
-      {!sortedVisits.length && !visitsQuery.isLoading ? <section className="card p-4 text-sm text-slate-500">No hay órdenes para estos filtros. Prueba “Todas” o ajusta la búsqueda.</section> : null}
-
-      {!!sortedVisits.length ? (
-        <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {sortedVisits.map((visit) => <VisitCard key={visit.id} visit={visit} />)}
+      {visitsQuery.isError ? (
+        <section className="card p-4 text-sm text-rose-700">
+          No se pudieron cargar las visitas.
+          <button type="button" className="btn-secondary ml-2 h-9 px-3 py-1 text-xs" onClick={() => visitsQuery.refetch()}>Reintentar</button>
         </section>
       ) : null}
 
-      {!visitsQuery.isLoading && sortedVisits.length > 0 ? (
-        <p className="px-1 text-xs text-slate-500">Última actualización de datos: {dateTime(new Date())}</p>
+      {!visitsQuery.isLoading && !visitsQuery.isError ? (
+        columns.length ? (
+          <section className="-mx-3 flex gap-3 overflow-x-auto px-3 pb-2 sm:mx-0 sm:px-0 lg:gap-4">
+            {columns.map((column) => (
+              <VisitsBoardColumn
+                key={column.statusId || column.name}
+                column={column}
+                statuses={statusesQuery.data || []}
+                onStatusChange={handleStatusChange}
+                onPreviewImage={(image) => setPreviewImage(image)}
+                changingVisitId={changingVisitId}
+              />
+            ))}
+          </section>
+        ) : (
+          <section className="card p-5 text-sm text-slate-500">
+            No encontramos visitas con estos filtros.
+            <button type="button" className="btn-secondary ml-2 h-9 px-3 py-1 text-xs" onClick={clear}>Limpiar filtros</button>
+          </section>
+        )
       ) : null}
+
+      <VisitBoardImagePreview image={previewImage} onClose={() => setPreviewImage(null)} />
     </div>
   );
 }

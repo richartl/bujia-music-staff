@@ -2,6 +2,7 @@ import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { LoginPage } from './features/auth/pages/LoginPage';
 import { AppLayout } from './layouts/AppLayout';
 import { IntakesPage } from './features/intakes/pages/IntakesPage';
+import { VisitsListPage } from './features/visits/pages/VisitsListPage';
 import { VisitsBoardPage } from './features/visits/pages/VisitsBoardPage';
 import { VisitDetailPage } from './features/visits/pages/VisitDetailPage';
 import { CatalogsPage } from './features/catalogs/pages/CatalogsPage';
@@ -27,7 +28,8 @@ export const router = createBrowserRouter([
       { index: true, element: <Navigate to="/app/intakes" replace /> },
       { path: 'intakes', element: <IntakesPage /> },
       { path: 'dashboard', element: <Navigate to="/app/intakes" replace /> },
-      { path: 'visits', element: <VisitsBoardPage /> },
+      { path: 'visits', element: <VisitsListPage /> },
+      { path: 'visits/board', element: <VisitsBoardPage /> },
       { path: 'visits/:visitId', element: <VisitDetailPage /> },
       {
         path: 'catalogs',

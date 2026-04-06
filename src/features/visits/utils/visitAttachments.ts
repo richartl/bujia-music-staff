@@ -21,13 +21,21 @@ export function getVisitCoverImage(visit: VisitResponse): VisitAttachment | null
 
 export function getVisitMainImageAttachment(visit: VisitResponse): VisitAttachment | null {
   const attachments = Array.isArray(visit.attachments) ? visit.attachments : [];
-  const candidate = attachments.find(
+  const mainCandidate = attachments.find(
     (attachment) =>
       attachment.isMainAttachment === true &&
       hasValidPublicUrl(attachment.publicUrl) &&
       (isImageMime(attachment.mimeType) || isImageByExtension(attachment.originalName)),
   );
-  return candidate || null;
+  if (mainCandidate) return mainCandidate;
+
+  const fallbackCandidate = attachments.find(
+    (attachment) =>
+      hasValidPublicUrl(attachment.publicUrl) &&
+      (isImageMime(attachment.mimeType) || isImageByExtension(attachment.originalName)),
+  );
+
+  return fallbackCandidate || null;
 }
 
 export const getVisitCoverAttachment = getVisitCoverImage;
