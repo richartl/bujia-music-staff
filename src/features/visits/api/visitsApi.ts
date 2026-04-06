@@ -1,5 +1,5 @@
 import { http } from '@/lib/http';
-import type { UpdateVisitPayload, VisitFilters, VisitResponse, VisitStatusCatalog } from './types';
+import type { ArchiveVisitPayload, UpdateVisitPayload, VisitFilters, VisitResponse, VisitStatusCatalog } from './types';
 
 export async function getVisitsByInstrument(workshopId: string, instrumentId: string) {
   const { data } = await http.get<VisitResponse[]>(
@@ -37,6 +37,26 @@ export async function patchVisit(
   const { data } = await http.patch<VisitResponse>(
     `/workshops/${workshopId}/instruments/${instrumentId}/visits/${visitId}`,
     payload,
+  );
+  return data;
+}
+
+export async function archiveVisit(
+  workshopId: string,
+  instrumentId: string,
+  visitId: string,
+  payload?: ArchiveVisitPayload,
+) {
+  const { data } = await http.patch<VisitResponse>(
+    `/workshops/${workshopId}/instruments/${instrumentId}/visits/${visitId}/archive`,
+    payload,
+  );
+  return data;
+}
+
+export async function unarchiveVisit(workshopId: string, instrumentId: string, visitId: string) {
+  const { data } = await http.patch<VisitResponse>(
+    `/workshops/${workshopId}/instruments/${instrumentId}/visits/${visitId}/unarchive`,
   );
   return data;
 }

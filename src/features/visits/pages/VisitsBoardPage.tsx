@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useChangeVisitStatus } from '../hooks/useChangeVisitStatus';
 import { useVisitBoardFilters } from '../hooks/useVisitBoardFilters';
 import { useVisitsBoard } from '../hooks/useVisitsBoard';
+import { useVisitArchive } from '../hooks/useVisitArchive';
 import { VisitsViewSwitcher } from '../components/VisitsViewSwitcher';
 import { VisitsBoardFilters } from '../components/VisitsBoardFilters';
 import { VisitsBoardColumn } from '../components/VisitsBoardColumn';
@@ -9,10 +10,12 @@ import { VisitBoardImagePreview } from '../components/VisitBoardImagePreview';
 import type { VisitResponse } from '../api/types';
 
 export function VisitsBoardPage() {
-  const { filters, setFilters, update, clear, isExpanded, setIsExpanded } = useVisitBoardFilters();
+  const { filters, setFilters, update, apply, clear, isExpanded, setIsExpanded } = useVisitBoardFilters();
   const { workshopId, visitsQuery, statusesQuery, columns, visitsCount, activeCount } = useVisitsBoard(filters);
   const [previewImage, setPreviewImage] = useState<{ url: string; name: string } | null>(null);
   const [changingVisitId, setChangingVisitId] = useState<string>('');
+  const { archiveMutation, unarchiveMutation } = useVisitArchive({ workshopId });
+  const isArchiveMode = filters.isArchived === 'true';
 
   const changeStatusMutation = useChangeVisitStatus({
     workshopId,
@@ -28,6 +31,21 @@ export function VisitsBoardPage() {
     );
   }
 
+  function handleArchiveVisit(visit: VisitResponse, reason?: string) {
+    archiveMutation.mutate({
+      visitId: visit.id,
+      instrumentId: visit.instrumentId,
+      reason,
+    });
+  }
+
+  function handleUnarchiveVisit(visit: VisitResponse) {
+    unarchiveMutation.mutate({
+      visitId: visit.id,
+      instrumentId: visit.instrumentId,
+    });
+  }
+
   return (
     <div className="space-y-3 pb-6">
       <VisitsViewSwitcher current="board" />
@@ -36,10 +54,12 @@ export function VisitsBoardPage() {
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h1 className="section-title">Tablero de visitas</h1>
-            <p className="mt-1 text-sm text-slate-500">Flujo diario por estatus para mostrador y taller.</p>
+            <p className="mt-1 text-sm text-slate-500">
+              {isArchiveMode ? 'Consulta y edición de visitas archivadas.' : 'Flujo diario por estatus para mostrador y taller.'}
+            </p>
           </div>
           <div className="rounded-xl bg-slate-900 px-3 py-2 text-xs font-semibold text-slate-100">
-            {activeCount} activas · {visitsCount} totales
+            {isArchiveMode ? `${visitsCount} archivadas` : `${activeCount} activas · ${visitsCount} totales`}
           </div>
         </div>
       </section>
@@ -52,6 +72,7 @@ export function VisitsBoardPage() {
         onSearchChange={(value) => setFilters((current) => ({ ...current, search: value }))}
         onStatusChange={(value) => update('statusId', value)}
         onActiveChange={(value) => update('isActive', value)}
+        onArchiveModeChange={(value) => apply({ ...filters, isArchived: value, isActive: value === 'true' ? '' : filters.isActive })}
         onClear={clear}
       />
 
@@ -81,12 +102,19 @@ export function VisitsBoardPage() {
                 onStatusChange={handleStatusChange}
                 onPreviewImage={(image) => setPreviewImage(image)}
                 changingVisitId={changingVisitId}
+                onArchiveVisit={handleArchiveVisit}
+                onUnarchiveVisit={handleUnarchiveVisit}
+                isArchivingVisit={(visitId) =>
+                  archiveMutation.variables?.visitId === visitId && archiveMutation.isPending
+                  || unarchiveMutation.variables?.visitId === visitId && unarchiveMutation.isPending
+                }
+                isArchiveMode={isArchiveMode}
               />
             ))}
           </section>
         ) : (
           <section className="card p-5 text-sm text-slate-500">
-            No encontramos visitas con estos filtros.
+            {isArchiveMode ? 'No hay visitas archivadas con estos filtros.' : 'No encontramos visitas con estos filtros.'}
             <button type="button" className="btn-secondary ml-2 h-9 px-3 py-1 text-xs" onClick={clear}>Limpiar filtros</button>
           </section>
         )

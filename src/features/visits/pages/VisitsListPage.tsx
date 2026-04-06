@@ -14,11 +14,15 @@ import type { VisitFilters, VisitStatusCatalog } from '../api/types';
 const EMPTY_FILTERS: VisitFilters = {
   search: '',
   statusId: '',
+  statusCode: '',
   createdByUserId: '',
   branchId: '',
   clientId: '',
   instrumentId: '',
   isActive: 'true',
+  isArchived: '',
+  page: '',
+  limit: '',
   openedFrom: '',
   openedTo: '',
 };
@@ -49,7 +53,7 @@ function getEndOfTodayIso() {
 }
 
 function toUrlSearchParams(filters: VisitFilters) {
-  const entries = Object.entries(filters).filter(([, value]) => value !== '');
+  const entries = Object.entries(filters).filter(([, value]) => value !== '' && value !== undefined && value !== null);
   return new URLSearchParams(entries as Array<[string, string]>);
 }
 
@@ -79,11 +83,15 @@ export function VisitsListPage() {
   const urlFilters: VisitFilters = {
     search: searchParams.get('search') || '',
     statusId: searchParams.get('statusId') || '',
+    statusCode: searchParams.get('statusCode') || '',
     createdByUserId: searchParams.get('createdByUserId') || '',
     branchId: searchParams.get('branchId') || '',
     clientId: searchParams.get('clientId') || '',
     instrumentId: searchParams.get('instrumentId') || '',
     isActive: (searchParams.get('isActive') as VisitFilters['isActive']) || 'true',
+    isArchived: (searchParams.get('isArchived') as VisitFilters['isArchived']) || '',
+    page: searchParams.get('page') || '',
+    limit: searchParams.get('limit') || '',
     openedFrom: searchParams.get('openedFrom') || '',
     openedTo: searchParams.get('openedTo') || '',
   };
