@@ -9,21 +9,12 @@ function getWindowOrigin() {
   return window.location.origin;
 }
 
-function toAbsoluteUrl(url: string, origin = getWindowOrigin()) {
-  try {
-    return new URL(url).toString();
-  } catch {
-    if (!origin) return url;
-    return new URL(url, origin).toString();
-  }
-}
-
 function extractTokenFromUrl(url?: string) {
   if (!url) return '';
   try {
     const parsed = new URL(url, 'https://tracking.local');
     const segments = parsed.pathname.split('/').filter(Boolean);
-    return segments.at(-1) || '';
+    return segments[segments.length - 1] || '';
   } catch {
     return '';
   }
@@ -31,11 +22,7 @@ function extractTokenFromUrl(url?: string) {
 
 export function buildPublicTrackingUrl(params: { directUrl?: string; token?: string }) {
   const directUrl = params.directUrl?.trim();
-  if (directUrl) {
-    return toAbsoluteUrl(directUrl);
-  }
-
-  const token = params.token?.trim();
+  const token = params.token?.trim() || extractTokenFromUrl(directUrl);
   if (!token) return '';
 
   const origin = getWindowOrigin();

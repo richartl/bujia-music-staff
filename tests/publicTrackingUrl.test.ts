@@ -13,6 +13,12 @@ describe('publicTrackingUrl utils', () => {
     expect(buildPublicTrackingUrl({ directUrl: '/tracking/abc123' })).toBe('https://midominio.com/tracking/abc123');
   });
 
+  it('normaliza path legacy /tracking/visits/:token a /tracking/:token', () => {
+    vi.stubGlobal('window', { location: { origin: 'https://midominio.com' } });
+
+    expect(buildPublicTrackingUrl({ directUrl: '/tracking/visits/abc123' })).toBe('https://midominio.com/tracking/abc123');
+  });
+
   it('construye URL con token cuando no llega publicUrl', () => {
     vi.stubGlobal('window', { location: { origin: 'https://midominio.com' } });
 

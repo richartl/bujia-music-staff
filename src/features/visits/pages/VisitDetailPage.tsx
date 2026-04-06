@@ -436,7 +436,9 @@ export function VisitDetailPage() {
     const raw = `${selectedStatus.name || ''} ${selectedStatus.slug || ''}`.toLowerCase();
     return raw.includes('termin') || raw.includes('entreg');
   }, [selectedStatus]);
-  const canArchiveVisit = Boolean(!visit?.isArchived && visit && visit.isActive === false);
+  const visitAsRecord = visit as Record<string, unknown> | undefined;
+  const hasStand = Boolean((visitAsRecord?.hasStand as boolean | undefined) ?? visit?.hasStrap);
+  const canArchiveVisit = Boolean(visit && !visit.isArchived);
   async function addCatalogService(service: WorkshopServiceLookup) {
     if (
       service.isAdjust &&
@@ -709,6 +711,28 @@ export function VisitDetailPage() {
             >
               {currentStatus}
             </span>
+            <div className="flex flex-wrap justify-end gap-2">
+              {canArchiveVisit ? (
+                <button
+                  type="button"
+                  className="btn-secondary h-8 px-3 text-xs"
+                  onClick={() => setIsArchiveModalOpen(true)}
+                  disabled={archiveMutation.isPending}
+                >
+                  {archiveMutation.isPending ? 'Archivando...' : 'Archivar'}
+                </button>
+              ) : null}
+              {visit.isArchived ? (
+                <button
+                  type="button"
+                  className="btn-secondary h-8 px-3 text-xs"
+                  onClick={() => unarchiveMutation.mutate({ instrumentId, visitId })}
+                  disabled={unarchiveMutation.isPending}
+                >
+                  {unarchiveMutation.isPending ? 'Desarchivando...' : 'Desarchivar'}
+                </button>
+              ) : null}
+            </div>
             {mainVisitImage?.publicUrl ? (
               <button
                 type="button"
@@ -740,26 +764,6 @@ export function VisitDetailPage() {
           <button type="button" className="h-8 rounded-lg border border-rose-200 bg-rose-50 px-3 text-xs font-semibold text-rose-700" onClick={() => setIsCancelVisitModalOpen(true)}>
             Cancelar visita
           </button>
-          {canArchiveVisit ? (
-            <button
-              type="button"
-              className="btn-secondary h-8 px-3 text-xs"
-              onClick={() => setIsArchiveModalOpen(true)}
-              disabled={archiveMutation.isPending}
-            >
-              {archiveMutation.isPending ? 'Archivando...' : 'Archivar'}
-            </button>
-          ) : null}
-          {visit.isArchived ? (
-            <button
-              type="button"
-              className="btn-secondary h-8 px-3 text-xs"
-              onClick={() => unarchiveMutation.mutate({ instrumentId, visitId })}
-              disabled={unarchiveMutation.isPending}
-            >
-              {unarchiveMutation.isPending ? 'Desarchivando...' : 'Desarchivar'}
-            </button>
-          ) : null}
         </div>
         {visit.isArchived ? (
           <div className="mt-2 rounded-lg border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900">
@@ -814,10 +818,10 @@ export function VisitDetailPage() {
             <p className="text-right text-slate-800">{((visit as unknown as Record<string, unknown>).desiredTuning as { name?: string } | undefined)?.name || '-'}</p>
             <p className="text-slate-500">Calibre de cuerdas</p>
             <p className="text-right text-slate-800">{((visit as unknown as Record<string, unknown>).stringGauge as { name?: string } | undefined)?.name || '-'}</p>
-            <p className="text-slate-500">Trae funda</p>
-            <p className="text-right text-slate-800">{visit.hasCase ? 'Sí' : 'No'}</p>
-            <p className="text-slate-500">Trae strap</p>
-            <p className="text-right text-slate-800">{visit.hasStrap ? 'Sí' : 'No'}</p>
+            <div className="col-span-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <ReadOnlyToggle label="Stand" enabled={hasStand} />
+              <ReadOnlyToggle label="Case" enabled={Boolean(visit.hasCase)} />
+            </div>
             <p className="text-slate-500">Cambio de cuerdas</p>
             <p className="text-right text-slate-800">{visit.wantsStringChange ? 'Sí' : 'No'}</p>
             <p className="text-slate-500">Registró</p>
@@ -1756,6 +1760,23 @@ function MetricHeader({ label, value, emphasized = false }: { label: string; val
     <div className={`rounded-lg border p-2 ${emphasized ? 'border-amber-200 bg-amber-50' : 'border-slate-200 bg-white'}`}>
       <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</p>
       <p className={`mt-1 text-sm font-semibold ${emphasized ? 'text-amber-700' : 'text-slate-900'}`}>{value}</p>
+    </div>
+  );
+}
+
+function ReadOnlyToggle({ label, enabled }: { label: string; enabled: boolean }) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5">
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</p>
+      <div className="mt-1 flex items-center gap-2">
+        <span
+          className={`inline-flex h-5 w-9 items-center rounded-full border transition-colors ${enabled ? 'border-emerald-300 bg-emerald-100' : 'border-slate-300 bg-slate-200'}`}
+          aria-hidden="true"
+        >
+          <span className={`mx-0.5 h-4 w-4 rounded-full bg-white shadow ${enabled ? 'translate-x-4' : 'translate-x-0'} transition-transform`} />
+        </span>
+        <span className={`text-xs font-medium ${enabled ? 'text-emerald-700' : 'text-slate-600'}`}>{enabled ? 'Activado' : 'Desactivado'}</span>
+      </div>
     </div>
   );
 }

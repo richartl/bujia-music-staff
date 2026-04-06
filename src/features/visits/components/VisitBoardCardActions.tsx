@@ -28,7 +28,7 @@ export function VisitBoardCardActions({
   isArchiveMode = false,
 }: VisitBoardCardActionsProps) {
   const trackingUrl = getTrackingUrlFromVisit(visit);
-  const canArchive = !visit.isArchived && !visit.isActive;
+  const canArchive = !visit.isArchived;
   const canUnarchive = Boolean(visit.isArchived);
   const hasArchiveAction = canArchive || (canUnarchive && isArchiveMode);
 
