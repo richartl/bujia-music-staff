@@ -8,6 +8,7 @@ import { VisitsBoardFilters } from '../components/VisitsBoardFilters';
 import { VisitsBoardColumn } from '../components/VisitsBoardColumn';
 import { VisitBoardImagePreview } from '../components/VisitBoardImagePreview';
 import type { VisitResponse } from '../api/types';
+import { normalizeVisitFilters } from '../utils/visitFilters';
 
 export function VisitsBoardPage() {
   const { filters, setFilters, update, apply, clear, isExpanded, setIsExpanded } = useVisitBoardFilters();
@@ -70,8 +71,8 @@ export function VisitsBoardPage() {
         isExpanded={isExpanded}
         onToggleExpanded={() => setIsExpanded((current) => !current)}
         onSearchChange={(value) => setFilters((current) => ({ ...current, search: value }))}
-        onStatusChange={(value) => update('statusId', value)}
-        onActiveChange={(value) => update('isActive', value)}
+        onStatusChange={(value) => apply(normalizeVisitFilters({ ...filters, statusId: value }, statusesQuery.data || []))}
+        onActiveChange={(value) => apply(normalizeVisitFilters({ ...filters, isActive: value }, statusesQuery.data || []))}
         onArchiveModeChange={(value) => apply({ ...filters, isArchived: value, isActive: value === 'true' ? '' : filters.isActive })}
         onClear={clear}
       />

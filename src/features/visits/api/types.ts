@@ -1,6 +1,7 @@
 export type VisitStatusCatalog = {
   id: string;
   name: string;
+  code?: string;
   color?: string | null;
   slug?: string | null;
   isActive?: boolean;
@@ -64,6 +65,11 @@ export type VisitResponse = {
   subtotal?: number | null;
   discount?: number | null;
   total?: number | null;
+  financialSummary?: {
+    total?: number | string | null;
+    paymentsTotal?: number | string | null;
+    pendingBalance?: number | string | null;
+  } | null;
   isActive?: boolean;
   isArchived?: boolean;
   archivedAt?: string | null;

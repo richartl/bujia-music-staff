@@ -10,6 +10,7 @@ import { VisitCard } from '../components/VisitCard';
 import { getWorkshopVisitStatuses, getWorkshopVisitsWithFilters } from '../api/visitsApi';
 import { getClientInstruments, getWorkshopBranches, getWorkshopClients } from '../api/workshopCatalogsApi';
 import type { VisitFilters, VisitStatusCatalog } from '../api/types';
+import { normalizeVisitFilters } from '../utils/visitFilters';
 
 const EMPTY_FILTERS: VisitFilters = {
   search: '',
@@ -19,8 +20,8 @@ const EMPTY_FILTERS: VisitFilters = {
   branchId: '',
   clientId: '',
   instrumentId: '',
-  isActive: 'true',
-  isArchived: '',
+  isActive: '',
+  isArchived: 'false',
   page: '',
   limit: '',
   openedFrom: '',
@@ -58,6 +59,7 @@ function toUrlSearchParams(filters: VisitFilters) {
 }
 
 function detectQuickFilter(filters: VisitFilters, statuses: VisitStatusCatalog[]) {
+  if (filters.isArchived !== 'false') return 'all';
   if (filters.isActive === 'true' && !filters.statusId && !filters.openedFrom && !filters.openedTo) return 'active';
   if (!filters.isActive && !filters.statusId && !filters.openedFrom && !filters.openedTo) return 'all';
 
@@ -88,8 +90,8 @@ export function VisitsListPage() {
     branchId: searchParams.get('branchId') || '',
     clientId: searchParams.get('clientId') || '',
     instrumentId: searchParams.get('instrumentId') || '',
-    isActive: (searchParams.get('isActive') as VisitFilters['isActive']) || 'true',
-    isArchived: (searchParams.get('isArchived') as VisitFilters['isArchived']) || '',
+    isActive: (searchParams.get('isActive') as VisitFilters['isActive']) || '',
+    isArchived: (searchParams.get('isArchived') as VisitFilters['isArchived']) || 'false',
     page: searchParams.get('page') || '',
     limit: searchParams.get('limit') || '',
     openedFrom: searchParams.get('openedFrom') || '',
@@ -104,15 +106,20 @@ export function VisitsListPage() {
     setFilters(urlFilters);
   }, [searchParams]);
 
-  const visitsQuery = useQuery({
-    queryKey: ['workshop-visits', workshopId, urlFilters],
-    queryFn: () => getWorkshopVisitsWithFilters(workshopId!, urlFilters),
-    enabled: !!workshopId,
-  });
-
   const statusesQuery = useQuery({
     queryKey: ['visit-statuses', workshopId],
     queryFn: () => getWorkshopVisitStatuses(workshopId!),
+    enabled: !!workshopId,
+  });
+
+  const effectiveFilters = useMemo(
+    () => normalizeVisitFilters(urlFilters, statusesQuery.data || []),
+    [urlFilters, statusesQuery.data],
+  );
+
+  const visitsQuery = useQuery({
+    queryKey: ['workshop-visits', workshopId, effectiveFilters],
+    queryFn: () => getWorkshopVisitsWithFilters(workshopId!, effectiveFilters),
     enabled: !!workshopId,
   });
 
@@ -168,8 +175,9 @@ export function VisitsListPage() {
   );
 
   function applyImmediate(next: VisitFilters) {
-    setFilters(next);
-    setSearchParams(toUrlSearchParams(next));
+    const normalized = normalizeVisitFilters(next, statusesQuery.data || []);
+    setFilters(normalized);
+    setSearchParams(toUrlSearchParams(normalized));
   }
 
   function updateImmediate<K extends keyof VisitFilters>(key: K, value: VisitFilters[K]) {
@@ -186,7 +194,7 @@ export function VisitsListPage() {
   }, [debouncedSearch]);
 
   function clearFilters() {
-    const next = { ...EMPTY_FILTERS, isActive: 'true' as const };
+    const next = { ...EMPTY_FILTERS };
     applyImmediate(next);
   }
 
@@ -199,31 +207,37 @@ export function VisitsListPage() {
 
     if (value === 'active') {
       next.isActive = 'true';
+      next.isArchived = 'false';
       next.statusId = '';
       next.openedFrom = '';
       next.openedTo = '';
     } else if (value === 'all') {
       next.isActive = '';
+      next.isArchived = 'false';
       next.statusId = '';
       next.openedFrom = '';
       next.openedTo = '';
     } else if (value === 'today') {
       next.isActive = '';
+      next.isArchived = 'false';
       next.statusId = '';
       next.openedFrom = getStartOfTodayIso();
       next.openedTo = getEndOfTodayIso();
     } else if (value === 'pending') {
       next.isActive = '';
+      next.isArchived = 'false';
       next.statusId = findStatusIdByKeyword('pend');
       next.openedFrom = '';
       next.openedTo = '';
     } else if (value === 'delivered') {
       next.isActive = 'false';
+      next.isArchived = 'false';
       next.statusId = findStatusIdByKeyword('entreg');
       next.openedFrom = '';
       next.openedTo = '';
     } else if (value.startsWith('status:')) {
       next.isActive = '';
+      next.isArchived = 'false';
       next.statusId = value.replace('status:', '');
       next.openedFrom = '';
       next.openedTo = '';
@@ -259,21 +273,38 @@ export function VisitsListPage() {
             onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))}
           />
 
-          <div className="grid grid-cols-2 gap-2">
-            <select className="input h-11" value={filters.statusId} onChange={(event) => updateImmediate('statusId', event.target.value)}>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <select
+              className="input h-11"
+              value={filters.statusId}
+              onChange={(event) => applyImmediate({ ...filters, statusId: event.target.value })}
+            >
               <option value="">Estatus</option>
               {(statusesQuery.data || []).map((status) => <option key={status.id} value={status.id}>{status.name}</option>)}
             </select>
-            <select className="input h-11" value={filters.isActive} onChange={(event) => updateImmediate('isActive', event.target.value as VisitFilters['isActive'])}>
-              <option value="true">Activas</option>
-              <option value="">Todas</option>
-              <option value="false">Inactivas</option>
+            <select className="input h-11" value={filters.isArchived} onChange={(event) => updateImmediate('isArchived', event.target.value as VisitFilters['isArchived'])}>
+              <option value="false">No archivadas</option>
+              <option value="true">Archivadas</option>
+              <option value="">Todas (archivo + normal)</option>
             </select>
           </div>
 
-          <button type="button" className="btn-secondary h-10 w-full justify-center text-xs" onClick={() => setShowAdvancedFilters((current) => !current)}>
-            {showAdvancedFilters ? 'Ocultar filtros avanzados' : 'Más filtros'}
-          </button>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <select className="input h-11" value={filters.isActive} onChange={(event) => updateImmediate('isActive', event.target.value as VisitFilters['isActive'])}>
+              <option value="">Todas las actividades</option>
+              <option value="true">Solo activas</option>
+              <option value="false">Solo inactivas</option>
+            </select>
+            <button type="button" className="btn-secondary h-11 justify-center text-xs" onClick={() => setShowAdvancedFilters((current) => !current)}>
+              {showAdvancedFilters ? 'Ocultar filtros avanzados' : 'Más filtros'}
+            </button>
+          </div>
+
+          {filters.isArchived === 'true' ? (
+            <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
+              Mostrando archivo administrativo.
+            </p>
+          ) : null}
 
           {showAdvancedFilters ? (
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">

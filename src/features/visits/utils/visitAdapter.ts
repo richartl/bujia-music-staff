@@ -35,8 +35,13 @@ function fullName(visit: VisitResponse) {
 }
 
 export function normalizeVisit(visit: VisitResponse): NormalizedVisit {
-  const total = coerceNumber(visit.total);
-  const paid = (visit.payments || []).reduce((sum, payment) => sum + coerceNumber(payment.amount), 0);
+  const financialSummary = visit.financialSummary;
+  const total = coerceNumber(financialSummary?.total ?? visit.total);
+  const paid = coerceNumber(
+    financialSummary?.paymentsTotal
+    ?? (visit.payments || []).reduce((sum, payment) => sum + coerceNumber(payment.amount), 0),
+  );
+  const pendingFromSummary = coerceNumber(financialSummary?.pendingBalance);
 
   const instrumentBrand = visit.instrument?.brand?.name || 'Marca no especificada';
   const instrumentColor = visit.instrument?.color?.name || visit.instrument?.colorName || 'Color no especificado';
@@ -55,7 +60,9 @@ export function normalizeVisit(visit: VisitResponse): NormalizedVisit {
     instrumentColor,
     instrumentType,
     total,
-    pending: Math.max(total - paid, 0),
+    pending: financialSummary?.pendingBalance !== undefined && financialSummary?.pendingBalance !== null
+      ? Math.max(pendingFromSummary, 0)
+      : Math.max(total - paid, 0),
     summary: visit.diagnosis || visit.customerComplaint || visit.intakeNotes || 'Sin descripción del servicio',
     status: {
       id: visit.statusId,
