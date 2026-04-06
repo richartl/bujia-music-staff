@@ -729,10 +729,10 @@ export function VisitDetailPage() {
             ) : null}
           </div>
         </div>
-        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+        <div className="mt-3 flex flex-wrap items-center gap-2">
           <button
             type="button"
-            className="btn-primary h-10 justify-center gap-1.5 px-3 text-xs"
+            className="btn-primary h-9 justify-center gap-1.5 px-3 text-xs"
             onClick={() => {
               setSelectedStatusId(visit.statusId || '');
               setIsStatusModalOpen(true);
@@ -744,7 +744,7 @@ export function VisitDetailPage() {
           {canArchiveVisit ? (
             <button
               type="button"
-              className="btn-secondary h-10 justify-center gap-1.5 px-3 text-xs text-violet-700"
+              className="btn-secondary h-9 justify-center gap-1.5 px-3 text-xs text-violet-700"
               onClick={() => setIsArchiveModalOpen(true)}
               disabled={archiveMutation.isPending}
             >
@@ -755,7 +755,7 @@ export function VisitDetailPage() {
           {visit.isArchived ? (
             <button
               type="button"
-              className="btn-secondary h-10 justify-center gap-1.5 px-3 text-xs text-violet-700"
+              className="btn-secondary h-9 justify-center gap-1.5 px-3 text-xs text-violet-700"
               onClick={() => unarchiveMutation.mutate({ instrumentId, visitId })}
               disabled={unarchiveMutation.isPending}
             >
@@ -765,7 +765,7 @@ export function VisitDetailPage() {
           ) : null}
           <button
             type="button"
-            className="h-10 rounded-lg border border-rose-200 bg-rose-50 px-3 text-xs font-semibold text-rose-700"
+            className="h-9 rounded-lg border border-rose-200 bg-rose-50 px-3 text-xs font-semibold text-rose-700"
             onClick={() => setIsCancelVisitModalOpen(true)}
           >
             <span className="inline-flex items-center gap-1.5">
@@ -1321,31 +1321,41 @@ export function VisitDetailPage() {
       ) : null}
 
       {isCancelVisitModalOpen ? (
-        <div className="fixed inset-0 z-50 flex items-end bg-black/40 p-3">
-          <div className="w-full rounded-2xl bg-white p-4">
-            <h4 className="text-sm font-semibold text-rose-700">Cancelar visita</h4>
-            <p className="mt-1 text-sm text-slate-600">Esta acción cambiará el estatus de la visita a cancelado.</p>
-            <div className="mt-3 grid grid-cols-2 gap-2">
-              <button type="button" className="btn-secondary h-10 justify-center" onClick={() => setIsCancelVisitModalOpen(false)}>No</button>
-              <button
-                type="button"
-                className="h-10 rounded-xl bg-rose-600 px-3 text-sm font-semibold text-white"
-                onClick={() => {
-                  const cancelled = (statusesQuery.data || []).find((status) =>
-                    (status.slug || '').toLowerCase().includes('cancel') || status.name.toLowerCase().includes('cancel'),
-                  );
-                  if (cancelled) {
+        <OverlayPortal>
+          <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/50 p-3 sm:items-center">
+            <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-4">
+              <h4 className="text-base font-semibold text-rose-700">Cancelar visita</h4>
+              <p className="mt-1 text-sm text-slate-600">Esta acción cambiará el estatus de la visita a cancelado.</p>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  className="btn-secondary h-10 justify-center"
+                  onClick={() => setIsCancelVisitModalOpen(false)}
+                  disabled={updateVisitMutation.isPending}
+                >
+                  No
+                </button>
+                <button
+                  type="button"
+                  className="h-10 rounded-xl bg-rose-600 px-3 text-sm font-semibold text-white disabled:opacity-60"
+                  disabled={updateVisitMutation.isPending}
+                  onClick={() => {
+                    const cancelled = (statusesQuery.data || []).find((status) =>
+                      (status.slug || '').toLowerCase().includes('cancel') || status.name.toLowerCase().includes('cancel'),
+                    );
+                    if (!cancelled) return;
                     setEditPayload((current) => ({ ...current, statusId: cancelled.id }));
-                    updateVisitMutation.mutate();
-                  }
-                  setIsCancelVisitModalOpen(false);
-                }}
-              >
-                Sí, cancelar
-              </button>
+                    updateVisitMutation.mutate(undefined, {
+                      onSuccess: () => setIsCancelVisitModalOpen(false),
+                    });
+                  }}
+                >
+                  {updateVisitMutation.isPending ? 'Cancelando...' : 'Sí, cancelar'}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
+        </OverlayPortal>
       ) : null}
 
       {isServiceModalOpen ? (
