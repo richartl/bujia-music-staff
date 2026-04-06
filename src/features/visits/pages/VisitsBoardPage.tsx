@@ -9,12 +9,14 @@ import { VisitsBoardColumn } from '../components/VisitsBoardColumn';
 import { VisitBoardImagePreview } from '../components/VisitBoardImagePreview';
 import type { VisitResponse } from '../api/types';
 import { normalizeVisitFilters } from '../utils/visitFilters';
+import { OverlayPortal } from '@/components/ui/OverlayPortal';
 
 export function VisitsBoardPage() {
   const { filters, setFilters, update, apply, clear, isExpanded, setIsExpanded } = useVisitBoardFilters();
   const { workshopId, visitsQuery, statusesQuery, columns, visitsCount, activeCount } = useVisitsBoard(filters);
   const [previewImage, setPreviewImage] = useState<{ url: string; name: string } | null>(null);
   const [changingVisitId, setChangingVisitId] = useState<string>('');
+  const [archiveModal, setArchiveModal] = useState<{ visit: VisitResponse; reason: string } | null>(null);
   const { archiveMutation, unarchiveMutation } = useVisitArchive({ workshopId });
   const isArchiveMode = filters.isArchived === 'true';
 
@@ -32,12 +34,8 @@ export function VisitsBoardPage() {
     );
   }
 
-  function handleArchiveVisit(visit: VisitResponse, reason?: string) {
-    archiveMutation.mutate({
-      visitId: visit.id,
-      instrumentId: visit.instrumentId,
-      reason,
-    });
+  function handleArchiveVisit(visit: VisitResponse) {
+    setArchiveModal({ visit, reason: '' });
   }
 
   function handleUnarchiveVisit(visit: VisitResponse) {
@@ -122,6 +120,56 @@ export function VisitsBoardPage() {
       ) : null}
 
       <VisitBoardImagePreview image={previewImage} onClose={() => setPreviewImage(null)} />
+
+      {archiveModal ? (
+        <OverlayPortal>
+          <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/50 p-3 sm:items-center" onClick={() => !archiveMutation.isPending && setArchiveModal(null)}>
+            <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-4 shadow-xl" onClick={(event) => event.stopPropagation()}>
+              <h3 className="text-base font-semibold text-slate-900">Archivar visita</h3>
+              <p className="mt-1 text-sm text-slate-600">
+                Esta acción mueve la visita al archivo administrativo. Puedes agregar un motivo opcional.
+              </p>
+              <textarea
+                className="input mt-3 min-h-24 w-full resize-none py-2"
+                placeholder="Motivo (opcional)"
+                value={archiveModal.reason}
+                onChange={(event) => setArchiveModal((current) => current ? { ...current, reason: event.target.value } : current)}
+                disabled={archiveMutation.isPending}
+              />
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  className="btn-secondary h-10 justify-center"
+                  onClick={() => setArchiveModal(null)}
+                  disabled={archiveMutation.isPending}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  className="btn-primary h-10 justify-center"
+                  onClick={() => {
+                    if (!archiveModal) return;
+                    archiveMutation.mutate(
+                      {
+                        visitId: archiveModal.visit.id,
+                        instrumentId: archiveModal.visit.instrumentId,
+                        reason: archiveModal.reason.trim() || undefined,
+                      },
+                      {
+                        onSuccess: () => setArchiveModal(null),
+                      },
+                    );
+                  }}
+                  disabled={archiveMutation.isPending}
+                >
+                  {archiveMutation.isPending ? 'Archivando...' : 'Archivar'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </OverlayPortal>
+      ) : null}
     </div>
   );
 }

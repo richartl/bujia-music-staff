@@ -52,6 +52,7 @@ export function VisitBoardCardActions({
   const trackingUrl = resolveTrackingUrl(visit);
   const canArchive = !visit.isArchived && !visit.isActive;
   const canUnarchive = Boolean(visit.isArchived);
+  const hasArchiveAction = canArchive || (canUnarchive && isArchiveMode);
 
   async function copyTracking() {
     if (!trackingUrl) {
@@ -68,27 +69,38 @@ export function VisitBoardCardActions({
 
   return (
     <div className="space-y-2 border-t border-slate-700/70 pt-2">
-      <div className="grid grid-cols-2 gap-2">
+      <div className={`grid gap-2 ${hasArchiveAction ? 'grid-cols-3' : 'grid-cols-2'}`}>
         <Link to={`/app/visits/${visit.id}?instrumentId=${visit.instrumentId}`} className="btn-secondary h-10 justify-center px-2 py-2 text-xs">
           <ExternalLink className="h-3.5 w-3.5" />
         </Link>
         <button type="button" className="btn-secondary h-10 px-2 py-2 text-xs disabled:opacity-50" onClick={copyTracking} disabled={!trackingUrl}>
           <Copy className="h-3.5 w-3.5" />
         </button>
+        {canArchive ? (
+          <button
+            type="button"
+            className="btn-secondary h-10 justify-center px-2 py-2 text-xs"
+            onClick={onArchive}
+            disabled={isArchiving}
+            title="Archivar visita"
+            aria-label="Archivar visita"
+          >
+            <Archive className="h-3.5 w-3.5 text-violet-400" />
+          </button>
+        ) : null}
+        {canUnarchive && isArchiveMode ? (
+          <button
+            type="button"
+            className="btn-secondary h-10 justify-center px-2 py-2 text-xs"
+            onClick={onUnarchive}
+            disabled={isArchiving}
+            title="Desarchivar visita"
+            aria-label="Desarchivar visita"
+          >
+            <RotateCcw className="h-3.5 w-3.5 text-violet-400" />
+          </button>
+        ) : null}
       </div>
-
-      {canArchive ? (
-        <button type="button" className="btn-secondary h-10 w-full justify-center gap-2 text-xs" onClick={onArchive} disabled={isArchiving}>
-          <Archive className="h-3.5 w-3.5" />
-          {isArchiving ? 'Archivando...' : 'Archivar'}
-        </button>
-      ) : null}
-      {canUnarchive && isArchiveMode ? (
-        <button type="button" className="btn-secondary h-10 w-full justify-center gap-2 text-xs" onClick={onUnarchive} disabled={isArchiving}>
-          <RotateCcw className="h-3.5 w-3.5" />
-          {isArchiving ? 'Desarchivando...' : 'Desarchivar'}
-        </button>
-      ) : null}
 
       <VisitStatusChangeAction visit={visit} statuses={statuses} onChange={onStatusChange} isLoading={isChangingStatus} />
     </div>

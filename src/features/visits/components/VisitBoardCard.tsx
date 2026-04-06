@@ -13,7 +13,7 @@ type VisitBoardCardProps = {
   onStatusChange: (visit: VisitResponse, statusId: string) => void;
   onPreviewImage: (image: { url: string; name: string }) => void;
   isStatusChanging?: boolean;
-  onArchiveVisit?: (visit: VisitResponse, reason?: string) => void;
+  onArchiveVisit?: (visit: VisitResponse) => void;
   onUnarchiveVisit?: (visit: VisitResponse) => void;
   isArchiving?: boolean;
   isArchiveMode?: boolean;
@@ -100,11 +100,7 @@ export function VisitBoardCard({
           statuses={statuses}
           onStatusChange={(statusId) => onStatusChange(visit, statusId)}
           isChangingStatus={isStatusChanging}
-          onArchive={() => {
-            if (!onArchiveVisit) return;
-            const reason = window.prompt('Motivo de archivado (opcional):', '') || '';
-            onArchiveVisit(visit, reason.trim() || undefined);
-          }}
+          onArchive={() => onArchiveVisit?.(visit)}
           onUnarchive={() => onUnarchiveVisit?.(visit)}
           isArchiving={isArchiving}
           isArchiveMode={isArchiveMode}

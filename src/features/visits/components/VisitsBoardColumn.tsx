@@ -14,7 +14,7 @@ type VisitsBoardColumnProps = {
   onStatusChange: (visit: VisitResponse, statusId: string) => void;
   onPreviewImage: (image: { url: string; name: string }) => void;
   changingVisitId?: string;
-  onArchiveVisit?: (visit: VisitResponse, reason?: string) => void;
+  onArchiveVisit?: (visit: VisitResponse) => void;
   onUnarchiveVisit?: (visit: VisitResponse) => void;
   isArchivingVisit?: (visitId: string) => boolean;
   isArchiveMode?: boolean;
