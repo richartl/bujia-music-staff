@@ -24,6 +24,7 @@ import { getTimelinePaymentAttachments } from '@/features/visits/utils/paymentAt
 import { VisitAttachmentsGallery } from '@/features/visits/components/VisitAttachmentsGallery';
 import { useIntakeMediaUpload } from '@/features/intakes/hooks/useIntakeMediaUpload';
 import { getVisitMainImageAttachment } from '@/features/visits/utils/visitAttachments';
+import { buildPublicTrackingUrl } from '@/features/visits/utils/publicTrackingUrl';
 import { OverlayPortal } from '@/components/ui/OverlayPortal';
 import type { WorkshopServiceLookup } from '@/features/intakes/types';
 import { useVisitArchive } from '@/features/visits/hooks/useVisitArchive';
@@ -296,11 +297,10 @@ export function VisitDetailPage() {
   const mainVisitImage = useMemo(() => (visit ? getVisitMainImageAttachment(visit) : null), [visit]);
 
   const resolvedTrackingUrl = useMemo(() => {
-    const payloadUrl = trackingLinkQuery.data?.publicUrl;
-    const token = trackingLinkQuery.data?.token || payloadUrl?.split('/').filter(Boolean).slice(-1)[0];
-    if (!token) return '';
-    const base = typeof window !== 'undefined' ? window.location.origin : '';
-    return `${base}/tracking/${token}`;
+    return buildPublicTrackingUrl({
+      directUrl: trackingLinkQuery.data?.publicUrl,
+      token: trackingLinkQuery.data?.token,
+    });
   }, [trackingLinkQuery.data?.publicUrl, trackingLinkQuery.data?.token]);
 
   const normalizedTrackingItems = useMemo(() => {

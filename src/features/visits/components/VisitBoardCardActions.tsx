@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { copyTextToClipboard } from '@/lib/clipboard';
 import { notifyError, notifySuccess } from '@/lib/notify';
 import type { VisitResponse, VisitStatusCatalog } from '../api/types';
+import { getTrackingUrlFromVisit } from '../utils/publicTrackingUrl';
 import { VisitStatusChangeAction } from './VisitStatusChangeAction';
 
 type VisitBoardCardActionsProps = {
@@ -16,29 +17,6 @@ type VisitBoardCardActionsProps = {
   isArchiveMode?: boolean;
 };
 
-function resolveTrackingUrl(visit: VisitResponse) {
-  const visitAsRecord = visit as Record<string, unknown>;
-  const tracking = visitAsRecord.tracking as Record<string, unknown> | undefined;
-  const trackingLink = visitAsRecord.trackingLink as Record<string, unknown> | undefined;
-
-  const candidates = [
-    tracking?.url,
-    tracking?.publicUrl,
-    trackingLink?.publicUrl,
-    visitAsRecord.publicTrackingUrl,
-    visitAsRecord.trackingUrl,
-  ];
-
-  const directUrl = candidates.find((value) => typeof value === 'string' && value.trim()) as string | undefined;
-  if (directUrl) return directUrl;
-
-  const tokenCandidates = [tracking?.token, trackingLink?.token, visitAsRecord.publicTrackingToken];
-  const token = tokenCandidates.find((value) => typeof value === 'string' && value.trim()) as string | undefined;
-  if (!token) return undefined;
-
-  return `${window.location.origin}/tracking/${token}`;
-}
-
 export function VisitBoardCardActions({
   visit,
   statuses,
@@ -49,7 +27,7 @@ export function VisitBoardCardActions({
   isArchiving = false,
   isArchiveMode = false,
 }: VisitBoardCardActionsProps) {
-  const trackingUrl = resolveTrackingUrl(visit);
+  const trackingUrl = getTrackingUrlFromVisit(visit);
   const canArchive = !visit.isArchived && !visit.isActive;
   const canUnarchive = Boolean(visit.isArchived);
   const hasArchiveAction = canArchive || (canUnarchive && isArchiveMode);
@@ -70,16 +48,16 @@ export function VisitBoardCardActions({
   return (
     <div className="space-y-2 border-t border-slate-700/70 pt-2">
       <div className={`grid gap-2 ${hasArchiveAction ? 'grid-cols-3' : 'grid-cols-2'}`}>
-        <Link to={`/app/visits/${visit.id}?instrumentId=${visit.instrumentId}`} className="btn-secondary h-10 justify-center px-2 py-2 text-xs">
+        <Link to={`/app/visits/${visit.id}?instrumentId=${visit.instrumentId}`} className="btn-secondary h-8 justify-center px-2 py-1.5 text-xs">
           <ExternalLink className="h-3.5 w-3.5" />
         </Link>
-        <button type="button" className="btn-secondary h-10 px-2 py-2 text-xs disabled:opacity-50" onClick={copyTracking} disabled={!trackingUrl}>
+        <button type="button" className="btn-secondary h-8 px-2 py-1.5 text-xs disabled:opacity-50" onClick={copyTracking} disabled={!trackingUrl}>
           <Copy className="h-3.5 w-3.5" />
         </button>
         {canArchive ? (
           <button
             type="button"
-            className="btn-secondary h-10 justify-center px-2 py-2 text-xs"
+            className="btn-secondary h-8 justify-center px-2 py-1.5 text-xs"
             onClick={onArchive}
             disabled={isArchiving}
             title="Archivar visita"
@@ -91,7 +69,7 @@ export function VisitBoardCardActions({
         {canUnarchive && isArchiveMode ? (
           <button
             type="button"
-            className="btn-secondary h-10 justify-center px-2 py-2 text-xs"
+            className="btn-secondary h-8 justify-center px-2 py-1.5 text-xs"
             onClick={onUnarchive}
             disabled={isArchiving}
             title="Desarchivar visita"
