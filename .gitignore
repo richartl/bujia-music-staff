@@ -4,8 +4,4 @@ dist
 .env
 .DS_Store
 
-# PWA assets temporales
-*.png
-public/icons/*
-public/pwa-icons/*
 !public/icons/.gitkeep
